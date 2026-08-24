@@ -1,0 +1,4 @@
+langgraph
+langgraph-cli[inmem]
+langchain-core
+python-dotenv
