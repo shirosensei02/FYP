@@ -27,6 +27,7 @@ graph.add_node('patch_generation_node', patch_generation)
 graph.add_node('patch_application_node', patch_application)
 graph.add_node('patch_validation_node', patch_validation)
 graph.add_node('outcome_classification_node', outcome_classification)
+graph.add_node('increment_retry', increment_retry)
 
 graph.add_edge(START, "package_input_node")
 graph.add_edge("package_input_node", 'vulnerability_detection_node')
@@ -43,6 +44,6 @@ graph.add_conditional_edges(
         "end": END,
     },
 )
-graph.add_edge("increment_retry", "generate_patch")
+graph.add_edge("increment_retry", "patch_generation_node")
 
 graph = graph.compile()
