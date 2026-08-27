@@ -19,3 +19,4 @@ Thumbs.db
 
 # Tool specific temporary files
 .langgraph_api/
+.workspace/

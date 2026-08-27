@@ -18,6 +18,9 @@ class Vulnerability(TypedDict, total=False):
     installed_version: str
     fixed_version: str | None
     description: str
+    advisory_url: str | None
+    scanner: str
+    aliases: list[str]
 
 
 class PatchAttempt(TypedDict, total=False):
@@ -26,6 +29,7 @@ class PatchAttempt(TypedDict, total=False):
     diff: str  # unified diff or full file replacement
     model_used: str
     rationale: str
+    target_files: list[str]
 
 
 class ValidationResult(TypedDict, total=False):
@@ -43,10 +47,14 @@ class GraphState(TypedDict, total=False):
     # 1) input
     package_name: str
     package_version: str
+    source_dir: str
+    package_manifest_path: str
+    tarball_path: str
 
     # 2) vulnerability detection (syft + grype)
     sbom: dict[str, Any]  # syft output
     vulnerabilities: list[Vulnerability]  # grype output, parsed
+    scan_artifacts: dict[str, str]
 
     # 3) patch generation
     patch_attempts: list[PatchAttempt]
