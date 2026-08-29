@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+from stat import S_IWRITE
 from pathlib import Path
 
 from state import GraphState
@@ -25,7 +26,7 @@ def _safe_segment(value: str) -> str:
 
 def _extract_tarball(tarball_path: Path, extract_root: Path) -> Path:
     if extract_root.exists():
-        shutil.rmtree(extract_root)
+        shutil.rmtree(extract_root, onerror=_handle_remove_readonly)
 
     extract_root.mkdir(parents=True, exist_ok=True)
     with tarfile.open(tarball_path, "r:gz") as archive:
@@ -40,6 +41,11 @@ def _extract_tarball(tarball_path: Path, extract_root: Path) -> Path:
         return package_dirs[0]
 
     return extract_root
+
+
+def _handle_remove_readonly(func, path, exc_info) -> None:
+    Path(path).chmod(S_IWRITE)
+    func(path)
 
 
 def package_input(state: GraphState) -> dict:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,19 @@ def _pick_target_vulnerability(vulnerabilities: list[Vulnerability]) -> Vulnerab
     return vulnerabilities[0]
 
 
+def _select_vulnerabilities(state: GraphState) -> list[Vulnerability]:
+    vulnerabilities = state.get("current_vulnerabilities") or state.get("vulnerabilities", [])
+    if not vulnerabilities:
+        return []
+
+    patch_scope = state.get("patch_scope", "single")
+    if patch_scope == "all":
+        return vulnerabilities
+
+    target = _pick_target_vulnerability(vulnerabilities)
+    return [target] if target else []
+
+
 def _read_context_files(source_dir: Path, manifest_path: Path) -> list[dict[str, str]]:
     context_files: list[Path] = [manifest_path]
 
@@ -51,6 +65,15 @@ def _read_context_files(source_dir: Path, manifest_path: Path) -> list[dict[str,
         if candidate_path.is_file():
             context_files.append(candidate_path)
 
+    for candidate_path in source_dir.rglob("*"):
+        if not candidate_path.is_file():
+            continue
+        if candidate_path.suffix.lower() not in {".js", ".cjs", ".mjs", ".ts", ".json"}:
+            continue
+        context_files.append(candidate_path)
+        if len(context_files) >= 25:
+            break
+
     unique_files: list[Path] = []
     seen = set()
     for path in context_files:
@@ -60,7 +83,7 @@ def _read_context_files(source_dir: Path, manifest_path: Path) -> list[dict[str,
         unique_files.append(path)
 
     snippets = []
-    for path in unique_files[:4]:
+    for path in unique_files[:25]:
         try:
             contents = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
@@ -68,7 +91,7 @@ def _read_context_files(source_dir: Path, manifest_path: Path) -> list[dict[str,
         snippets.append(
             {
                 "path": str(path.relative_to(source_dir)).replace("\\", "/"),
-                "content": contents[:4000],
+                "content": contents[:12000],
             }
         )
     return snippets
@@ -76,7 +99,7 @@ def _read_context_files(source_dir: Path, manifest_path: Path) -> list[dict[str,
 
 def _build_messages(
     state: GraphState,
-    vulnerability: Vulnerability,
+    vulnerabilities: list[Vulnerability],
     context_files: list[dict[str, str]],
 ) -> list[dict[str, str]]:
     system_prompt = (
@@ -87,7 +110,8 @@ def _build_messages(
     user_payload = {
         "package_name": state.get("package_name"),
         "package_version": state.get("package_version"),
-        "vulnerability": vulnerability,
+        "patch_scope": state.get("patch_scope", "single"),
+        "vulnerabilities": vulnerabilities,
         "context_files": context_files,
         "output_schema": {
             "diff": "string, unified diff relative to package root",
@@ -101,40 +125,149 @@ def _build_messages(
     ]
 
 
+def _build_attempt_id(attempt_number: int, selected_vulnerabilities: list[Vulnerability]) -> str:
+    if not selected_vulnerabilities:
+        target = "no-vulnerability"
+    elif len(selected_vulnerabilities) == 1:
+        target = selected_vulnerabilities[0].get("id", "unknown")
+    else:
+        target = f"multi-{len(selected_vulnerabilities)}"
+    safe_target = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in target)
+    return f"attempt-{attempt_number}-{safe_target}"
+
+
+def _build_mock_payload(
+    source_dir: Path,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+) -> dict[str, Any]:
+    target_path = None
+    for snippet in context_files:
+        candidate = source_dir / snippet["path"]
+        if candidate.suffix.lower() in {".js", ".cjs", ".mjs", ".ts"} and candidate.exists():
+            target_path = candidate
+            break
+
+    if target_path is None:
+        target_path = source_dir / "package.json"
+
+    try:
+        original = target_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        original = target_path.read_text(encoding="utf-8", errors="ignore")
+
+    target_label = (
+        selected_vulnerabilities[0].get("id", "unknown")
+        if len(selected_vulnerabilities) == 1
+        else f"{len(selected_vulnerabilities)} vulnerabilities"
+    )
+    comment = f"// MOCK PATCH for {target_label}\n"
+    patched = original if original.startswith(comment) else comment + original
+
+    diff = "".join(
+        difflib.unified_diff(
+            original.splitlines(keepends=True),
+            patched.splitlines(keepends=True),
+            fromfile=f"a/{target_path.relative_to(source_dir).as_posix()}",
+            tofile=f"b/{target_path.relative_to(source_dir).as_posix()}",
+        )
+    )
+
+    return {
+        "diff": diff,
+        "rationale": (
+            "Mock provider generated a deterministic unified diff so patch application "
+            "and downstream validation can be tested without an API key."
+        ),
+        "target_files": [target_path.relative_to(source_dir).as_posix()],
+    }
+
+
+def _generate_with_openai(
+    state: GraphState,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+) -> dict[str, Any] | str:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return "patch_generation: OPENAI_API_KEY is not set"
+
+    model_name = state.get("model_name", "gpt-4.1-mini")
+    client = OpenAI(api_key=api_key)
+    response = client.chat.completions.create(
+        model=model_name,
+        response_format={"type": "json_object"},
+        messages=_build_messages(state, selected_vulnerabilities, context_files),
+    )
+    content = response.choices[0].message.content or ""
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as exc:
+        return f"patch_generation: model returned invalid JSON: {exc}"
+
+
+def _generate_with_anthropic(
+    state: GraphState,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+) -> dict[str, Any] | str:
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        return "patch_generation: anthropic package is not installed"
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return "patch_generation: ANTHROPIC_API_KEY is not set"
+
+    model_name = state.get("model_name", "claude-sonnet-4-0")
+    client = Anthropic(api_key=api_key)
+    messages = _build_messages(state, selected_vulnerabilities, context_files)
+    response = client.messages.create(
+        model=model_name,
+        max_tokens=4000,
+        system=messages[0]["content"],
+        messages=[{"role": "user", "content": messages[1]["content"]}],
+    )
+    text_blocks = [block.text for block in response.content if getattr(block, "type", "") == "text"]
+    content = "".join(text_blocks).strip()
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as exc:
+        return f"patch_generation: model returned invalid JSON: {exc}"
+
+
 def patch_generation(state: GraphState) -> dict:
     source_dir = state.get("source_dir")
     if not source_dir:
         return _with_error(state, "patch_generation: missing source_dir")
 
-    vulnerabilities = state.get("vulnerabilities", [])
-    vulnerability = _pick_target_vulnerability(vulnerabilities)
-    if vulnerability is None:
+    selected_vulnerabilities = _select_vulnerabilities(state)
+    if not selected_vulnerabilities:
         return _with_error(state, "patch_generation: no vulnerabilities available for patching")
 
+    source_path = Path(source_dir)
     manifest_path_value = state.get("package_manifest_path")
-    manifest_path = Path(manifest_path_value) if manifest_path_value else Path(source_dir) / "package.json"
+    manifest_path = Path(manifest_path_value) if manifest_path_value else source_path / "package.json"
     if not manifest_path.exists():
         return _with_error(state, f"patch_generation: package manifest not found: {manifest_path}")
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return _with_error(state, "patch_generation: OPENAI_API_KEY is not set")
+    provider = state.get("model_provider", "mock")
+    default_model = "mock-diff-v1" if provider == "mock" else "gpt-4.1-mini"
+    model_name = state.get("model_name", default_model)
+    context_files = _read_context_files(source_path, manifest_path)
 
-    model_name = state.get("model_name", "gpt-4.1-mini")
-    context_files = _read_context_files(Path(source_dir), manifest_path)
+    if provider == "mock":
+        payload = _build_mock_payload(source_path, selected_vulnerabilities, context_files)
+    elif provider == "openai":
+        payload = _generate_with_openai(state, selected_vulnerabilities, context_files)
+    elif provider == "anthropic":
+        payload = _generate_with_anthropic(state, selected_vulnerabilities, context_files)
+    else:
+        return _with_error(state, f"patch_generation: unsupported model_provider: {provider}")
 
-    client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model=model_name,
-        response_format={"type": "json_object"},
-        messages=_build_messages(state, vulnerability, context_files),
-    )
-
-    content = response.choices[0].message.content or ""
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError as exc:
-        return _with_error(state, f"patch_generation: model returned invalid JSON: {exc}")
+    if isinstance(payload, str):
+        return _with_error(state, payload)
 
     diff = payload.get("diff")
     rationale = payload.get("rationale")
@@ -147,9 +280,11 @@ def patch_generation(state: GraphState) -> dict:
         return _with_error(state, "patch_generation: model response contained invalid target_files")
 
     patch_attempts = list(state.get("patch_attempts", []))
+    attempt_number = len(patch_attempts) + 1
     patch_attempt = PatchAttempt(
-        attempt_number=len(patch_attempts) + 1,
-        vulnerability_id=vulnerability.get("id", "unknown"),
+        attempt_number=attempt_number,
+        attempt_id=_build_attempt_id(attempt_number, selected_vulnerabilities),
+        vulnerability_id=selected_vulnerabilities[0].get("id", "unknown"),
         diff=diff,
         model_used=model_name,
         rationale=rationale,

@@ -25,6 +25,7 @@ class Vulnerability(TypedDict, total=False):
 
 class PatchAttempt(TypedDict, total=False):
     attempt_number: int
+    attempt_id: str
     vulnerability_id: str
     diff: str  # unified diff or full file replacement
     model_used: str
@@ -41,8 +42,9 @@ class ValidationResult(TypedDict, total=False):
 
 class GraphState(TypedDict, total=False):
     # config
-    model_name: str  # e.g. "claude-sonnet-4-6" — single model for now,
-                      # loop over this in a driver script later for the study
+    model_provider: Literal["mock", "openai", "anthropic"]
+    model_name: str  # e.g. "gpt-4.1-mini" or "claude-sonnet-4-0"
+    patch_scope: Literal["single", "all"]
 
     # 1) input
     package_name: str
@@ -51,9 +53,10 @@ class GraphState(TypedDict, total=False):
     package_manifest_path: str
     tarball_path: str
 
-    # 2) vulnerability detection (syft + grype)
-    sbom: dict[str, Any]  # syft output
-    vulnerabilities: list[Vulnerability]  # grype output, parsed
+    # 2) vulnerability detection
+    sbom: dict[str, Any]
+    vulnerabilities: list[Vulnerability]
+    current_vulnerabilities: list[Vulnerability]
     scan_artifacts: dict[str, str]
 
     # 3) patch generation
