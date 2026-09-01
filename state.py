@@ -22,11 +22,9 @@ class Vulnerability(TypedDict, total=False):
 
 class PatchAttempt(TypedDict, total=False):
     attempt_number: int
-    vulnerability_id: str
+    attempt_id: str
     diff: str  # unified diff or full file replacement
     model_used: str
-    rationale: str
-
 
 class ValidationResult(TypedDict, total=False):
     build_succeeded: bool
