@@ -21,8 +21,7 @@ graph TD
     vulnerability_detection_node --> patch_generation_node[Patch Generation]
     patch_generation_node --> patch_application_node[Patch Application]
     patch_application_node --> patch_validation_node[Patch Validation]
-    patch_validation_node --> outcome_classification_node[Outcome Classification]
-    outcome_classification_node --> __end__([END])
+    patch_validation_node --> __end__([END])
 ```
 
 ### Stage Summary
@@ -32,7 +31,6 @@ graph TD
 3. **Patch Generation (`patch_generation_node`)**: Leverages LLMs to generate candidate security patches or code fixes.
 4. **Patch Application (`patch_application_node`)**: Applies the generated patches to the target codebase in a snandbox environment.
 5. **Patch Validation (`patch_validation_node`)**: Runs unit tests, security checks, dynamic and manual validation to verify patch efficacy.
-6. **Outcome Classification (`outcome_classification_node`)**: Analyzes validation results and categorizes final patch status (e.g., Success, Failed Validation, Syntax Error).
 
 ---
 
@@ -46,7 +44,6 @@ graph TD
 ├── patch_generation.py        # Node implementation for LLM patch generation
 ├── patch_application.py       # Node implementation for applying patches
 ├── patch_validation.py        # Node implementation for patch validation & testing
-├── outcome_classification.py  # Node implementation for classifying final outcomes
 ├── langgraph.json             # LangGraph server configuration
 ├── requirements.txt           # Python dependencies
 └── README.md                  # Project documentation
@@ -87,6 +84,7 @@ Create a `.env` file in the root directory for any environment variables or API 
 ```env
 # .env
 OPENAI_API_KEY=your_api_key_here
+MONGO_URI=your_api_key_here
 ```
 
 ---
