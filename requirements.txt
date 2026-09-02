@@ -5,3 +5,4 @@ python-dotenv
 pymongo[srv]
 openai
 anthropic
+pytest
