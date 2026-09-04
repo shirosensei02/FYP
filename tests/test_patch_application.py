@@ -28,8 +28,25 @@ PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from patch_application import patch_application
+from patch_application import _seed_workspace_from_source
 from patch_validation import patch_validation
 from state import GraphState, PatchAttempt
+
+
+def test_seed_workspace_from_source_preserves_package_files(tmp_path):
+    source_dir = tmp_path / "source"
+    work_dir = tmp_path / "workspace"
+    source_dir.mkdir()
+    (source_dir / "package.json").write_text('{"name":"demo"}', encoding="utf-8")
+    (source_dir / "template.js").write_text("module.exports = 'original';\n", encoding="utf-8")
+    (source_dir / "node_modules").mkdir()
+    (source_dir / "node_modules" / "ignored.js").write_text("ignored", encoding="utf-8")
+
+    _seed_workspace_from_source(str(source_dir), work_dir)
+
+    assert (work_dir / "package.json").exists()
+    assert (work_dir / "template.js").read_text(encoding="utf-8") == "module.exports = 'original';\n"
+    assert not (work_dir / "node_modules").exists()
 
 # ===========================================================================
 # Choose which test scenario to run

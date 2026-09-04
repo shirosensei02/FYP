@@ -22,6 +22,7 @@ GraphState keys consumed
 ------------------------
 - ``package_name``     : str  - npm package name (e.g. "lodash")
 - ``package_version``  : str  - version string (e.g. "4.17.15")
+- ``source_dir``       : str  - extracted, unmodified package source directory
 - ``current_patch``    : PatchAttempt - produced by patch_generation; the
                           ``diff`` field holds either a unified diff or a
                           mapping of ``{filename: full_file_content}`` as a
@@ -70,6 +71,7 @@ logging.basicConfig(
 BASE_IMAGE = "node:20-alpine"          # lightweight, reproducible Node image
 SANDBOX_TIMEOUT_SECONDS = 120          # max time the container may run
 DOCKER_BUILD_TIMEOUT = 180             # docker build can be slow on first pull
+PATCH_WORKSPACE_ROOT = Path(__file__).resolve().parent / ".workspace" / "patched"
 
 
 # ===========================================================================
@@ -153,6 +155,24 @@ def _run(
 # ---------------------------------------------------------------------------
 # Step A - Materialise patched files
 # ---------------------------------------------------------------------------
+
+def _seed_workspace_from_source(source_dir: str | None, work_dir: Path) -> None:
+    """Copy the original package so a unified diff has real files to modify."""
+    if not source_dir:
+        return
+
+    source_path = Path(source_dir)
+    if not source_path.is_dir():
+        raise FileNotFoundError(f"package source directory not found: {source_path}")
+
+    _step("A0. Copying original package into sandbox workspace")
+    shutil.copytree(
+        source_path,
+        work_dir,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("node_modules", ".git"),
+    )
+    print(f"    OK  copied package source from {source_path}", flush=True)
 
 def _write_patched_package(
     work_dir: Path,
@@ -424,9 +444,15 @@ def _run_npm_test(image_tag: str, container_name: str) -> tuple[bool, str, str]:
 # Step F - Tear-down
 # ---------------------------------------------------------------------------
 
-def _teardown(container_id: str, image_tag: str, work_dir: Path) -> None:
-    """Remove the container, image, and temp directory."""
-    _step("F . Tearing down sandbox (container + image + temp files)")
+def _teardown(
+    container_id: str,
+    image_tag: str,
+    work_dir: Path,
+    *,
+    preserve_workspace: bool,
+) -> None:
+    """Remove Docker resources and retain patched files for re-scanning."""
+    _step("F . Tearing down sandbox resources")
 
     if container_id:
         rc, _, _ = _run(["docker", "rm", "--force", container_id], timeout=20)
@@ -437,6 +463,10 @@ def _teardown(container_id: str, image_tag: str, work_dir: Path) -> None:
         rc, _, _ = _run(["docker", "rmi", "--force", image_tag], timeout=30)
         if rc == 0:
             print(f"    OK  Image {image_tag} removed", flush=True)
+
+    if preserve_workspace:
+        print(f"    OK  Patched workspace retained for re-scan: {work_dir}", flush=True)
+        return
 
     try:
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -510,8 +540,11 @@ def patch_application(state: GraphState) -> dict:
 
     try:
         # ── A: write files ─────────────────────────────────────────────────
-        work_dir = Path(tempfile.mkdtemp(prefix=f"patch_{safe_name}_"))
+        PATCH_WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
+        work_dir = Path(tempfile.mkdtemp(prefix=f"patch_{safe_name}_", dir=PATCH_WORKSPACE_ROOT))
         print(f"\n    Sandbox workspace: {work_dir}", flush=True)
+
+        _seed_workspace_from_source(state.get("source_dir"), work_dir)
 
         _write_patched_package(
             work_dir,
@@ -552,7 +585,7 @@ def patch_application(state: GraphState) -> dict:
     finally:
         # ── F: always tear down ────────────────────────────────────────────
         if work_dir:
-            _teardown(container_id, image_tag, work_dir)
+            _teardown(container_id, image_tag, work_dir, preserve_workspace=True)
 
     # ── Summarise ──────────────────────────────────────────────────────────
     combined_logs = "\n".join(all_logs)
@@ -574,6 +607,7 @@ def patch_application(state: GraphState) -> dict:
     return {
         "sandbox_id": container_id or None,
         "sandbox_apply_success": apply_success,
+        "patched_source_dir": str(work_dir) if work_dir and work_dir.exists() else None,
         "validation": validation,
         "errors": errors,
     }

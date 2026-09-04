@@ -34,7 +34,8 @@ def patch_validation(state: GraphState) -> dict:
 
     build_ok   = bool(validation.get("build_succeeded"))
     tests_ok   = bool(validation.get("tests_passed"))
-    passed     = build_ok and tests_ok
+    scan_clean = bool(validation.get("revalidation_scan_clean"))
+    passed     = build_ok and tests_ok and scan_clean
 
     logger.info(
         "patch_validation - %s@%s [%s]: build=%s tests=%s → %s",
@@ -52,11 +53,13 @@ def patch_validation(state: GraphState) -> dict:
 
     # ── Build human-readable reason ───────────────────────────────────────────
     if passed:
-        reason = "Build succeeded and all tests passed."
+        reason = "Build succeeded, all tests passed, and the vulnerability re-scan was clean."
     elif not build_ok:
         reason = "Docker build failed — patch could not be applied."
-    else:
+    elif not tests_ok:
         reason = "Build succeeded but npm test failed — patch broke the package."
+    else:
+        reason = "Build and tests passed, but the vulnerability re-scan was not clean."
 
     return {
         "classification": "pass" if passed else "fail",
