@@ -28,6 +28,8 @@ class PatchAttempt(TypedDict, total=False):
     attempt_id: str
     diff: str  # unified diff or full file replacement
     model_used: str
+    vulnerability_id: str
+    target_files: list[str]
 
 class ValidationResult(TypedDict, total=False):
     build_succeeded: bool
@@ -37,8 +39,8 @@ class ValidationResult(TypedDict, total=False):
 
 class GraphState(TypedDict, total=False):
     # config
-    model_provider: Literal["mock", "openai", "anthropic"]
-    model_name: str  # e.g. "gpt-4.1-mini" or "claude-sonnet-4-0"
+    model_provider: Literal["mock", "openai", "anthropic", "gemini"]
+    model_name: str  # e.g. "gpt-4.1-mini", "claude-sonnet-4-0", or "gemini-3.6-flash"
     patch_scope: Literal["single", "all"]
 
     # 1) input
@@ -57,15 +59,21 @@ class GraphState(TypedDict, total=False):
     # 3) patch generation
     patch_attempts: list[PatchAttempt]
     current_patch: PatchAttempt | None
+    run_attempt_id: str
 
     # 4) patch application (sandbox)
     sandbox_id: str | None
     sandbox_apply_success: bool | None
+    patched_source_dir: str | None
 
-    # 5) validation
+    # 5) post-patch vulnerability re-scan
+    remaining_vulnerabilities: list[Vulnerability]
+    revalidation_artifacts: dict[str, str]
+
+    # 6) validation
     validation: ValidationResult | None
 
-    # 6) classification
+    # 7) classification
     classification: Literal["pass", "fail"] | None
     classification_reason: str | None
 

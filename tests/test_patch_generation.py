@@ -30,6 +30,32 @@ class _FakeOpenAI:
         )
 
 
+class _FakeGeminiResponse:
+    text = json.dumps(
+        {
+            "diff": "--- a/index.js\n+++ b/index.js\n@@\n-module.exports = 42;\n+module.exports = 43;\n",
+            "target_files": ["index.js"],
+        }
+    )
+
+
+class _FakeGeminiClient:
+    def __init__(self, api_key: str):
+        assert api_key == "test-key"
+        self.models = self
+
+    def generate_content(self, model, contents, config):
+        assert model == "gemini-3.6-flash"
+        assert config["response_mime_type"] == "application/json"
+        payload = json.loads(contents)
+        assert payload["vulnerabilities"][0]["id"] == "CVE-TEST-0001"
+        return _FakeGeminiResponse()
+
+
+class _FakeGeminiModule:
+    Client = _FakeGeminiClient
+
+
 def test_patch_generation_mock_provider_returns_deterministic_diff(tmp_path):
     source_dir = tmp_path / "package"
     source_dir.mkdir()
@@ -60,7 +86,7 @@ def test_patch_generation_mock_provider_returns_deterministic_diff(tmp_path):
     assert result["current_patch"]["vulnerability_id"] == "CVE-TEST-0001"
     assert result["current_patch"]["target_files"] == ["index.js"]
     assert result["patch_attempts"][0]["attempt_number"] == 1
-    assert result["patch_attempts"][0]["attempt_id"] == "attempt-1-CVE-TEST-0001"
+    assert result["patch_attempts"][0]["attempt_id"].startswith("demo-package-")
     assert "--- a/index.js" in result["current_patch"]["diff"]
     assert "MOCK PATCH" in result["current_patch"]["diff"]
 
@@ -91,7 +117,7 @@ def test_patch_generation_openai_provider_uses_full_vulnerability_list(monkeypat
         }
     )
 
-    assert result["current_patch"]["attempt_id"] == "attempt-1-multi-2"
+    assert result["current_patch"]["attempt_id"].startswith("demo-package-")
     assert result["current_patch"]["model_used"] == "gpt-4.1-mini"
 
 
@@ -133,4 +159,50 @@ def test_patch_generation_prefers_current_vulnerabilities_for_single_scope(tmp_p
     )
 
     assert result["current_patch"]["vulnerability_id"] == "CVE-CURRENT-0001"
-    assert result["current_patch"]["attempt_id"] == "attempt-1-CVE-CURRENT-0001"
+    assert result["current_patch"]["attempt_id"].startswith("package-")
+
+
+def test_patch_generation_gemini_provider_uses_configured_model(monkeypatch, tmp_path):
+    source_dir = tmp_path / "package"
+    source_dir.mkdir()
+    manifest_path = source_dir / "package.json"
+    manifest_path.write_text('{"name":"demo-package","version":"1.0.0","main":"index.js"}', encoding="utf-8")
+    (source_dir / "index.js").write_text("module.exports = 42;\n", encoding="utf-8")
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(patch_generation, "genai", _FakeGeminiModule)
+
+    result = patch_generation.patch_generation(
+        {
+            "package_name": "demo-package",
+            "package_version": "1.0.0",
+            "source_dir": str(source_dir),
+            "package_manifest_path": str(manifest_path),
+            "model_provider": "gemini",
+            "vulnerabilities": [{"id": "CVE-TEST-0001"}],
+        }
+    )
+
+    assert result["current_patch"]["model_used"] == "gemini-3.6-flash"
+    assert result["current_patch"]["target_files"] == ["index.js"]
+
+
+def test_patch_generation_gemini_provider_requires_api_key(monkeypatch, tmp_path):
+    source_dir = tmp_path / "package"
+    source_dir.mkdir()
+    manifest_path = source_dir / "package.json"
+    manifest_path.write_text('{"name":"demo-package","version":"1.0.0"}', encoding="utf-8")
+
+    monkeypatch.setattr(patch_generation, "genai", _FakeGeminiModule)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    result = patch_generation.patch_generation(
+        {
+            "source_dir": str(source_dir),
+            "package_manifest_path": str(manifest_path),
+            "model_provider": "gemini",
+            "vulnerabilities": [{"id": "CVE-TEST-0001"}],
+        }
+    )
+
+    assert result["errors"] == ["patch_generation: GEMINI_API_KEY is not set"]

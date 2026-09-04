@@ -79,12 +79,14 @@ pip install -r requirements.txt
 
 ### 2. Environment Configuration
 
-Create a `.env` file in the root directory for any environment variables or API keys (e.g., OpenAI / Anthropic keys):
+Create a `.env` file in the root directory for API keys and the MongoDB connection URI:
 
 ```env
 # .env
 OPENAI_API_KEY=your_api_key_here
-MONGO_URI=your_api_key_here
+ANTHROPIC_API_KEY=your_api_key_here
+GEMINI_API_KEY=your_api_key_here
+MONGO_URI=your_mongodb_connection_uri_here
 ```
 
 ---

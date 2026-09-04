@@ -97,6 +97,6 @@ def test_pipeline_integration_with_mocked_external_tools(monkeypatch, tmp_path):
     assert state["source_dir"]
     assert state["vulnerabilities"][0]["id"] == "CVE-TEST-PIPELINE"
     assert state["current_vulnerabilities"][0]["id"] == "CVE-TEST-PIPELINE"
-    assert state["current_patch"]["attempt_id"] == "attempt-1-CVE-TEST-PIPELINE"
+    assert state["current_patch"]["attempt_id"].startswith("demo-package-")
     assert state["current_patch"]["target_files"] == ["index.js"]
     assert "MOCK PATCH" in state["current_patch"]["diff"]

@@ -26,7 +26,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the package_input -> vulnerability_detection -> patch_generation flow.")
     parser.add_argument("--package-name", required=True)
     parser.add_argument("--package-version", required=True)
-    parser.add_argument("--model-provider", default="mock", choices=["mock", "openai", "anthropic"])
+    parser.add_argument("--model-provider", default="mock", choices=["mock", "openai", "anthropic", "gemini"])
     parser.add_argument("--model-name")
     parser.add_argument("--patch-scope", default="single", choices=["single", "all"])
     parser.add_argument("--inject-mock-vulnerability", action="store_true")

@@ -10,9 +10,22 @@ import uuid
 from dotenv import load_dotenv
 from openai import OpenAI
 
+try:
+    from google import genai
+except ImportError:
+    genai = None
+
 from state import GraphState, PatchAttempt, Vulnerability
 
 load_dotenv()
+
+
+DEFAULT_MODELS = {
+    "mock": "mock-diff-v1",
+    "openai": "gpt-4.1-mini",
+    "anthropic": "claude-sonnet-4-0",
+    "gemini": "gemini-3.6-flash",
+}
 
 
 def _with_error(state: GraphState, message: str, **extra: Any) -> dict:
@@ -116,6 +129,7 @@ def _build_messages(
         "context_files": context_files,
         "output_schema": {
             "diff": "string, unified diff relative to package root",
+            "target_files": "optional list of changed file paths relative to package root",
         },
     }
     return [
@@ -124,12 +138,10 @@ def _build_messages(
     ]
 
 
-def _build_run_attempt_id(state: GraphState) -> dict:
-    """Build a unique ID based on the package name and a random UUID"""
-    unique_id = str(uuid.uuid4())
-    package_name = state.get("package_name")
-
-    return package_name + unique_id
+def _build_run_attempt_id(state: GraphState) -> str:
+    """Build a unique, readable ID that persists across retries in one run."""
+    package_name = state.get("package_name") or "package"
+    return f"{package_name}-{uuid.uuid4()}"
 
 
 def _build_mock_payload(
@@ -171,6 +183,7 @@ def _build_mock_payload(
 
     return {
         "diff": diff,
+        "target_files": [target_path.relative_to(source_dir).as_posix()],
     }
 
 
@@ -228,6 +241,42 @@ def _generate_with_anthropic(
         return f"patch_generation: model returned invalid JSON: {exc}"
 
 
+def _generate_with_gemini(
+    state: GraphState,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+) -> dict[str, Any] | str:
+    if genai is None:
+        return "patch_generation: google-genai package is not installed"
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return "patch_generation: GEMINI_API_KEY is not set"
+
+    model_name = state.get("model_name", DEFAULT_MODELS["gemini"])
+    messages = _build_messages(state, selected_vulnerabilities, context_files)
+    client = genai.Client(api_key=api_key)
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=messages[1]["content"],
+            config={
+                "system_instruction": messages[0]["content"],
+                "response_mime_type": "application/json",
+            },
+        )
+    except Exception as exc:
+        return f"patch_generation: Gemini request failed: {exc}"
+
+    content = (getattr(response, "text", None) or "").strip()
+    if not content:
+        return "patch_generation: Gemini returned an empty response"
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as exc:
+        return f"patch_generation: model returned invalid JSON: {exc}"
+
+
 def patch_generation(state: GraphState) -> dict:
     source_dir = state.get("source_dir")
     if not source_dir:
@@ -244,7 +293,9 @@ def patch_generation(state: GraphState) -> dict:
         return _with_error(state, f"patch_generation: package manifest not found: {manifest_path}")
 
     provider = state.get("model_provider", "mock")
-    default_model = "mock-diff-v1" if provider == "mock" else "gpt-4.1-mini"
+    default_model = DEFAULT_MODELS.get(provider)
+    if default_model is None:
+        return _with_error(state, f"patch_generation: unsupported model_provider: {provider}")
     model_name = state.get("model_name", default_model)
     context_files = _read_context_files(source_path, manifest_path)
 
@@ -254,6 +305,8 @@ def patch_generation(state: GraphState) -> dict:
         payload = _generate_with_openai(state, selected_vulnerabilities, context_files)
     elif provider == "anthropic":
         payload = _generate_with_anthropic(state, selected_vulnerabilities, context_files)
+    elif provider == "gemini":
+        payload = _generate_with_gemini(state, selected_vulnerabilities, context_files)
     else:
         return _with_error(state, f"patch_generation: unsupported model_provider: {provider}")
 
@@ -277,6 +330,11 @@ def patch_generation(state: GraphState) -> dict:
         diff=diff,
         model_used=model_name,
     )
+    if len(selected_vulnerabilities) == 1:
+        patch_attempt["vulnerability_id"] = selected_vulnerabilities[0].get("id", "unknown")
+    target_files = payload.get("target_files")
+    if isinstance(target_files, list) and all(isinstance(path, str) for path in target_files):
+        patch_attempt["target_files"] = target_files
     patch_attempts.append(patch_attempt)
 
     return {
