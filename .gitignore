@@ -5,6 +5,7 @@ ENV/
 
 # Environment variables & secrets
 .env
+X509-*.pem
 
 # Python cache & bytecode
 __pycache__/

@@ -2,6 +2,7 @@ langgraph
 langgraph-cli[inmem]
 langchain-core
 python-dotenv
+certifi
 pymongo[srv]
 openai
 anthropic
