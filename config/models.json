@@ -1,0 +1,14 @@
+[
+  {
+    "id": "google/gemma-4-31b-it:free",
+    "name": "Google Gemma 4 31B",
+    "free": true,
+    "role": "coding and structured-output fallback"
+  },
+  {
+    "id": "nvidia/nemotron-3-super-120b-a12b:free",
+    "name": "NVIDIA Nemotron 3 Super",
+    "free": true,
+    "role": "agentic reasoning baseline"
+  }
+]

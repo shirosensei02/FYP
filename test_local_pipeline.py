@@ -7,10 +7,9 @@ Runs all five nodes in sequence:
   package_input -> vulnerability_detection -> patch_generation
       -> patch_application -> patch_validation
 
-- model_provider is always "mock" (no API key needed)
+- model_provider defaults to "mock" (no API key needed)
 - Vulnerabilities can be auto-detected OR injected via --skip-vuln-detection
-- patch_application requires Docker to be running on your machine;
-  set --skip-docker to bypass it with a stub that marks build+test as passed.
+- patch_application requires Docker to be running on your machine
 
 Usage examples
 --------------
@@ -19,9 +18,6 @@ python test_local_pipeline.py --package-name lodash --package-version 4.17.15
 
 # Skip real vuln scan, inject a mock vuln:
 python test_local_pipeline.py --package-name lodash --package-version 4.17.15 --skip-vuln-detection
-
-# Skip docker sandbox step too:
-python test_local_pipeline.py --package-name lodash --package-version 4.17.15 --skip-vuln-detection --skip-docker
 
 # Use a pre-extracted source directory (skips npm pack + extract):
 python test_local_pipeline.py --package-name lodash --package-version 4.17.15 \
@@ -76,12 +72,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
     state: dict[str, Any] = {
         "package_name": args.package_name,
         "package_version": args.package_version,
-        "model_provider": "mock",
+        "model_provider": args.model_provider,
         "patch_scope": args.patch_scope,
-        "retry_count": 0,
-        "max_retries": args.max_retries,
         "errors": [],
     }
+    if args.model_name:
+        state["model_name"] = args.model_name
 
     # Pre-set source_dir if caller already extracted the package
     if args.source_dir:
@@ -115,44 +111,57 @@ def run_pipeline(args: argparse.Namespace) -> None:
         _sep("NODE 2 / 5 - VULNERABILITY DETECTION")
         result = vulnerability_detection(state)
         state.update(result)
-        vulns = state.get("vulnerabilities", [])
-        print(f"  Found {len(vulns)} vulnerabilities.")
+        vulns = state.get("current_vulnerabilities", [])
+        print(f"  Found {len(vulns)} target vulnerabilities.")
+        for vulnerability in vulns:
+            print(
+                f"  - {vulnerability.get('id')} ({vulnerability.get('severity')}) "
+                f"in {vulnerability.get('package')}@{vulnerability.get('installed_version')}"
+            )
         if not vulns:
-            print("  No vulnerabilities found - injecting mock vuln to continue.")
-            mock_vuln = _mock_vulnerability(args.package_name, args.package_version)
-            state["vulnerabilities"] = [mock_vuln]
-            state["current_vulnerabilities"] = [mock_vuln]
+            _print_errors(state)
+            print("  No target vulnerability was detected; no patch was generated.")
+            sys.exit(1)
         if state.get("errors"):
             print(f"  [warnings] {state['errors']}")
             state["errors"] = []
 
+    from patch_application import patch_application
+    from patch_validation import patch_validation
+
     # Node 3: patch_generation
-    _sep("NODE 3 / 5 - PATCH GENERATION  (provider=mock)")
+    _sep(f"NODE 3 / 5 - PATCH GENERATION  (provider={args.model_provider})")
     result = patch_generation(state)
     state.update(result)
-    if state.get("errors"):
-        _print_errors(state)
-        sys.exit(1)
 
-    patch = state.get("current_patch") or {}
-    diff = patch.get("diff", "")
-    print(f"  model_used  : {patch.get('model_used')}")
-    print(f"  attempt_id  : {patch.get('attempt_id')}")
-    print(f"  diff length : {len(diff)} chars")
-    print("\n  --- diff preview (first 500 chars) ---")
-    print(textwrap.indent(diff[:500], "  "))
+    if not state.get("errors"):
+        patch = state.get("current_patch") or {}
+        diff = patch.get("diff", "")
+        print(f"  model_used  : {patch.get('model_used')}")
+        print(f"  attempt_id  : {patch.get('attempt_id')}")
+        print(f"  diff length : {len(diff)} chars")
+        print("\n  --- diff preview (first 500 chars) ---")
+        print(textwrap.indent(diff[:500], "  "))
 
-    # Node 4: patch_application
-    _sep("NODE 4 / 5 - PATCH APPLICATION")
-    from patch_application import patch_application
-    result = patch_application(state)
-    state.update(result)
-    if state.get("errors"):
-        print(f"  [errors during application] {state['errors']}")
+    if args.stop_after_patch:
+        if state.get("errors"):
+            _print_errors(state)
+        if args.dump_state:
+            _sep("PATCH GENERATION STATE")
+            print(json.dumps(state, indent=2, default=str))
+        return
 
-    # Node 5: patch_validation
+    if state.get("current_patch"):
+        # Node 4: patch_application
+        _sep("NODE 4 / 5 - PATCH APPLICATION")
+        result = patch_application(state)
+        state.update(result)
+        if state.get("errors"):
+            print(f"  [errors during application] {state['errors']}")
+
+    # Node 5: patch_validation. Generation failures also reach this node
+    # for a consistent classification, but are not persisted.
     _sep("NODE 5 / 5 - PATCH VALIDATION")
-    from patch_validation import patch_validation
     result = patch_validation(state)
     state.update(result)
 
@@ -185,18 +194,25 @@ def _parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""\
             Examples:
-              python test_local_pipeline.py --package-name lodash --package-version 4.17.15 --skip-vuln-detection --skip-docker
-              python test_local_pipeline.py --package-name semver --package-version 7.5.1 --skip-vuln-detection --skip-docker --dump-state
+              python test_local_pipeline.py --package-name lodash --package-version 4.17.15 --skip-vuln-detection
+              python test_local_pipeline.py --package-name semver --package-version 7.5.1 --dump-state
         """),
     )
     p.add_argument("--package-name", required=True)
     p.add_argument("--package-version", required=True)
+    p.add_argument(
+        "--model-provider",
+        default="mock",
+        choices=["mock", "openai", "anthropic", "gemini", "openrouter"],
+    )
+    p.add_argument("--model-name", default=None)
     p.add_argument("--patch-scope", default="single", choices=["single", "all"])
-    p.add_argument("--max-retries", type=int, default=0)
     p.add_argument("--source-dir", default=None,
                    help="Pre-extracted package source dir (skips npm pack + extract)")
     p.add_argument("--skip-vuln-detection", action="store_true",
                    help="Inject a mock vuln instead of running syft/grype/npm-audit")
+    p.add_argument("--stop-after-patch", action="store_true",
+                   help="Stop after the selected model returns a patch; skips Docker and validation")
     p.add_argument("--dump-state", action="store_true",
                    help="Print full state dict at the end")
     return p.parse_args()
