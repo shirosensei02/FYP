@@ -15,6 +15,7 @@ Collections
 from __future__ import annotations
 
 import os
+import time
 import logging
 from datetime import datetime, timezone
 
@@ -31,6 +32,13 @@ _MONGO_URI  = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 _DB_NAME    = "fyp_patches"
 _COL_PASS   = "successful_patches"
 _COL_ATTEMPTS = "all_attempts"
+
+# Atlas TLS handshakes to this cluster intermittently fail with
+# TLSV1_ALERT_INTERNAL_ERROR (~30-40% of cold connections, observed against
+# every shard member) -- a couple of quick retries clears it without masking
+# a genuinely down cluster.
+_CONNECT_RETRIES = 3
+_CONNECT_RETRY_BACKOFF_SECONDS = 1.0
 
 # ── Internal singleton ────────────────────────────────────────────────────────
 _client: MongoClient | None = None
@@ -62,20 +70,32 @@ def _get_db():
     global _client
     if _client is None:
         logger.info("db - connecting to MongoDB: %s", _MONGO_URI.split("@")[-1])
-        try:
-            _client = MongoClient(
-                _MONGO_URI,
-                serverSelectionTimeoutMS=5_000,
-                **_mongo_tls_options(_MONGO_URI),
-            )
-            # Verify connectivity early so failures are obvious.
-            _client.admin.command("ping")
-            _ensure_indexes(_client[_DB_NAME])
-            logger.info("db - connected OK")
-        except Exception:
-            # Do not retain a half-initialised client after a failed connection.
+        last_exc: Exception | None = None
+        for attempt in range(1, _CONNECT_RETRIES + 1):
+            try:
+                candidate = MongoClient(
+                    _MONGO_URI,
+                    serverSelectionTimeoutMS=5_000,
+                    **_mongo_tls_options(_MONGO_URI),
+                )
+                # Verify connectivity early so failures are obvious.
+                candidate.admin.command("ping")
+                _ensure_indexes(candidate[_DB_NAME])
+                _client = candidate
+                logger.info("db - connected OK (attempt %d/%d)", attempt, _CONNECT_RETRIES)
+                break
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    "db - connection attempt %d/%d failed: %s", attempt, _CONNECT_RETRIES, exc,
+                )
+                if attempt < _CONNECT_RETRIES:
+                    time.sleep(_CONNECT_RETRY_BACKOFF_SECONDS)
+        else:
+            # Do not retain a half-initialised client after exhausting retries.
             _client = None
-            raise
+            assert last_exc is not None
+            raise last_exc
     return _client[_DB_NAME]
 
 
