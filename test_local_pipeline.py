@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import textwrap
 from pathlib import Path
@@ -44,6 +45,10 @@ from patch_generation import patch_generation
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _env_bool(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
 
 def _sep(title: str) -> None:
     print(f"\n{'=' * 60}")
@@ -198,24 +203,32 @@ def _parse_args() -> argparse.Namespace:
               python test_local_pipeline.py --package-name semver --package-version 7.5.1 --dump-state
         """),
     )
-    p.add_argument("--package-name", required=True)
-    p.add_argument("--package-version", required=True)
+    p.add_argument("--package-name", default=os.getenv("PACKAGE_NAME"),
+                   help="Falls back to PACKAGE_NAME in .env")
+    p.add_argument("--package-version", default=os.getenv("PACKAGE_VERSION"),
+                   help="Falls back to PACKAGE_VERSION in .env")
     p.add_argument(
         "--model-provider",
-        default="mock",
+        default=os.getenv("MODEL_PROVIDER", "mock"),
         choices=["mock", "openai", "anthropic", "gemini", "openrouter"],
+        help="Falls back to MODEL_PROVIDER in .env",
     )
-    p.add_argument("--model-name", default=None)
-    p.add_argument("--patch-scope", default="single", choices=["single", "all"])
-    p.add_argument("--source-dir", default=None,
+    p.add_argument("--model-name", default=os.getenv("MODEL_NAME"),
+                   help="Falls back to MODEL_NAME in .env")
+    p.add_argument("--patch-scope", default=os.getenv("PATCH_SCOPE", "single"), choices=["single", "all"])
+    p.add_argument("--source-dir", default=os.getenv("SOURCE_DIR"),
                    help="Pre-extracted package source dir (skips npm pack + extract)")
-    p.add_argument("--skip-vuln-detection", action="store_true",
+    p.add_argument("--skip-vuln-detection", action="store_true", default=_env_bool("SKIP_VULN_DETECTION"),
                    help="Inject a mock vuln instead of running syft/grype/npm-audit")
-    p.add_argument("--stop-after-patch", action="store_true",
+    p.add_argument("--stop-after-patch", action="store_true", default=_env_bool("STOP_AFTER_PATCH"),
                    help="Stop after the selected model returns a patch; skips Docker and validation")
-    p.add_argument("--dump-state", action="store_true",
+    p.add_argument("--dump-state", action="store_true", default=_env_bool("DUMP_STATE"),
                    help="Print full state dict at the end")
-    return p.parse_args()
+    args = p.parse_args()
+    if not args.package_name or not args.package_version:
+        p.error("--package-name/--package-version are required (pass the flag, or set "
+                 "PACKAGE_NAME/PACKAGE_VERSION in .env)")
+    return args
 
 
 if __name__ == "__main__":
