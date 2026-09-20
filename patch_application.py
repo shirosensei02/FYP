@@ -367,7 +367,11 @@ def _run_npm_install(image_tag: str, container_name: str) -> tuple[bool, str]:
 # Step E - Run npm test inside container
 # ---------------------------------------------------------------------------
 
-def _run_npm_test(image_tag: str, container_name: str) -> tuple[bool, str, str]:
+def _run_npm_test(
+    image_tag: str,
+    container_name: str,
+    test_command: list[str],
+) -> tuple[bool, str, str]:
     """
     Spin up the sandbox container, run ``npm test``, capture its output,
     and return (success, container_id, logs).
@@ -375,7 +379,8 @@ def _run_npm_test(image_tag: str, container_name: str) -> tuple[bool, str, str]:
     We use ``docker run`` in detached mode, wait for completion, then fetch
     logs, so we always have the container ID for later inspection.
     """
-    _step("E . Running  npm test  inside Docker sandbox")
+    label = " ".join(test_command)
+    _step(f"E . Running  {label}  inside Docker sandbox")
 
     # Start detached
     start_cmd = [
@@ -386,7 +391,7 @@ def _run_npm_test(image_tag: str, container_name: str) -> tuple[bool, str, str]:
         "--memory", "512m",
         "--cpus", "1",
         image_tag,
-        "npm", "test",
+        *test_command,
     ]
     print(f"    $ {' '.join(start_cmd)}", flush=True)
 
@@ -433,11 +438,28 @@ def _run_npm_test(image_tag: str, container_name: str) -> tuple[bool, str, str]:
 
     success = exit_code == 0
     if success:
-        print(f"\n    OK  npm test passed (exit 0)", flush=True)
+        print(f"\n    OK  validation command passed (exit 0)", flush=True)
     else:
-        print(f"\n    FAIL  npm test failed (exit {exit_code})", flush=True)
+        print(f"\n    FAIL  validation command failed (exit {exit_code})", flush=True)
 
     return success, container_id, full_logs
+
+
+def _select_test_command(work_dir: Path) -> list[str]:
+    """Use the package tests when published; otherwise perform a load smoke test."""
+    try:
+        package_json = json.loads((work_dir / "package.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return ["node", "-e", "require('./')"]
+
+    scripts = package_json.get("scripts", {})
+    has_test_assets = any(
+        (work_dir / path).exists()
+        for path in ("test", "tests", ".eslintrc", ".eslintrc.json", ".eslintrc.js")
+    )
+    if isinstance(scripts.get("test"), str) and has_test_assets:
+        return ["npm", "test"]
+    return ["node", "-e", "require('./')"]
 
 
 # ---------------------------------------------------------------------------
@@ -572,9 +594,10 @@ def patch_application(state: GraphState) -> dict:
         if not install_ok:
             errors.append("npm install step reported errors (continuing to test)")
 
-        # ── E: npm test ────────────────────────────────────────────────────
-        test_ok, container_id, test_log = _run_npm_test(image_tag, container_name)
-        all_logs.append("=== npm test ===\n" + test_log)
+        # ── E: package tests or load smoke test ────────────────────────────
+        test_command = _select_test_command(work_dir)
+        test_ok, container_id, test_log = _run_npm_test(image_tag, container_name, test_command)
+        all_logs.append(f"=== {' '.join(test_command)} ===\n" + test_log)
 
     except Exception as exc:
         msg = f"patch_application error: {type(exc).__name__}: {exc}"

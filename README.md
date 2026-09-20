@@ -53,6 +53,8 @@ graph TD
 ├── vulnerability_rescan.py    # Post-patch Grype re-scan
 ├── patch_validation.py        # Node implementation for patch validation & testing
 ├── patch_scoring.py           # Maintainer-fix comparison: location, strategy, completeness
+├── config/models.json          # OpenRouter models used for patch generation
+├── prompts/baseline.txt        # Security patch-generation prompt
 ├── langgraph.json             # LangGraph server configuration
 ├── requirements.txt           # Python dependencies
 └── README.md                  # Project documentation
@@ -95,6 +97,9 @@ Create a `.env` file in the root directory for API keys and the MongoDB connecti
 OPENAI_API_KEY=your_api_key_here
 ANTHROPIC_API_KEY=your_api_key_here
 GEMINI_API_KEY=your_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+# Optional: use a compatible OpenRouter endpoint
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 MONGO_URI=your_mongodb_connection_uri_here
 ```
 
@@ -118,7 +123,23 @@ Once started, access the server resources:
 
 ## 🧪 Testing the Pipeline Locally
 
-`test_local_pipeline.py` provides a lightweight, end-to-end test runner that executes all five pipeline nodes in sequence **without needing a LangGraph server or any LLM API key** (the model provider is always `mock`).
+`test_local_pipeline.py` provides a lightweight, end-to-end test runner that executes all five pipeline nodes in sequence without needing a LangGraph server. It uses the deterministic `mock` provider by default, or an API-backed provider when selected with `--model-provider` and `--model-name`.
+
+For live patch generation, the pipeline supports OpenRouter through the OpenAI-compatible API. The configured free models are listed in `config/models.json`; pass any model ID from that file with `--model-name`.
+
+```bash
+OPENROUTER_API_KEY=your_openrouter_api_key_here \
+python run_live_pipeline.py \
+  --package-name semver \
+  --package-version 7.5.1 \
+  --model-provider openrouter \
+  --model-name nvidia/nemotron-3-super-120b-a12b:free
+```
+
+`run_live_pipeline.py` executes the complete LangGraph flow, including Docker
+validation. Every terminal outcome is stored in `fyp_patches.all_attempts`;
+patches that pass Docker build and package validation are additionally stored
+in `fyp_patches.successful_patches`.
 
 ### Prerequisites
 
@@ -136,10 +157,12 @@ Once started, access the server resources:
 |------|-------------|
 | `--package-name` | *(required)* NPM package name to test |
 | `--package-version` | *(required)* Package version to test |
+| `--model-provider` | Patch provider; use `openrouter` for an OpenRouter model (default: `mock`) |
+| `--model-name` | Provider-specific model ID, such as an ID from `config/models.json` |
 | `--patch-scope` | `single` (default) or `all` — how many vulns to patch |
-| `--max-retries` | Number of patch retry attempts (default: `0`) |
 | `--source-dir` | Path to a pre-extracted source directory — skips `npm pack` + extract |
 | `--skip-vuln-detection` | Inject a mock vulnerability instead of running `syft`/`grype`/`npm audit` |
+| `--stop-after-patch` | Skip Docker validation and MongoDB persistence after patch generation |
 | `--dump-state` | Print the full pipeline state dict at the end |
 
 ### Usage Examples
@@ -158,6 +181,32 @@ python test_local_pipeline.py \
   --package-name lodash \
   --package-version 4.17.15
 ```
+
+**Test an OpenRouter model locally:**
+
+Set `OPENROUTER_API_KEY` in `.env` or export it in your shell. Use a model ID
+from `config/models.json`; the example below uses the configured Nemotron
+model. This runs detection, patch generation, Docker validation, and persists
+the result to MongoDB only if validation passes.
+
+```bash
+python test_local_pipeline.py \
+  --package-name ip \
+  --package-version 2.0.1 \
+  --model-provider openrouter \
+  --model-name nvidia/nemotron-3-super-120b-a12b:free
+```
+
+To test the configured Gemma model, replace only `--model-name`:
+
+```bash
+--model-name google/gemma-4-31b-it:free
+```
+
+Use `--stop-after-patch` when you want to inspect only the model response and
+skip Docker validation and MongoDB persistence. Do not use
+`--skip-vuln-detection` for a real package-patching evaluation: it injects a
+mock vulnerability rather than the package's scanner finding.
 
 **Use a pre-extracted source directory (skips `npm pack` + extract):**
 ```bash

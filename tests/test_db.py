@@ -1,5 +1,6 @@
 from bson import ObjectId
 
+import db
 import db as db_module
 
 
@@ -21,7 +22,11 @@ class _FakeCollection:
 def test_update_patch_score_sets_nested_json_on_both_collections(monkeypatch):
     all_col = _FakeCollection()
     pass_col = _FakeCollection()
-    monkeypatch.setattr(db_module, "_get_db", lambda: {"all_attempts": all_col, "successful_patches": pass_col})
+    monkeypatch.setattr(
+        db_module,
+        "_get_db",
+        lambda: {"all_attempts": all_col, "successful_patches": pass_col},
+    )
 
     mongo_id = str(ObjectId())
     score = {"status": "scored", "location": "overlapping", "strategy": "similar", "completeness": "partial"}
@@ -41,3 +46,20 @@ def test_update_patch_score_sets_nested_json_on_both_collections(monkeypatch):
 
 def test_update_patch_score_rejects_invalid_id():
     assert db_module.update_patch_score("not-an-objectid", {"location": "same"}) is False
+
+
+def test_plain_local_mongodb_does_not_force_tls(monkeypatch):
+    monkeypatch.delenv("MONGO_TLS", raising=False)
+    monkeypatch.delenv("MONGO_TLS_CERT_FILE", raising=False)
+
+    assert db._mongo_tls_options("mongodb://localhost:27017") == {}
+
+
+def test_explicit_client_certificate_enables_tls(monkeypatch):
+    monkeypatch.delenv("MONGO_TLS", raising=False)
+    monkeypatch.setenv("MONGO_TLS_CERT_FILE", "/tmp/client.pem")
+
+    options = db._mongo_tls_options("mongodb://localhost:27017")
+
+    assert options["tls"] is True
+    assert options["tlsCertificateKeyFile"] == "/tmp/client.pem"

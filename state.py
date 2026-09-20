@@ -74,7 +74,7 @@ class PatchScore(TypedDict, total=False):
 
 class GraphState(TypedDict, total=False):
     # config
-    model_provider: Literal["mock", "openai", "anthropic", "gemini"]
+    model_provider: Literal["mock", "openai", "anthropic", "gemini", "openrouter"]
     model_name: str  # e.g. "gpt-4.1-mini", "claude-sonnet-4-0", or "gemini-3.6-flash"
     patch_scope: Literal["single", "all"]
 
@@ -98,6 +98,10 @@ class GraphState(TypedDict, total=False):
     patch_attempts: list[PatchAttempt]
     current_patch: PatchAttempt | None
     run_attempt_id: str
+    generation_status: Literal["generated", "failed"]
+    generation_error: str | None
+    generation_provider: str | None
+    generation_model_used: str | None
 
     # 4) patch application (sandbox)
     sandbox_id: str | None

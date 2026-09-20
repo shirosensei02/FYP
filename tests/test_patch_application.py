@@ -167,8 +167,6 @@ def build_state(mode: str) -> GraphState:
         "validation": None,
         "classification": None,
         "classification_reason": None,
-        "retry_count": 0,
-        "max_retries": 3,
         "errors": [],
     }
     return state

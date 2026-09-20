@@ -8,16 +8,18 @@ The URI is read from the MONGO_URI environment variable (via .env).
 
 Collections
 -----------
-  fyp_patches.successful_patches  – patches that passed validation
-  fyp_patches.all_attempts        – every attempt (pass + fail), for analysis
+  fyp_patches.successful_patches  – patches that passed all validation stages
+  fyp_patches.all_attempts        – every terminal pipeline attempt
 """
 
 from __future__ import annotations
 
 import os
+import time
 import logging
 from datetime import datetime, timezone
 
+import certifi
 from dotenv import load_dotenv
 from pymongo import MongoClient, ASCENDING, errors
 
@@ -29,10 +31,38 @@ logger = logging.getLogger(__name__)
 _MONGO_URI  = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 _DB_NAME    = "fyp_patches"
 _COL_PASS   = "successful_patches"
-_COL_ALL    = "all_attempts"
+_COL_ATTEMPTS = "all_attempts"
+
+# Atlas TLS handshakes to this cluster intermittently fail with
+# TLSV1_ALERT_INTERNAL_ERROR (~30-40% of cold connections, observed against
+# every shard member) -- a couple of quick retries clears it without masking
+# a genuinely down cluster.
+_CONNECT_RETRIES = 3
+_CONNECT_RETRY_BACKOFF_SECONDS = 1.0
 
 # ── Internal singleton ────────────────────────────────────────────────────────
 _client: MongoClient | None = None
+
+
+def _is_truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _mongo_tls_options(uri: str) -> dict[str, str | bool]:
+    """Enable TLS only when the URI or explicit environment opts into it.
+
+    X.509 client credentials are intentionally opt-in: never infer a
+    certificate by searching the project directory.
+    """
+    client_certificate = os.getenv("MONGO_TLS_CERT_FILE")
+    tls_enabled = uri.startswith("mongodb+srv://") or _is_truthy(os.getenv("MONGO_TLS")) or bool(client_certificate)
+    if not tls_enabled:
+        return {}
+
+    options: dict[str, str | bool] = {"tls": True, "tlsCAFile": certifi.where()}
+    if client_certificate:
+        options["tlsCertificateKeyFile"] = client_certificate
+    return options
 
 
 def _get_db():
@@ -40,48 +70,84 @@ def _get_db():
     global _client
     if _client is None:
         logger.info("db - connecting to MongoDB: %s", _MONGO_URI.split("@")[-1])
-        _client = MongoClient(_MONGO_URI, serverSelectionTimeoutMS=5_000)
-        # Verify connectivity early so failures are obvious
-        _client.admin.command("ping")
-        _ensure_indexes(_client[_DB_NAME])
-        logger.info("db - connected OK")
+        last_exc: Exception | None = None
+        for attempt in range(1, _CONNECT_RETRIES + 1):
+            try:
+                candidate = MongoClient(
+                    _MONGO_URI,
+                    serverSelectionTimeoutMS=5_000,
+                    **_mongo_tls_options(_MONGO_URI),
+                )
+                # Verify connectivity early so failures are obvious.
+                candidate.admin.command("ping")
+                _ensure_indexes(candidate[_DB_NAME])
+                _client = candidate
+                logger.info("db - connected OK (attempt %d/%d)", attempt, _CONNECT_RETRIES)
+                break
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    "db - connection attempt %d/%d failed: %s", attempt, _CONNECT_RETRIES, exc,
+                )
+                if attempt < _CONNECT_RETRIES:
+                    time.sleep(_CONNECT_RETRY_BACKOFF_SECONDS)
+        else:
+            # Do not retain a half-initialised client after exhausting retries.
+            _client = None
+            assert last_exc is not None
+            raise last_exc
     return _client[_DB_NAME]
 
 
 def _ensure_indexes(db) -> None:
     """Create indexes if they don't already exist."""
-    for col_name in (_COL_PASS, _COL_ALL):
-        col = db[col_name]
+    for collection_name in (_COL_PASS, _COL_ATTEMPTS):
+        col = db[collection_name]
         col.create_index([("package_name", ASCENDING), ("model_used", ASCENDING)])
         col.create_index([("timestamp", ASCENDING)])
 
 
 # ── Public helpers ────────────────────────────────────────────────────────────
 
-def save_patch_result(state: dict, passed: bool) -> str | None:
+def save_patch_attempt(state: dict, passed: bool) -> str | None:
     """
-    Persist a patch attempt to MongoDB.
+    Persist one terminal pipeline outcome to MongoDB.
 
-    Always writes to `all_attempts`.
-    If `passed=True`, also writes to `successful_patches`.
+    Both passing and failing attempts are stored in ``all_attempts``.
 
     Returns the inserted document's str(_id), or None on failure.
     """
     doc = _build_doc(state, passed)
     try:
         db = _get_db()
-        result = db[_COL_ALL].insert_one(doc)
+        result = db[_COL_ATTEMPTS].insert_one(doc)
         inserted_id = str(result.inserted_id)
-
-        if passed:
-            # Separate _id from all_attempts; keep a pointer so scoring can PATCH both.
-            doc.pop("_id", None)
-            doc["all_attempts_id"] = inserted_id
-            db[_COL_PASS].insert_one(doc)
-
         logger.info("db - saved attempt (pass=%s) _id=%s", passed, inserted_id)
         return inserted_id
 
+    except errors.PyMongoError as exc:
+        logger.error("db - failed to save to MongoDB: %s", exc)
+        return None
+
+
+def save_patch_result(
+    state: dict,
+    passed: bool,
+    all_attempts_id: str | None = None,
+) -> str | None:
+    """Persist a validated successful patch to ``successful_patches`` only."""
+    if not passed:
+        return None
+
+    doc = _build_doc(state, passed=True)
+    if all_attempts_id:
+        doc["all_attempts_id"] = all_attempts_id
+    try:
+        db = _get_db()
+        result = db[_COL_PASS].insert_one(doc)
+        inserted_id = str(result.inserted_id)
+        logger.info("db - saved validated patch _id=%s", inserted_id)
+        return inserted_id
     except errors.PyMongoError as exc:
         logger.error("db - failed to save to MongoDB: %s", exc)
         return None
@@ -103,6 +169,8 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "answer_key":      state.get("answer_key") or {},
         "retry_count":     state.get("retry_count", 0),
         "errors":          state.get("errors") or [],
+        "generation_status": state.get("generation_status"),
+        "generation_error": state.get("generation_error"),
     }
 
 
@@ -133,7 +201,7 @@ def update_patch_score(
 
     try:
         db = _get_db()
-        all_result = db[_COL_ALL].update_one({"_id": oid}, {"$set": payload})
+        all_result = db[_COL_ATTEMPTS].update_one({"_id": oid}, {"$set": payload})
         db[_COL_PASS].update_one({"all_attempts_id": mongo_id}, {"$set": payload})
         if all_result.matched_count == 0:
             logger.warning("db - update_patch_score: no all_attempts doc for _id=%s", mongo_id)
