@@ -33,8 +33,11 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
 # Ensure sibling modules are importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from state import GraphState, ValidationResult
 from package_input import package_input

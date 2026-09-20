@@ -97,16 +97,28 @@ def _extract_commit_refs(references: list[Any]) -> list[dict[str, str]]:
     return refs
 
 
+def _patched_version_identifier(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, dict):
+        identifier = value.get("identifier")
+        if isinstance(identifier, str) and identifier.strip():
+            return identifier.strip()
+    return None
+
+
 def _first_patched_version(advisory: dict[str, Any], package_name: str | None) -> str | None:
     entries = advisory.get("vulnerabilities") or []
     preferred = None
     fallback = None
     for entry in entries:
-        identifier = (entry.get("first_patched_version") or {}).get("identifier")
+        if not isinstance(entry, dict):
+            continue
+        identifier = _patched_version_identifier(entry.get("first_patched_version"))
         if not identifier:
             continue
         fallback = fallback or identifier
-        pkg = (entry.get("package") or {}).get("name")
+        pkg = (entry.get("package") or {}).get("name") if isinstance(entry.get("package"), dict) else None
         if package_name and pkg and pkg.lower() == package_name.lower():
             preferred = identifier
             break

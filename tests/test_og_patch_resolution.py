@@ -92,3 +92,30 @@ def test_og_patch_resolution_version_only_when_no_commit(monkeypatch):
     assert result["answer_key"]["status"] == "version_only"
     assert result["answer_key"]["first_patched_version"] == "2.0.0"
     assert result["answer_key"]["files"] == []
+
+
+def test_og_patch_resolution_accepts_string_first_patched_version(monkeypatch):
+    def fake_github_get(url):
+        return {
+            "ghsa_id": "GHSA-35jh-r3h4-6jhm",
+            "cve_id": "CVE-2020-8203",
+            "summary": "Prototype pollution",
+            "references": ["https://github.com/advisories/GHSA-35jh-r3h4-6jhm"],
+            "vulnerabilities": [
+                {
+                    "package": {"ecosystem": "npm", "name": "lodash"},
+                    "first_patched_version": "4.17.19",
+                }
+            ],
+        }, None
+
+    monkeypatch.setattr("og_patch_resolution._github_get", fake_github_get)
+
+    result = og_patch_resolution(
+        {
+            "package_name": "lodash",
+            "current_vulnerabilities": [{"id": "GHSA-35jh-r3h4-6jhm"}],
+        }
+    )
+    assert result["answer_key"]["first_patched_version"] == "4.17.19"
+    assert result["answer_key"]["status"] == "version_only"
