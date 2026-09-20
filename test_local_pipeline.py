@@ -126,6 +126,18 @@ def run_pipeline(args: argparse.Namespace) -> None:
             print(f"  [warnings] {state['errors']}")
             state["errors"] = []
 
+    # Official patch lookup (answer key). Not fed into generation.
+    _sep("NODE 2b - OG PATCH RESOLUTION")
+    from og_patch_resolution import og_patch_resolution
+    result = og_patch_resolution(state)
+    state.update(result)
+    answer = state.get("answer_key") or {}
+    print(f"  status          : {answer.get('status')}")
+    print(f"  ghsa_id         : {answer.get('ghsa_id')}")
+    print(f"  patched version : {answer.get('first_patched_version')}")
+    print(f"  vendor files    : {answer.get('files') or []}")
+    print(f"  vendor diff     : {len(answer.get('diff') or '')} chars")
+
     # Node 3: patch_generation
     _sep("NODE 3 / 5 - PATCH GENERATION  (provider=mock)")
     result = patch_generation(state)
@@ -156,12 +168,28 @@ def run_pipeline(args: argparse.Namespace) -> None:
     result = patch_validation(state)
     state.update(result)
 
+    _sep("NODE 6 - PATCH SCORING  (vs maintainer patch)")
+    from patch_scoring import patch_scoring
+    result = patch_scoring(state)
+    state.update(result)
+    score = state.get("patch_score") or {}
+    print(f"  status          : {score.get('status')}")
+    print(f"  location        : {score.get('location')} ({score.get('location_overlap')})")
+    print(f"  strategy        : {score.get('strategy')} ({score.get('strategy_generated')} vs {score.get('strategy_vendor')})")
+    print(f"  completeness    : {score.get('completeness')}")
+    print(f"  matched files   : {score.get('matched_files')}")
+    print(f"  missing files   : {score.get('missing_files')}")
+
     # Final summary
     _sep("PIPELINE COMPLETE")
     print(f"  package            : {state.get('package_name')}@{state.get('package_version')}")
     print(f"  classification     : {state.get('classification', 'unknown')}")
     print(f"  classification_why : {state.get('classification_reason', '')}")
     print(f"  sandbox_success    : {state.get('sandbox_apply_success')}")
+    print(f"  answer_key         : {answer.get('status')} ({answer.get('ghsa_id')})")
+    print(f"  location           : {score.get('location')} ({score.get('location_overlap')})")
+    print(f"  strategy           : {score.get('strategy')}")
+    print(f"  completeness       : {score.get('completeness')}")
     print(f"  errors             : {state.get('errors', [])}")
 
     if args.dump_state:

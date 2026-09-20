@@ -37,6 +37,41 @@ class ValidationResult(TypedDict, total=False):
     revalidation_scan_clean: bool
     logs: str
 
+
+class AnswerKey(TypedDict, total=False):
+    """Official patch metadata from GitHub Advisory. Do not feed this into generation."""
+    status: Literal["resolved", "version_only", "unavailable", "error"]
+    ghsa_id: str | None
+    cve_id: str | None
+    first_patched_version: str | None
+    advisory_url: str | None
+    summary: str | None
+    commit_refs: list[dict[str, str]]
+    files: list[str]
+    diff: str | None
+
+
+class PatchScore(TypedDict, total=False):
+    status: Literal["scored", "skipped"]
+    location: Literal["same", "overlapping", "different", "skipped"]
+    location_overlap: float | None
+    location_file_jaccard: float | None
+    location_score: float | None
+    generated_files: list[str]
+    vendor_files: list[str]
+    matched_files: list[str]
+    missing_files: list[str]
+    extra_files: list[str]
+    matched_hunks: int
+    vendor_hunks: int
+    strategy: Literal["same", "similar", "different", "skipped"]
+    strategy_generated: str | None
+    strategy_vendor: str | None
+    strategy_score: float | None
+    completeness: Literal["full", "partial", "none", "skipped"]
+    completeness_score: float | None
+    completeness_vendor_coverage: float | None
+
 class GraphState(TypedDict, total=False):
     # config
     model_provider: Literal["mock", "openai", "anthropic", "gemini"]
@@ -55,6 +90,9 @@ class GraphState(TypedDict, total=False):
     vulnerabilities: list[Vulnerability]
     current_vulnerabilities: list[Vulnerability]
     scan_artifacts: dict[str, str]
+
+    # 2b) official / vendor patch (answer key) — not consumed by patch_generation
+    answer_key: AnswerKey
 
     # 3) patch generation
     patch_attempts: list[PatchAttempt]
@@ -76,6 +114,10 @@ class GraphState(TypedDict, total=False):
     # 7) classification
     classification: Literal["pass", "fail"] | None
     classification_reason: str | None
+
+    # 8) generated patch vs official answer key
+    patch_score: PatchScore
+    mongo_id: str | None
 
     # control flow / bookkeeping
     retry_count: int

@@ -18,19 +18,25 @@ The pipeline processes input through a sequential state graph:
 graph TD
     __start__([START]) --> package_input_node[Package Input]
     package_input_node --> vulnerability_detection_node[Vulnerability Detection]
-    vulnerability_detection_node --> patch_generation_node[Patch Generation]
+    vulnerability_detection_node --> og_patch_resolution_node[OG Patch Resolution]
+    og_patch_resolution_node --> patch_generation_node[Patch Generation]
     patch_generation_node --> patch_application_node[Patch Application]
-    patch_application_node --> patch_validation_node[Patch Validation]
-    patch_validation_node --> __end__([END])
+    patch_application_node --> vulnerability_rescan_node[Vulnerability Rescan]
+    vulnerability_rescan_node --> patch_validation_node[Patch Validation]
+    patch_validation_node --> patch_scoring_node[Patch Scoring]
+    patch_scoring_node --> __end__([END])
 ```
 
 ### Stage Summary
 
 1. **Package Input (`package_input_node`)**: Ingests NPM package source code.
 2. **Vulnerability Detection (`vulnerability_detection_node`)**: Scans for known vulnerabilities, security flaws, or vulnerable dependencies using Syft and Grype.
-3. **Patch Generation (`patch_generation_node`)**: Leverages LLMs to generate candidate security patches or code fixes.
-4. **Patch Application (`patch_application_node`)**: Applies the generated patches to the target codebase in a snandbox environment.
-5. **Patch Validation (`patch_validation_node`)**: Runs unit tests, security checks, dynamic and manual validation to verify patch efficacy.
+3. **OG Patch Resolution (`og_patch_resolution_node`)**: Looks up the GitHub Advisory for the finding and, if a patch commit exists, records that official answer-key patch. Not fed into generation.
+4. **Patch Generation (`patch_generation_node`)**: Leverages LLMs to generate candidate security patches or code fixes.
+5. **Patch Application (`patch_application_node`)**: Applies the generated patches to the target codebase in a sandbox environment.
+6. **Vulnerability Rescan (`vulnerability_rescan_node`)**: Re-scans the patched package for the original findings.
+7. **Patch Validation (`patch_validation_node`)**: Classifies pass/fail from build, tests, and re-scan.
+8. **Patch Scoring (`patch_scoring_node`)**: Compares the generated patch to the GitHub Advisory maintainer patch on location (same / overlapping / different), strategy (same / similar / different), and completeness (full / partial / none). Does not change pass/fail.
 
 ---
 
@@ -41,9 +47,12 @@ graph TD
 ├── graph.py                   # Main LangGraph workflow definition & state graph compilation
 ├── package_input.py           # Node implementation for package input processing
 ├── vulnerability_detection.py  # Node implementation for vulnerability scanning
+├── og_patch_resolution.py     # Official GitHub Advisory / answer-key lookup
 ├── patch_generation.py        # Node implementation for LLM patch generation
 ├── patch_application.py       # Node implementation for applying patches
+├── vulnerability_rescan.py    # Post-patch Grype re-scan
 ├── patch_validation.py        # Node implementation for patch validation & testing
+├── patch_scoring.py           # Maintainer-fix comparison: location, strategy, completeness
 ├── langgraph.json             # LangGraph server configuration
 ├── requirements.txt           # Python dependencies
 └── README.md                  # Project documentation

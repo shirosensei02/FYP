@@ -64,4 +64,5 @@ def patch_validation(state: GraphState) -> dict:
     return {
         "classification": "pass" if passed else "fail",
         "classification_reason": reason,
+        "mongo_id": doc_id,
     }
