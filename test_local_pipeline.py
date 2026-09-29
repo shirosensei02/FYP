@@ -254,7 +254,7 @@ def _parse_args() -> argparse.Namespace:
         help="Falls back to MODEL_PROVIDER in .env",
     )
     p.add_argument("--model-name", default=os.getenv("MODEL_NAME"),
-                   help="Falls back to MODEL_NAME in .env")
+                   help="Falls https://github.com/shirosensei02/FYP/pull/2/conflict?name=test_local_pipeline.py&ancestor_oid=63064658e8e6b77ba2e65a71046f5b725fbcaa52&base_oid=9bee0576733745a9e13d7689856f572f058a8737&head_oid=cdd5fa5747b1ab622df63006e76644a4c190b233back to MODEL_NAME in .env")
     p.add_argument("--patch-scope", default=os.getenv("PATCH_SCOPE", "single"), choices=["single", "all"])
     p.add_argument("--max-retries", type=int, default=int(os.getenv("MAX_RETRIES", "0")))
     p.add_argument("--source-dir", default=os.getenv("SOURCE_DIR"),

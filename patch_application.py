@@ -549,7 +549,7 @@ def patch_application(state: GraphState) -> dict:
 
     # ── Unique identifiers for this sandbox run ────────────────────────────
     run_id = uuid.uuid4().hex[:8]
-    safe_name = re.sub(r"[^a-z0-9]", "-", package_name.lower())
+    safe_name = re.sub(r"[^a-z0-9]+", "-", package_name.lower()).strip("-") or "pkg"
     image_tag = f"patch-sandbox/{safe_name}:{run_id}"
     container_name = f"patch-{safe_name}-{run_id}"
 
