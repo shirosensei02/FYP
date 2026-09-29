@@ -1,4 +1,4 @@
-from patch_scoring import patch_scoring
+from patch_scoring import _paths_equivalent, patch_scoring
 
 
 VENDOR_ESCAPE_DIFF = """\
@@ -207,3 +207,37 @@ def test_patch_scoring_patches_mongo_when_mongo_id_present(monkeypatch):
     assert seen["mongo_id"] == "aaaaaaaaaaaaaaaaaaaaaaaa"
     assert seen["patch_score"] == result["patch_score"]
     assert seen["answer_key"]["status"] == "resolved"
+
+
+def test_paths_equivalent_does_not_match_unrelated_files_with_same_basename():
+    assert not _paths_equivalent("src/index.js", "test/fixtures/index.js")
+
+
+def test_paths_equivalent_matches_differing_root_prefix():
+    assert _paths_equivalent("lib/index.js", "packages/foo/lib/index.js")
+
+
+def test_paths_equivalent_matches_exact_and_bare_filename():
+    assert _paths_equivalent("src/index.js", "src/index.js")
+    assert _paths_equivalent("index.js", "src/index.js")
+
+
+def test_patch_scoring_does_not_match_unrelated_files_sharing_a_basename():
+    result = patch_scoring(
+        {
+            "current_patch": {
+                "diff": (
+                    "--- a/test/fixtures/index.js\n"
+                    "+++ b/test/fixtures/index.js\n"
+                    "@@ -1,2 +1,3 @@\n"
+                    "+  const x = 1;\n"
+                )
+            },
+            "answer_key": {"status": "resolved", "files": ["src/index.js"]},
+        }
+    )
+    score = result["patch_score"]
+    assert score["location"] == "different"
+    assert score["matched_files"] == []
+    assert score["missing_files"] == ["src/index.js"]
+    assert score["extra_files"] == ["test/fixtures/index.js"]

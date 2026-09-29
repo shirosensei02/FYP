@@ -102,7 +102,17 @@ def _basename(path: str) -> str:
 
 
 def _paths_equivalent(left: str, right: str) -> bool:
-    return _normalize_path(left).lower() == _normalize_path(right).lower() or _basename(left) == _basename(right)
+    """True if two paths refer to the same file, tolerating a differing root prefix.
+
+    Compares path *components* as a tail-aligned suffix (e.g. "lib/index.js"
+    matches "packages/foo/lib/index.js") rather than just the basename, so two
+    unrelated files that merely share a filename in different directories
+    (very common for "index.js") are not treated as the same file.
+    """
+    left_parts = _normalize_path(left).lower().split("/")
+    right_parts = _normalize_path(right).lower().split("/")
+    shorter, longer = (left_parts, right_parts) if len(left_parts) <= len(right_parts) else (right_parts, left_parts)
+    return longer[-len(shorter):] == shorter
 
 
 def _paths_from_unified_diff(diff: str) -> list[str]:
@@ -176,8 +186,6 @@ def _classify_strategy(diff: str, files: list[str]) -> str | None:
     best = max(scores, key=scores.get) if scores else None
     if best and scores[best] > 0:
         return best
-    if files and not code_files:
-        return "version_bump"
     if not added and not files:
         return None
     return "other"
