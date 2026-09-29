@@ -122,7 +122,7 @@ def save_patch_attempt(state: dict, passed: bool) -> str | None:
         db = _get_db()
         result = db[_COL_ATTEMPTS].insert_one(doc)
         inserted_id = str(result.inserted_id)
-        logger.info("db - saved attempt passed=%s _id=%s", passed, inserted_id)
+        logger.info("db - saved attempt (pass=%s) _id=%s", passed, inserted_id)
         return inserted_id
 
     except errors.PyMongoError as exc:
@@ -130,12 +130,18 @@ def save_patch_attempt(state: dict, passed: bool) -> str | None:
         return None
 
 
-def save_patch_result(state: dict, passed: bool) -> str | None:
+def save_patch_result(
+    state: dict,
+    passed: bool,
+    all_attempts_id: str | None = None,
+) -> str | None:
     """Persist a validated successful patch to ``successful_patches`` only."""
     if not passed:
         return None
 
     doc = _build_doc(state, passed=True)
+    if all_attempts_id:
+        doc["all_attempts_id"] = all_attempts_id
     try:
         db = _get_db()
         result = db[_COL_PASS].insert_one(doc)
@@ -154,12 +160,54 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "passed":          passed,
         "package_name":    state.get("package_name"),
         "package_version": state.get("package_version"),
-        "model_used":      patch.get("model_used") or state.get("generation_model_used"),
+        "model_used":      patch.get("model_used"),
+        "attempt_id":      patch.get("attempt_id") or state.get("run_attempt_id"),
         "attempt_number":  patch.get("attempt_number"),
         "diff":            patch.get("diff"),
         "validation":      state.get("validation") or {},
         "vulnerabilities": state.get("vulnerabilities") or [],
+        "answer_key":      state.get("answer_key") or {},
+        "retry_count":     state.get("retry_count", 0),
         "errors":          state.get("errors") or [],
         "generation_status": state.get("generation_status"),
         "generation_error": state.get("generation_error"),
     }
+
+
+def update_patch_score(
+    mongo_id: str,
+    patch_score: dict,
+    answer_key: dict | None = None,
+) -> bool:
+    """
+    PATCH the attempt already written by patch_validation.
+
+    `$set`s nested `patch_score` (and `answer_key` if provided) onto:
+      - all_attempts by `_id`
+      - successful_patches by `all_attempts_id` (no-op if the attempt failed)
+    """
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    try:
+        oid = ObjectId(mongo_id)
+    except InvalidId:
+        logger.warning("db - update_patch_score: invalid mongo_id=%s", mongo_id)
+        return False
+
+    payload: dict = {"patch_score": patch_score}
+    if answer_key is not None:
+        payload["answer_key"] = answer_key
+
+    try:
+        db = _get_db()
+        all_result = db[_COL_ATTEMPTS].update_one({"_id": oid}, {"$set": payload})
+        db[_COL_PASS].update_one({"all_attempts_id": mongo_id}, {"$set": payload})
+        if all_result.matched_count == 0:
+            logger.warning("db - update_patch_score: no all_attempts doc for _id=%s", mongo_id)
+            return False
+        logger.info("db - patched patch_score onto _id=%s", mongo_id)
+        return True
+    except errors.PyMongoError as exc:
+        logger.error("db - failed to PATCH patch_score: %s", exc)
+        return False

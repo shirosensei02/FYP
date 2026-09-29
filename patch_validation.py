@@ -55,7 +55,7 @@ def patch_validation(state: GraphState) -> dict:
 
     # ── Persist validated patches in the success-only collection ─────────────
     if passed:
-        doc_id = save_patch_result(state, passed=True)
+        doc_id = save_patch_result(state, passed=True, all_attempts_id=attempt_doc_id)
         if doc_id:
             logger.info("patch_validation - validated patch persisted to MongoDB _id=%s", doc_id)
         else:
@@ -73,4 +73,5 @@ def patch_validation(state: GraphState) -> dict:
     return {
         "classification": "pass" if passed else "fail",
         "classification_reason": reason,
+        "mongo_id": attempt_doc_id,
     }

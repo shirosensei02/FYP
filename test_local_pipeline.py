@@ -33,13 +33,18 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
 # Ensure sibling modules are importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from state import GraphState, ValidationResult
 from package_input import package_input
 from vulnerability_detection import vulnerability_detection
 from patch_generation import patch_generation
+from patch_application import patch_application
+from patch_validation import patch_validation
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +84,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
         "package_version": args.package_version,
         "model_provider": args.model_provider,
         "patch_scope": args.patch_scope,
+        "retry_count": 0,
+        "max_retries": args.max_retries,
         "errors": [],
     }
     if args.model_name:
@@ -131,8 +138,17 @@ def run_pipeline(args: argparse.Namespace) -> None:
             print(f"  [warnings] {state['errors']}")
             state["errors"] = []
 
-    from patch_application import patch_application
-    from patch_validation import patch_validation
+    # Official patch lookup (answer key). Not fed into generation.
+    _sep("NODE 2b - OG PATCH RESOLUTION")
+    from og_patch_resolution import og_patch_resolution
+    result = og_patch_resolution(state)
+    state.update(result)
+    answer = state.get("answer_key") or {}
+    print(f"  status          : {answer.get('status')}")
+    print(f"  ghsa_id         : {answer.get('ghsa_id')}")
+    print(f"  patched version : {answer.get('first_patched_version')}")
+    print(f"  vendor files    : {answer.get('files') or []}")
+    print(f"  vendor diff     : {len(answer.get('diff') or '')} chars")
 
     # Node 3: patch_generation
     _sep(f"NODE 3 / 5 - PATCH GENERATION  (provider={args.model_provider})")
@@ -164,11 +180,31 @@ def run_pipeline(args: argparse.Namespace) -> None:
         if state.get("errors"):
             print(f"  [errors during application] {state['errors']}")
 
+        _sep("NODE 4b - VULNERABILITY RESCAN")
+        from vulnerability_rescan import vulnerability_rescan
+        result = vulnerability_rescan(state)
+        state.update(result)
+        remaining = state.get("remaining_vulnerabilities") or []
+        print(f"  re-scan clean : {(state.get('validation') or {}).get('revalidation_scan_clean')}")
+        print(f"  remaining     : {len(remaining)}")
+
     # Node 5: patch_validation. Generation failures also reach this node
     # for a consistent classification, but are not persisted.
     _sep("NODE 5 / 5 - PATCH VALIDATION")
     result = patch_validation(state)
     state.update(result)
+
+    _sep("NODE 6 - PATCH SCORING  (vs maintainer patch)")
+    from patch_scoring import patch_scoring
+    result = patch_scoring(state)
+    state.update(result)
+    score = state.get("patch_score") or {}
+    print(f"  status          : {score.get('status')}")
+    print(f"  location        : {score.get('location')} ({score.get('location_overlap')})")
+    print(f"  strategy        : {score.get('strategy')} ({score.get('strategy_generated')} vs {score.get('strategy_vendor')})")
+    print(f"  completeness    : {score.get('completeness')}")
+    print(f"  matched files   : {score.get('matched_files')}")
+    print(f"  missing files   : {score.get('missing_files')}")
 
     # Final summary
     _sep("PIPELINE COMPLETE")
@@ -176,6 +212,10 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  classification     : {state.get('classification', 'unknown')}")
     print(f"  classification_why : {state.get('classification_reason', '')}")
     print(f"  sandbox_success    : {state.get('sandbox_apply_success')}")
+    print(f"  answer_key         : {answer.get('status')} ({answer.get('ghsa_id')})")
+    print(f"  location           : {score.get('location')} ({score.get('location_overlap')})")
+    print(f"  strategy           : {score.get('strategy')}")
+    print(f"  completeness       : {score.get('completeness')}")
     print(f"  errors             : {state.get('errors', [])}")
 
     if args.dump_state:
@@ -214,8 +254,9 @@ def _parse_args() -> argparse.Namespace:
         help="Falls back to MODEL_PROVIDER in .env",
     )
     p.add_argument("--model-name", default=os.getenv("MODEL_NAME"),
-                   help="Falls back to MODEL_NAME in .env")
+                   help="Falls https://github.com/shirosensei02/FYP/pull/2/conflict?name=test_local_pipeline.py&ancestor_oid=63064658e8e6b77ba2e65a71046f5b725fbcaa52&base_oid=9bee0576733745a9e13d7689856f572f058a8737&head_oid=cdd5fa5747b1ab622df63006e76644a4c190b233back to MODEL_NAME in .env")
     p.add_argument("--patch-scope", default=os.getenv("PATCH_SCOPE", "single"), choices=["single", "all"])
+    p.add_argument("--max-retries", type=int, default=int(os.getenv("MAX_RETRIES", "0")))
     p.add_argument("--source-dir", default=os.getenv("SOURCE_DIR"),
                    help="Pre-extracted package source dir (skips npm pack + extract)")
     p.add_argument("--skip-vuln-detection", action="store_true", default=_env_bool("SKIP_VULN_DETECTION"),
