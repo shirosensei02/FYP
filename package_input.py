@@ -24,13 +24,27 @@ def _safe_segment(value: str) -> str:
     return sanitized or "unknown"
 
 
+def _safe_tar_members(archive: tarfile.TarFile, extract_root: Path) -> list[tarfile.TarInfo]:
+    """Drop entries that would write outside *extract_root* (tar-slip) or are symlinks."""
+    resolved_root = extract_root.resolve()
+    safe_members = []
+    for member in archive.getmembers():
+        if member.issym() or member.islnk():
+            continue
+        resolved_member = (extract_root / member.name).resolve()
+        if resolved_member != resolved_root and not str(resolved_member).startswith(str(resolved_root) + "/"):
+            continue
+        safe_members.append(member)
+    return safe_members
+
+
 def _extract_tarball(tarball_path: Path, extract_root: Path) -> Path:
     if extract_root.exists():
         shutil.rmtree(extract_root, onerror=_handle_remove_readonly)
 
     extract_root.mkdir(parents=True, exist_ok=True)
     with tarfile.open(tarball_path, "r:gz") as archive:
-        archive.extractall(extract_root)
+        archive.extractall(extract_root, members=_safe_tar_members(archive, extract_root))
 
     package_root = extract_root / "package"
     if package_root.exists():

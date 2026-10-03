@@ -160,7 +160,7 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "passed":          passed,
         "package_name":    state.get("package_name"),
         "package_version": state.get("package_version"),
-        "model_used":      patch.get("model_used"),
+        "model_used":      patch.get("model_used") or state.get("generation_model_used"),
         "attempt_id":      patch.get("attempt_id") or state.get("run_attempt_id"),
         "attempt_number":  patch.get("attempt_number"),
         "diff":            patch.get("diff"),
