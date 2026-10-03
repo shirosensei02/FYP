@@ -179,7 +179,7 @@ def _write_patched_package(
     package_name: str,
     package_version: str,
     patch: dict[str, Any],
-) -> None:
+) -> bool:
     """
     Write the patched npm package to *work_dir*.
 
@@ -194,6 +194,10 @@ def _write_patched_package(
     Format 2 - **unified diff**
         A standard ``--- a/ +++ b/`` unified diff string.  We apply it with
         the stdlib ``patch`` module (or fall back to writing a placeholder).
+
+    Returns True if the patched source was successfully written (file-map
+    writes always succeed; a unified diff succeeds only if ``patch`` applied
+    it cleanly), False otherwise.
     """
     _step("A . Writing patched package files to sandbox workspace")
 
@@ -209,7 +213,7 @@ def _write_patched_package(
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content, encoding="utf-8")
                 print(f"    OK  wrote {rel_path} ({len(content)} bytes)", flush=True)
-            return
+            return True
     except (json.JSONDecodeError, TypeError):
         pass
 
@@ -226,10 +230,10 @@ def _write_patched_package(
         timeout=30,
     )
     if rc != 0:
-        logger.warning("patch CLI returned %d; continuing anyway.\n%s", rc, err)
-        print(f"    WARNING  patch exited {rc}: {err.strip()}", flush=True)
-    else:
-        print("    OK  unified diff applied successfully", flush=True)
+        logger.warning("patch CLI returned %d; aborting attempt.\n%s", rc, err)
+        print(f"    FAIL  patch exited {rc}: {err.strip()}", flush=True)
+        return False
+    print("    OK  unified diff applied successfully", flush=True)
 
     # Always ensure a minimal package.json exists so npm install won't crash
     pkg_json = work_dir / "package.json"
@@ -248,6 +252,8 @@ def _write_patched_package(
             encoding="utf-8",
         )
         print("    OK  generated minimal package.json", flush=True)
+
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -568,12 +574,16 @@ def patch_application(state: GraphState) -> dict:
 
         _seed_workspace_from_source(state.get("source_dir"), work_dir)
 
-        _write_patched_package(
+        patch_applied_ok = _write_patched_package(
             work_dir,
             package_name,
             package_version,
             current_patch,
         )
+
+        if not patch_applied_ok:
+            errors.append("patch failed to apply cleanly; aborting before Docker build")
+            raise RuntimeError("Patch did not apply to the source")
 
         # ── B: write Dockerfile ────────────────────────────────────────────
         _write_dockerfile(work_dir)
