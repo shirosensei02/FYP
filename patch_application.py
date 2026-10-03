@@ -174,6 +174,49 @@ def _seed_workspace_from_source(source_dir: str | None, work_dir: Path) -> None:
     )
     print(f"    OK  copied package source from {source_path}", flush=True)
 
+def _split_diff_into_hunks(diff_text: str) -> list[str]:
+    """Split a unified diff into standalone single-hunk diffs, each carrying
+    its file's ``--- ``/``+++ `` header, in original order.
+
+    Some models produce multi-hunk diffs where several hunks each have a
+    slightly wrong header line-count; applying the whole diff in one
+    ``git apply`` call can fail even with ``--recount``, but each hunk
+    individually (recounted on its own) often still applies cleanly.
+    """
+    lines = diff_text.splitlines(keepends=True)
+    pieces: list[str] = []
+    header: list[str] = []
+    hunk: list[str] = []
+
+    def flush() -> None:
+        if hunk:
+            pieces.append("".join(header) + "".join(hunk))
+
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        if line.startswith("--- "):
+            flush()
+            hunk = []
+            header = [line]
+            if i + 1 < n and lines[i + 1].startswith("+++ "):
+                header.append(lines[i + 1])
+                i += 2
+                continue
+            i += 1
+            continue
+        if line.startswith("@@"):
+            flush()
+            hunk = [line]
+            i += 1
+            continue
+        hunk.append(line)
+        i += 1
+    flush()
+    return pieces
+
+
 def _write_patched_package(
     work_dir: Path,
     package_name: str,
@@ -220,6 +263,13 @@ def _write_patched_package(
     # --- Format 2: unified diff -----------------------------------------------
     print("    Patch format: unified diff", flush=True)
 
+    # A unified diff without a trailing newline makes `patch`/`git apply`
+    # misparse the final hunk ("corrupt patch" one line past the last real
+    # line) even though the content itself is fine; models frequently omit
+    # it when echoing a file's last line back. Appending one is always safe.
+    if not diff_raw.endswith("\n"):
+        diff_raw += "\n"
+
     # Write the diff to a file so we can call `patch` CLI
     diff_file = work_dir / "patch_input.diff"
     diff_file.write_text(diff_raw, encoding="utf-8")
@@ -257,11 +307,42 @@ def _write_patched_package(
             timeout=30,
         )
         if git_rc != 0:
-            logger.warning("git apply --recount returned %d; aborting attempt.\n%s", git_rc, git_err)
-            print(f"    FAIL  git apply --recount exited {git_rc}: {git_err.strip()}", flush=True)
-            shutil.rmtree(pristine_backup, ignore_errors=True)
-            return False
-        print("    OK  unified diff applied successfully via git apply --recount", flush=True)
+            logger.warning("git apply --recount returned %d; trying hunk-by-hunk.\n%s", git_rc, git_err)
+            print(f"    WARNING  git apply --recount exited {git_rc}: {git_err.strip()}", flush=True)
+
+            # Roll back again before the final fallback: applying the whole
+            # diff in one shot can fail even with --recount when several
+            # hunks each have slightly wrong header counts, but each hunk
+            # individually (recounted on its own) often still applies.
+            shutil.rmtree(work_dir)
+            shutil.copytree(pristine_backup, work_dir)
+
+            hunks = _split_diff_into_hunks(diff_raw)
+            hunk_ok = bool(hunks)
+            for idx, hunk_diff in enumerate(hunks, start=1):
+                hunk_file = work_dir / f"_hunk_{idx}.diff"
+                hunk_file.write_text(hunk_diff, encoding="utf-8")
+                h_rc, h_out, h_err = _run(
+                    ["git", "apply", "--recount", str(hunk_file)],
+                    cwd=work_dir,
+                    timeout=30,
+                )
+                hunk_file.unlink(missing_ok=True)
+                if h_rc != 0:
+                    logger.warning(
+                        "hunk %d/%d failed via git apply --recount (rc=%d); aborting attempt.\n%s",
+                        idx, len(hunks), h_rc, h_err,
+                    )
+                    print(f"    FAIL  hunk {idx}/{len(hunks)} exited {h_rc}: {h_err.strip()}", flush=True)
+                    hunk_ok = False
+                    break
+
+            if not hunk_ok:
+                shutil.rmtree(pristine_backup, ignore_errors=True)
+                return False
+            print(f"    OK  unified diff applied successfully hunk-by-hunk ({len(hunks)} hunks)", flush=True)
+        else:
+            print("    OK  unified diff applied successfully via git apply --recount", flush=True)
     else:
         print("    OK  unified diff applied successfully", flush=True)
     shutil.rmtree(pristine_backup, ignore_errors=True)
