@@ -224,14 +224,14 @@ def _write_patched_package(
     diff_file = work_dir / "patch_input.diff"
     diff_file.write_text(diff_raw, encoding="utf-8")
 
-    # Snapshot the pristine source so a `patch` run that fails partway
-    # through (it applies hunks one at a time, so an early hunk can land
-    # before a later one fails) can be cleanly rolled back before retrying
-    # with a different tool.
-    _run(["git", "init", "-q"], cwd=work_dir, timeout=10)
-    _run(["git", "add", "-A"], cwd=work_dir, timeout=10)
-    _run(["git", "-c", "user.email=patch@local", "-c", "user.name=patch",
-          "commit", "-q", "-m", "pristine", "--allow-empty"], cwd=work_dir, timeout=10)
+    # Snapshot the pristine source on disk (not via git) so a `patch` run
+    # that fails partway through (it applies hunks one at a time, so an
+    # early hunk can land before a later one fails) can be cleanly rolled
+    # back before retrying with a different tool. A plain filesystem copy
+    # can't silently no-op the way a git snapshot can if `git` is missing
+    # or any of its setup commands fail without us checking their exit code.
+    pristine_backup = Path(tempfile.mkdtemp(prefix="pristine_", dir=work_dir.parent))
+    shutil.copytree(work_dir, pristine_backup, dirs_exist_ok=True)
 
     rc, out, err = _run(
         ["patch", "-p1", "--input", str(diff_file)],
@@ -244,8 +244,8 @@ def _write_patched_package(
 
         # Roll back any partial changes `patch` made before it failed, so
         # the fallback applies against the original, untouched source.
-        _run(["git", "checkout", "--", "."], cwd=work_dir, timeout=10)
-        _run(["git", "clean", "-fdq"], cwd=work_dir, timeout=10)
+        shutil.rmtree(work_dir)
+        shutil.copytree(pristine_backup, work_dir)
 
         # `patch` is strict about the hunk header's declared line counts; a
         # model can get the content exactly right but miscount by one, which
@@ -259,10 +259,12 @@ def _write_patched_package(
         if git_rc != 0:
             logger.warning("git apply --recount returned %d; aborting attempt.\n%s", git_rc, git_err)
             print(f"    FAIL  git apply --recount exited {git_rc}: {git_err.strip()}", flush=True)
+            shutil.rmtree(pristine_backup, ignore_errors=True)
             return False
         print("    OK  unified diff applied successfully via git apply --recount", flush=True)
     else:
         print("    OK  unified diff applied successfully", flush=True)
+    shutil.rmtree(pristine_backup, ignore_errors=True)
 
     # Always ensure a minimal package.json exists so npm install won't crash
     pkg_json = work_dir / "package.json"
