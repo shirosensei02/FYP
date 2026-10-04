@@ -417,28 +417,6 @@ def _build_mock_payload(
         "target_files": [target_path.relative_to(source_dir).as_posix()],
     }
 
-
-def _generate_with_openai(
-    state: GraphState,
-    selected_vulnerabilities: list[Vulnerability],
-    context_files: list[dict[str, str]],
-) -> dict[str, Any] | str:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return "patch_generation: OPENAI_API_KEY is not set"
-
-    model_name = state.get("model_name", "gpt-4.1-mini")
-    client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model=model_name,
-        response_format={"type": "json_object"},
-        messages=_build_messages(state, selected_vulnerabilities, context_files),
-    )
-    content = response.choices[0].message.content or ""
-    payload = _parse_patch_response(content)
-    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
-
-
 def _generate_with_openrouter(
     state: GraphState,
     selected_vulnerabilities: list[Vulnerability],
@@ -495,71 +473,7 @@ def _generate_with_openrouter(
         "patch_generation: model returned an invalid or incomplete patch response "
         f"(finish_reason={finish_reason}, preview={preview!r})"
     )
-
-
-def _generate_with_anthropic(
-    state: GraphState,
-    selected_vulnerabilities: list[Vulnerability],
-    context_files: list[dict[str, str]],
-) -> dict[str, Any] | str:
-    try:
-        from anthropic import Anthropic
-    except ImportError:
-        return "patch_generation: anthropic package is not installed"
-
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        return "patch_generation: ANTHROPIC_API_KEY is not set"
-
-    model_name = state.get("model_name", "claude-sonnet-4-0")
-    client = Anthropic(api_key=api_key)
-    messages = _build_messages(state, selected_vulnerabilities, context_files)
-    response = client.messages.create(
-        model=model_name,
-        max_tokens=4000,
-        system=messages[0]["content"],
-        messages=[{"role": "user", "content": messages[1]["content"]}],
-    )
-    text_blocks = [block.text for block in response.content if getattr(block, "type", "") == "text"]
-    content = "".join(text_blocks).strip()
-    payload = _parse_patch_response(content)
-    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
-
-
-def _generate_with_gemini(
-    state: GraphState,
-    selected_vulnerabilities: list[Vulnerability],
-    context_files: list[dict[str, str]],
-) -> dict[str, Any] | str:
-    if genai is None:
-        return "patch_generation: google-genai package is not installed"
-
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        return "patch_generation: GEMINI_API_KEY is not set"
-
-    model_name = state.get("model_name", DEFAULT_MODELS["gemini"])
-    messages = _build_messages(state, selected_vulnerabilities, context_files)
-    client = genai.Client(api_key=api_key)
-    try:
-        response = client.models.generate_content(
-            model=model_name,
-            contents=messages[1]["content"],
-            config={
-                "system_instruction": messages[0]["content"],
-                "response_mime_type": "application/json",
-            },
-        )
-    except Exception as exc:
-        return f"patch_generation: Gemini request failed: {exc}"
-
-    content = (getattr(response, "text", None) or "").strip()
-    if not content:
-        return "patch_generation: Gemini returned an empty response"
-    payload = _parse_patch_response(content)
-    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
-
-
+    
 def patch_generation(state: GraphState) -> dict:
     source_dir = state.get("source_dir")
     if not source_dir:
@@ -588,12 +502,6 @@ def patch_generation(state: GraphState) -> dict:
 
     if provider == "mock":
         payload = _build_mock_payload(source_path, selected_vulnerabilities, context_files)
-    elif provider == "openai":
-        payload = _generate_with_openai(state, selected_vulnerabilities, context_files)
-    elif provider == "anthropic":
-        payload = _generate_with_anthropic(state, selected_vulnerabilities, context_files)
-    elif provider == "gemini":
-        payload = _generate_with_gemini(state, selected_vulnerabilities, context_files)
     elif provider == "openrouter":
         payload = _generate_with_openrouter(state, selected_vulnerabilities, context_files)
     else:
