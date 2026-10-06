@@ -571,6 +571,55 @@ def _build_mock_payload(
         "target_files": [target_path.relative_to(source_dir).as_posix()],
     }
 
+
+def _generate_with_openai(state: GraphState, selected_vulnerabilities: list[Vulnerability], context_files: list[dict[str, str]], repair_feedback: str | None = None) -> dict[str, Any] | str:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return "patch_generation: OPENAI_API_KEY is not set"
+    response = OpenAI(api_key=api_key).chat.completions.create(
+        model=state.get("model_name", DEFAULT_MODELS["openai"]),
+        response_format={"type": "json_object"},
+        messages=_build_messages(state, selected_vulnerabilities, context_files, repair_feedback),
+    )
+    payload = _parse_patch_response(response.choices[0].message.content or "")
+    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
+
+
+def _generate_with_anthropic(state: GraphState, selected_vulnerabilities: list[Vulnerability], context_files: list[dict[str, str]], repair_feedback: str | None = None) -> dict[str, Any] | str:
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        return "patch_generation: anthropic package is not installed"
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return "patch_generation: ANTHROPIC_API_KEY is not set"
+    messages = _build_messages(state, selected_vulnerabilities, context_files, repair_feedback)
+    response = Anthropic(api_key=api_key).messages.create(
+        model=state.get("model_name", DEFAULT_MODELS["anthropic"]), max_tokens=4000,
+        system=messages[0]["content"], messages=[{"role": "user", "content": messages[1]["content"]}],
+    )
+    content = "".join(block.text for block in response.content if getattr(block, "type", "") == "text")
+    payload = _parse_patch_response(content)
+    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
+
+
+def _generate_with_gemini(state: GraphState, selected_vulnerabilities: list[Vulnerability], context_files: list[dict[str, str]], repair_feedback: str | None = None) -> dict[str, Any] | str:
+    if genai is None:
+        return "patch_generation: google-genai package is not installed"
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return "patch_generation: GEMINI_API_KEY is not set"
+    messages = _build_messages(state, selected_vulnerabilities, context_files, repair_feedback)
+    response = genai.Client(api_key=api_key).models.generate_content(
+        model=state.get("model_name", DEFAULT_MODELS["gemini"]), contents=messages[1]["content"],
+        config={"system_instruction": messages[0]["content"], "response_mime_type": "application/json"},
+    )
+    content = (getattr(response, "text", None) or "").strip()
+    if not content:
+        return "patch_generation: Gemini returned an empty response"
+    payload = _parse_patch_response(content)
+    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
+
 def _generate_with_openrouter(
     state: GraphState,
     selected_vulnerabilities: list[Vulnerability],
@@ -637,6 +686,56 @@ def _generate_with_openrouter(
         "patch_generation: model returned an invalid or incomplete patch response "
         f"(finish_reason={finish_reason}, preview={preview!r})"
     )
+
+
+def _generate_patch_payload(
+    provider: str,
+    state: GraphState,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+    repair_feedback: str | None = None,
+) -> dict[str, Any] | str:
+    """Generate one patch response, optionally including repair feedback."""
+    if provider == "mock":
+        return _build_mock_payload(Path(state["source_dir"]), selected_vulnerabilities, context_files)
+    if provider == "openai":
+        return _generate_with_openai(state, selected_vulnerabilities, context_files, repair_feedback)
+    if provider == "anthropic":
+        return _generate_with_anthropic(state, selected_vulnerabilities, context_files, repair_feedback)
+    if provider == "gemini":
+        return _generate_with_gemini(state, selected_vulnerabilities, context_files, repair_feedback)
+    if provider == "openrouter":
+        return _generate_with_openrouter(state, selected_vulnerabilities, context_files, repair_feedback)
+    return f"patch_generation: unsupported model_provider: {provider}"
+
+
+def _is_invalid_patch_response(error: str) -> bool:
+    """Return whether a model-format failure deserves a single repair attempt."""
+    return error.startswith("patch_generation: model returned an invalid")
+
+
+def _normalize_patch_payload(source_dir: Path, payload: dict[str, Any]) -> dict[str, Any] | str:
+    """Convert exact structured edits to a deterministic unified diff."""
+    if "edits" in payload:
+        return _materialize_structured_edits(source_dir, payload)
+    return payload
+
+
+def _invalid_response_feedback(error: str) -> str:
+    return (
+        "The previous response was invalid. Return a JSON `edits` list of `{path, old_text, new_text}` "
+        "objects. Copy each `old_text` exactly from the supplied source. Do not modify package.json version "
+        "metadata, dependencies, lockfiles, or tests.\n"
+        f"Validator result: {error[:600]}"
+    )
+
+
+def _structured_edit_feedback(error: str) -> str:
+    return (
+        "The previous structured edit could not be applied. Return a new JSON `edits` list whose `old_text` "
+        "occurs exactly once in the supplied source.\n"
+        f"Validation result: {error[:600]}"
+    )
     
 def patch_generation(state: GraphState) -> dict:
     source_dir = state.get("source_dir")
@@ -664,12 +763,7 @@ def patch_generation(state: GraphState) -> dict:
         _focus_terms(selected_vulnerabilities),
     )
 
-    if provider == "mock":
-        payload = _build_mock_payload(source_path, selected_vulnerabilities, context_files)
-    elif provider == "openrouter":
-        payload = _generate_with_openrouter(state, selected_vulnerabilities, context_files)
-    else:
-        return _generation_failure(state, f"patch_generation: unsupported model_provider: {provider}", provider=provider, model_name=model_name)
+    payload = _generate_patch_payload(provider, state, selected_vulnerabilities, context_files)
 
     if isinstance(payload, str):
         if not _is_invalid_patch_response(payload):
