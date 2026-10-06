@@ -72,10 +72,22 @@ class PatchScore(TypedDict, total=False):
     completeness_score: float | None
     completeness_vendor_coverage: float | None
 
+class AdversarialEvaluation(TypedDict, total=False):
+    status: Literal["evaluated", "uncertain"]
+    evaluator_provider: str
+    evaluator_model: str
+    test_suite_pass: Literal["pass", "fail"]
+    genuine_fix: Literal["true", "false", "uncertain"]
+    reasoning: str
+    evidence: list[str]
+    evaluation_error: str | None
+
 class GraphState(TypedDict, total=False):
     # config
     model_provider: Literal["mock", "openai", "anthropic", "gemini", "openrouter"]
     model_name: str  # e.g. "gpt-4.1-mini", "claude-sonnet-4-0", or "gemini-3.6-flash"
+    evaluator_provider: Literal["openrouter"]
+    evaluator_model: str
     patch_scope: Literal["single", "all"]
 
     # 1) input
@@ -121,6 +133,7 @@ class GraphState(TypedDict, total=False):
 
     # 8) generated patch vs official answer key
     patch_score: PatchScore
+    adversarial_evaluation: AdversarialEvaluation
     mongo_id: str | None
 
     # control flow / bookkeeping

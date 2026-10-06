@@ -5,6 +5,9 @@ import json
 import logging
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 import uuid
@@ -29,7 +32,7 @@ DEFAULT_MODELS = {
     "openai": "gpt-4.1-mini",
     "anthropic": "claude-sonnet-4-0",
     "gemini": "gemini-3.6-flash",
-    "openrouter": "nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter": "anthropic/claude-sonnet-5",
 }
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -39,7 +42,9 @@ MAX_CONTEXT_CHARS_PER_FILE = 12_000
 MAX_SOURCE_CONTEXT_CHARS = 32_000
 MAX_DEPENDENCY_CONTEXT_FILES = 8
 MAX_OPENROUTER_CONTEXT_CHARS = 36_000
-OPENROUTER_MAX_TOKENS = 16_000
+OPENROUTER_MAX_TOKENS = 40_000
+ANCHOR_CONTEXT_BEFORE_CHARS = 1_000
+ANCHOR_CONTEXT_AFTER_CHARS = 5_000
 SOURCE_SUFFIXES = (".js", ".cjs", ".mjs", ".ts")
 LOCAL_IMPORT_PATTERN = re.compile(
     r"(?:require\(\s*|from\s+|import\s*)[\"'](\.[^\"']+)[\"']"
@@ -109,33 +114,65 @@ def _focus_terms(vulnerabilities: list[Vulnerability]) -> set[str]:
 
 
 def _source_excerpt(contents: str, focus_terms: set[str]) -> str:
-    """Keep a bounded excerpt with the beginning, relevant matches, and the end."""
+    """Keep exact, bounded source with priority for relevant function bodies.
+
+    A first textual match is often a comment or configuration declaration. For
+    large packages, that can omit the vulnerable function entirely and tempt a
+    model to invent surrounding context. Function/class declarations matching a
+    scanner term are therefore included first, as complete source windows.
+    """
     if len(contents) <= MAX_CONTEXT_CHARS_PER_FILE:
         return contents
 
-    ranges: list[tuple[int, int]] = [(0, 2_000), (len(contents) - 2_000, len(contents))]
-    for term in sorted(focus_terms, key=len, reverse=True)[:12]:
-        match = re.search(re.escape(term), contents, re.IGNORECASE)
-        if match:
-            ranges.append((max(0, match.start() - 1_500), min(len(contents), match.end() + 2_500)))
-
     selected: list[tuple[int, int]] = []
     used = 0
-    for start, end in sorted(ranges):
+
+    def add_range(start: int, end: int) -> None:
+        """Add a line-aligned range if it fits, merging overlapping windows."""
+        nonlocal used, selected
         start = contents.rfind("\n", 0, start) + 1
         end_newline = contents.find("\n", end)
         end = len(contents) if end_newline == -1 else end_newline + 1
-        if selected and start <= selected[-1][1]:
-            selected[-1] = (selected[-1][0], max(selected[-1][1], end))
-            continue
-        if used + (end - start) > MAX_CONTEXT_CHARS_PER_FILE:
-            continue
-        selected.append((start, end))
-        used += end - start
+        overlapping = [item for item in selected if item[0] <= end and start <= item[1]]
+        merged_start = min([start, *(item[0] for item in overlapping)])
+        merged_end = max([end, *(item[1] for item in overlapping)])
+        extra_chars = (merged_end - merged_start) - sum(item[1] - item[0] for item in overlapping)
+        if used + extra_chars > MAX_CONTEXT_CHARS_PER_FILE:
+            return
+        selected = [item for item in selected if item not in overlapping]
+        selected.append((merged_start, merged_end))
+        used += extra_chars
+
+    anchored_terms: set[str] = set()
+    for term in sorted(focus_terms, key=len, reverse=True)[:12]:
+        declaration = re.compile(
+            rf"(?<![A-Za-z0-9_$])(?:async\s+)?(?:function|class)\s+{re.escape(term)}(?![A-Za-z0-9_$])",
+            re.IGNORECASE,
+        )
+        match = declaration.search(contents)
+        if match:
+            anchored_terms.add(term)
+            add_range(
+                max(0, match.start() - ANCHOR_CONTEXT_BEFORE_CHARS),
+                min(len(contents), match.end() + ANCHOR_CONTEXT_AFTER_CHARS),
+            )
+
+    # Retain the first literal use only for terms that did not identify a
+    # function/class declaration. Anchored windows above already contain the
+    # meaningful implementation and are much safer diff context.
+    for term in sorted(focus_terms - anchored_terms, key=len, reverse=True)[:12]:
+        match = re.search(re.escape(term), contents, re.IGNORECASE)
+        if match:
+            add_range(max(0, match.start() - 1_500), min(len(contents), match.end() + 2_500))
+
+    # Add orientation only after the exact vulnerable implementation has been
+    # retained, rather than allowing file headers to consume the context budget.
+    add_range(0, 2_000)
+    add_range(len(contents) - 2_000, len(contents))
 
     excerpts: list[str] = []
     previous_end = 0
-    for start, end in selected:
+    for start, end in sorted(selected):
         if start > previous_end:
             excerpts.append("\n// ... omitted unrelated source ...\n")
         excerpts.append(contents[start:end])
@@ -253,11 +290,13 @@ def _build_messages(
     state: GraphState,
     vulnerabilities: list[Vulnerability],
     context_files: list[dict[str, str]],
+    repair_feedback: str | None = None,
 ) -> list[dict[str, str]]:
     system_prompt = (
         "You generate minimal security patches for npm packages. "
-        "Return valid JSON only. The diff must be a unified diff relative to the package root. "
-        "Only change files that are necessary for the fix."
+        "Return valid JSON only. Return exact text replacements, not a unified diff. "
+        "Only change files that are necessary for the fix. Use only exact source lines supplied "
+        "in the repository context; never invent surrounding code or apply a remembered upstream patch."
     )
     user_payload = {
         "package_name": state.get("package_name"),
@@ -266,10 +305,15 @@ def _build_messages(
         "vulnerabilities": vulnerabilities,
         "context_files": context_files,
         "output_schema": {
-            "diff": "string, unified diff relative to package root",
-            "target_files": "optional list of changed file paths relative to package root",
+            "edits": [{
+                "path": "source file path relative to package root",
+                "old_text": "exact contiguous source text copied from context",
+                "new_text": "replacement source text",
+            }],
         },
     }
+    if repair_feedback:
+        user_payload["repair_feedback"] = repair_feedback
     return [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": json.dumps(user_payload)},
@@ -280,9 +324,13 @@ def _build_openrouter_prompt(
     state: GraphState,
     vulnerabilities: list[Vulnerability],
     context_files: list[dict[str, str]],
+    repair_feedback: str | None = None,
 ) -> str:
     if not OPENROUTER_PROMPT_PATH.is_file():
-        return "\n\n".join(message["content"] for message in _build_messages(state, vulnerabilities, context_files))
+        return "\n\n".join(
+            message["content"]
+            for message in _build_messages(state, vulnerabilities, context_files, repair_feedback)
+        )
 
     vulnerability = vulnerabilities[0]
     relevant_source_code = "\n\n".join(
@@ -298,6 +346,12 @@ def _build_openrouter_prompt(
         relevant_source_code=relevant_source_code,
         relevant_tests="Tests are included in the repository context. Do not modify them.",
     )
+    if repair_feedback:
+        prompt += (
+            "\n\nPrevious patch application failed. Return a replacement patch that fixes "
+            "this exact error:\n"
+            f"{repair_feedback}\n"
+        )
     logger.info("OpenRouter rendered prompt:\n%s", prompt)
     return prompt
 
@@ -308,6 +362,8 @@ def _parse_patch_response(content: str) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         payload = None
     if isinstance(payload, dict):
+        if _is_complete_structured_edit_payload(payload):
+            return payload
         diff = payload.get("diff")
         if isinstance(diff, str):
             extracted_diff = _extract_unified_diff(diff)
@@ -319,6 +375,69 @@ def _parse_patch_response(content: str) -> dict[str, Any] | None:
     if not diff:
         return None
     return {"diff": diff + "\n"}
+
+
+def _is_complete_structured_edit_payload(payload: dict[str, Any]) -> bool:
+    edits = payload.get("edits")
+    return (
+        isinstance(edits, list)
+        and bool(edits)
+        and all(
+            isinstance(edit, dict)
+            and isinstance(edit.get("path"), str)
+            and isinstance(edit.get("old_text"), str)
+            and bool(edit["old_text"])
+            and isinstance(edit.get("new_text"), str)
+            for edit in edits
+        )
+    )
+
+
+def _materialize_structured_edits(source_dir: Path, payload: dict[str, Any]) -> dict[str, Any] | str:
+    """Apply model-selected exact replacements in memory and generate the diff."""
+    edits = payload.get("edits")
+    if not _is_complete_structured_edit_payload(payload):
+        return "response did not contain a complete structured edit list"
+
+    originals: dict[Path, str] = {}
+    modified: dict[Path, str] = {}
+    for edit in edits:
+        relative = Path(edit["path"])
+        if relative.is_absolute() or ".." in relative.parts or relative.parts[0] == "node_modules":
+            return f"unsafe edit path: {edit['path']!r}"
+        if relative.name in {"package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"} or any(
+            part in {"test", "tests", "__tests__"} for part in relative.parts
+        ):
+            return f"edit path is outside the allowed source scope: {edit['path']!r}"
+        target = source_dir / relative
+        if not target.is_file():
+            return f"edit target does not exist: {edit['path']!r}"
+        if target not in originals:
+            try:
+                originals[target] = target.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                return f"edit target is not UTF-8 text: {edit['path']!r}"
+            modified[target] = originals[target]
+        occurrences = modified[target].count(edit["old_text"])
+        if occurrences != 1:
+            return f"old_text must occur exactly once in {edit['path']!r}; found {occurrences} occurrences"
+        modified[target] = modified[target].replace(edit["old_text"], edit["new_text"], 1)
+
+    diffs: list[str] = []
+    target_files: list[str] = []
+    for target, original in originals.items():
+        updated = modified[target]
+        if updated == original:
+            return f"edit for {target.relative_to(source_dir).as_posix()!r} makes no change"
+        relative_path = target.relative_to(source_dir).as_posix()
+        target_files.append(relative_path)
+        diffs.extend(difflib.unified_diff(
+            original.splitlines(keepends=True),
+            updated.splitlines(keepends=True),
+            fromfile=f"a/{relative_path}",
+            tofile=f"b/{relative_path}",
+        ))
+    return {"diff": "".join(diffs), "target_files": target_files, "edits": edits}
 
 
 def _is_complete_unified_diff(diff: Any) -> bool:
@@ -367,6 +486,41 @@ def _extract_unified_diff(content: str) -> str | None:
         if match:
             return candidate[match.start(1):].strip()
     return None
+
+
+def _validate_diff_against_source(source_dir: Path, diff: str) -> str | None:
+    """Return an apply error, or ``None`` when *diff* applies to *source_dir*.
+
+    Header-only validation cannot detect incorrect hunk counts or context from
+    a different package release. Check on a disposable copy so a generated
+    patch never mutates the downloaded package before Node 4 owns it.
+    """
+    git = shutil.which("git")
+    if not git:
+        return "git is required to preflight a generated unified diff"
+
+    with tempfile.TemporaryDirectory(prefix="patch_preflight_") as temp_dir:
+        work_dir = Path(temp_dir) / "source"
+        shutil.copytree(
+            source_dir,
+            work_dir,
+            ignore=shutil.ignore_patterns("node_modules", ".git"),
+        )
+        diff_file = work_dir / ".generated_patch.diff"
+        diff_file.write_text(diff if diff.endswith("\n") else f"{diff}\n", encoding="utf-8")
+        completed = subprocess.run(
+            [git, "apply", "--check", "--recount", str(diff_file)],
+            cwd=work_dir,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+    if completed.returncode == 0:
+        return None
+    detail = (completed.stderr or completed.stdout).strip()
+    return detail or f"git apply --check exited {completed.returncode}"
 
 
 def _build_run_attempt_id(state: GraphState) -> str:
@@ -421,6 +575,7 @@ def _generate_with_openrouter(
     state: GraphState,
     selected_vulnerabilities: list[Vulnerability],
     context_files: list[dict[str, str]],
+    repair_feedback: str | None = None,
 ) -> dict[str, Any] | str:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -434,12 +589,21 @@ def _generate_with_openrouter(
     )
     system_message = (
         "You are a patch emitter, not an analyst. Return one JSON object and nothing else. "
-        'Its only required field is "diff", whose value is a complete applyable unified diff. '
-        "Do not include an explanation, summary, Markdown fence, rationale, or a partial diff."
+        'Its only required field is "edits": a non-empty list of objects with `path`, `old_text`, '
+        "and `new_text`. `old_text` must be copied exactly from the supplied source. Do not include "
+        "an explanation, summary, Markdown fence, rationale, or unified diff."
     )
     messages = [
         {"role": "system", "content": system_message},
-        {"role": "user", "content": _build_openrouter_prompt(state, selected_vulnerabilities, context_files)},
+        {
+            "role": "user",
+            "content": _build_openrouter_prompt(
+                state,
+                selected_vulnerabilities,
+                context_files,
+                repair_feedback,
+            ),
+        },
     ]
     try:
         response = client.chat.completions.create(
@@ -508,7 +672,50 @@ def patch_generation(state: GraphState) -> dict:
         return _generation_failure(state, f"patch_generation: unsupported model_provider: {provider}", provider=provider, model_name=model_name)
 
     if isinstance(payload, str):
-        return _generation_failure(state, payload, provider=provider, model_name=model_name)
+        if not _is_invalid_patch_response(payload):
+            return _generation_failure(state, payload, provider=provider, model_name=model_name)
+
+        logger.warning("patch_generation - model response failed diff validation: %s", payload)
+        payload = _generate_patch_payload(
+            provider,
+            state,
+            selected_vulnerabilities,
+            context_files,
+            _invalid_response_feedback(payload),
+        )
+        if isinstance(payload, str):
+            return _generation_failure(
+                state,
+                f"patch_generation: repair attempt failed after invalid diff response: {payload}",
+                provider=provider,
+                model_name=model_name,
+            )
+
+    payload = _normalize_patch_payload(source_path, payload)
+    if isinstance(payload, str):
+        logger.warning("patch_generation - structured edit failed source validation: %s", payload)
+        repaired_payload = _generate_patch_payload(
+            provider,
+            state,
+            selected_vulnerabilities,
+            context_files,
+            _structured_edit_feedback(payload),
+        )
+        if isinstance(repaired_payload, str):
+            return _generation_failure(
+                state,
+                f"patch_generation: repair attempt failed after structured edit validation: {repaired_payload}",
+                provider=provider,
+                model_name=model_name,
+            )
+        payload = _normalize_patch_payload(source_path, repaired_payload)
+        if isinstance(payload, str):
+            return _generation_failure(
+                state,
+                f"patch_generation: structured edit could not be applied after repair attempt: {payload}",
+                provider=provider,
+                model_name=model_name,
+            )
 
     diff = payload.get("diff")
     if not isinstance(diff, str) or not diff.strip():
@@ -518,6 +725,57 @@ def patch_generation(state: GraphState) -> dict:
             provider=provider,
             model_name=model_name,
         )
+
+    preflight_error = _validate_diff_against_source(source_path, diff)
+    if preflight_error:
+        logger.warning("patch_generation - generated diff failed preflight: %s", preflight_error)
+        repair_feedback = (
+            f"The previous unified diff could not be applied to {state.get('package_name')}@"
+            f"{state.get('package_version')}.\n"
+            f"git apply --check --recount reported:\n{preflight_error}"
+        )
+        payload = _generate_patch_payload(
+            provider,
+            state,
+            selected_vulnerabilities,
+            context_files,
+            repair_feedback,
+        )
+        if isinstance(payload, str):
+            return _generation_failure(
+                state,
+                f"patch_generation: repair attempt failed after diff preflight: {payload}",
+                provider=provider,
+                model_name=model_name,
+            )
+
+        payload = _normalize_patch_payload(source_path, payload)
+        if isinstance(payload, str):
+            return _generation_failure(
+                state,
+                f"patch_generation: repair attempt produced an invalid structured edit: {payload}",
+                provider=provider,
+                model_name=model_name,
+            )
+
+        diff = payload.get("diff")
+        if not isinstance(diff, str) or not diff.strip():
+            return _generation_failure(
+                state,
+                "patch_generation: repair attempt did not contain a diff",
+                provider=provider,
+                model_name=model_name,
+            )
+
+        preflight_error = _validate_diff_against_source(source_path, diff)
+        if preflight_error:
+            return _generation_failure(
+                state,
+                "patch_generation: generated diff could not be applied after repair attempt: "
+                f"{preflight_error}",
+                provider=provider,
+                model_name=model_name,
+            )
 
     patch_attempts = list(state.get("patch_attempts", []))
     attempt_number = len(patch_attempts) + 1

@@ -6,6 +6,7 @@ from patch_generation import patch_generation
 from patch_application import patch_application
 from vulnerability_rescan import vulnerability_rescan
 from patch_validation import patch_validation
+from adversarial_evaluation import adversarial_evaluation
 from patch_scoring import patch_scoring
 from state import GraphState
 
@@ -42,6 +43,7 @@ graph.add_node("patch_generation_node", patch_generation)
 graph.add_node("patch_application_node", patch_application)
 graph.add_node("vulnerability_rescan_node", vulnerability_rescan)
 graph.add_node("patch_validation_node", patch_validation)
+graph.add_node("adversarial_evaluation_node", adversarial_evaluation)
 graph.add_node("patch_scoring_node", patch_scoring)
 graph.add_node("increment_retry", increment_retry)
 
@@ -58,7 +60,8 @@ graph.add_conditional_edges(
     },
 )
 graph.add_edge("patch_application_node", "vulnerability_rescan_node")
-graph.add_edge("vulnerability_rescan_node", "patch_validation_node")
+graph.add_edge("vulnerability_rescan_node", "adversarial_evaluation_node")
+graph.add_edge("adversarial_evaluation_node", "patch_validation_node")
 graph.add_edge("patch_validation_node", "patch_scoring_node")
 graph.add_conditional_edges(
     "patch_scoring_node",

@@ -165,6 +165,7 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "attempt_number":  patch.get("attempt_number"),
         "diff":            patch.get("diff"),
         "validation":      state.get("validation") or {},
+        "adversarial_evaluation": state.get("adversarial_evaluation") or {},
         "vulnerabilities": state.get("vulnerabilities") or [],
         "answer_key":      state.get("answer_key") or {},
         "retry_count":     state.get("retry_count", 0),
