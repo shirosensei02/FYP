@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import os
 import shutil
 import subprocess
 import tarfile
@@ -32,7 +33,7 @@ def _safe_tar_members(archive: tarfile.TarFile, extract_root: Path) -> list[tarf
         if member.issym() or member.islnk():
             continue
         resolved_member = (extract_root / member.name).resolve()
-        if resolved_member != resolved_root and not str(resolved_member).startswith(str(resolved_root) + "/"):
+        if resolved_member != resolved_root and not str(resolved_member).startswith(str(resolved_root) + os.sep):
             continue
         safe_members.append(member)
     return safe_members
