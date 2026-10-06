@@ -40,11 +40,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from state import GraphState, ValidationResult
+from model_catalog import patch_evaluator_models
 from package_input import package_input
 from vulnerability_detection import vulnerability_detection
 from patch_generation import patch_generation
 from patch_application import patch_application
 from patch_validation import patch_validation
+from adversarial_evaluation import adversarial_evaluation
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +190,15 @@ def run_pipeline(args: argparse.Namespace) -> None:
         print(f"  re-scan clean : {(state.get('validation') or {}).get('revalidation_scan_clean')}")
         print(f"  remaining     : {len(remaining)}")
 
+        _sep("NODE 4c - ADVERSARIAL EVALUATION")
+        result = adversarial_evaluation(state)
+        state.update(result)
+        evaluation = state.get("adversarial_evaluation") or {}
+        print(f"  status        : {evaluation.get('status')}")
+        print(f"  genuine_fix   : {evaluation.get('genuine_fix')}")
+        if evaluation.get("evaluation_error"):
+            print(f"  error         : {evaluation['evaluation_error']}")
+
     # Node 5: patch_validation. Generation failures also reach this node
     # for a consistent classification, but are not persisted.
     _sep("NODE 5 / 5 - PATCH VALIDATION")
@@ -266,6 +277,8 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--dump-state", action="store_true", default=_env_bool("DUMP_STATE"),
                    help="Print full state dict at the end")
     args = p.parse_args()
+    if args.model_name and args.model_name not in patch_evaluator_models():
+        p.error(f"--model-name must be one of: {', '.join(patch_evaluator_models())}")
     if not args.package_name or not args.package_version:
         p.error("--package-name/--package-version are required (pass the flag, or set "
                  "PACKAGE_NAME/PACKAGE_VERSION in .env)")

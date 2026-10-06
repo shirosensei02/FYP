@@ -1,14 +1,23 @@
 [
   {
-    "id": "google/gemma-4-31b-it:free",
-    "name": "Google Gemma 4 31B",
-    "free": true,
-    "role": "coding and structured-output fallback"
+    "id": "openai/gpt-5.3-codex",
+    "name": "OpenAI GPT-5.3-Codex",
+    "provider": "openai",
+    "free": false,
+    "role": "agentic coding and patch generation"
   },
   {
-    "id": "nvidia/nemotron-3-super-120b-a12b:free",
-    "name": "NVIDIA Nemotron 3 Super",
-    "free": true,
-    "role": "agentic reasoning baseline"
+    "id": "anthropic/claude-sonnet-5",
+    "name": "Anthropic Claude Sonnet 5",
+    "provider": "anthropic",
+    "free": false,
+    "role": "reasoning and patch generation"
+  },
+  {
+    "id": "openai/gpt-6-luna",
+    "name": "OpenAI GPT-6 Luna",
+    "provider": "openai",
+    "free": false,
+    "role": "cost-efficient patch generation"
   }
 ]

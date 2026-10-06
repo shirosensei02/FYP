@@ -125,7 +125,7 @@ Once started, access the server resources:
 
 `test_local_pipeline.py` provides a lightweight, end-to-end test runner that executes all five pipeline nodes in sequence without needing a LangGraph server. It uses the deterministic `mock` provider by default, or an API-backed provider when selected with `--model-provider` and `--model-name`.
 
-For live patch generation, the pipeline supports OpenRouter through the OpenAI-compatible API. The configured free models are listed in `config/models.json`; pass any model ID from that file with `--model-name`.
+For live patch generation, the pipeline supports OpenRouter through the OpenAI-compatible API. The configured models are listed in `config/models.json`; pass any model ID from that file with `--model-name`.
 
 ```bash
 OPENROUTER_API_KEY=your_openrouter_api_key_here \
@@ -133,13 +133,37 @@ python run_live_pipeline.py \
   --package-name semver \
   --package-version 7.5.1 \
   --model-provider openrouter \
-  --model-name nvidia/nemotron-3-super-120b-a12b:free
+  --model-name anthropic/claude-sonnet-5
 ```
 
 `run_live_pipeline.py` executes the complete LangGraph flow, including Docker
 validation. Every terminal outcome is stored in `fyp_patches.all_attempts`;
 patches that pass Docker build and package validation are additionally stored
 in `fyp_patches.successful_patches`.
+
+### Generator and evaluator models
+
+Select either supported patch generator from `config/models.json` with
+`--model-name`: `openai/gpt-5.3-codex` or `anthropic/claude-sonnet-5`.
+The pipeline automatically uses the other model as the adversarial evaluator.
+`openai/gpt-6-luna` is not part of this generator/evaluator pairing.
+
+### Adversarial patch evaluation
+
+After a patch is applied, tested, and re-scanned, a separate OpenRouter model
+evaluates whether it is a genuine vulnerability fix. Configure it in `.env`:
+
+```dotenv
+EVALUATOR_PROVIDER=openrouter
+EVALUATOR_MODEL=openai/gpt-5.3-codex
+```
+
+The evaluator model must differ from the generator model. Each stored attempt
+includes `adversarial_evaluation.test_suite_pass` (the deterministic Docker
+test result) and `adversarial_evaluation.genuine_fix` (`true`, `false`, or
+`uncertain`), plus `adversarial_evaluation.reasoning`, a brief evidence-based
+explanation of that verdict. An unavailable or invalid evaluator response is recorded as
+`uncertain` and does not change the existing build/test pass-fail outcome.
 
 ### Prerequisites
 
@@ -185,8 +209,9 @@ python test_local_pipeline.py \
 **Test an OpenRouter model locally:**
 
 Set `OPENROUTER_API_KEY` in `.env` or export it in your shell. Use a model ID
-from `config/models.json`; the example below uses the configured Nemotron
-model. This runs detection, patch generation, Docker validation, and persists
+from `config/models.json`; the example below uses the configured Claude Sonnet
+5 model. This runs detection, patch generation, Docker validation, independent
+evaluation, and persists
 the result to MongoDB only if validation passes.
 
 ```bash
@@ -194,13 +219,13 @@ python test_local_pipeline.py \
   --package-name ip \
   --package-version 2.0.1 \
   --model-provider openrouter \
-  --model-name nvidia/nemotron-3-super-120b-a12b:free
+  --model-name anthropic/claude-sonnet-5
 ```
 
-To test the configured Gemma model, replace only `--model-name`:
+To test a configured GPT model, replace only `--model-name`:
 
 ```bash
---model-name google/gemma-4-31b-it:free
+--model-name openai/gpt-6-luna
 ```
 
 Use `--stop-after-patch` when you want to inspect only the model response and

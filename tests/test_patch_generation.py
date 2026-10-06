@@ -335,7 +335,7 @@ def test_patch_generation_openrouter_provider_uses_configured_model(monkeypatch,
     assert "--- a/index.js" in result["current_patch"]["diff"]
 
 
-def test_openrouter_explanation_only_response_is_recorded_as_generation_failure(monkeypatch, tmp_path):
+def test_openrouter_explanation_only_response_is_repaired_once_then_recorded_as_failure(monkeypatch, tmp_path):
     source_dir = tmp_path / "package"
     source_dir.mkdir()
     manifest_path = source_dir / "package.json"
@@ -355,7 +355,7 @@ def test_openrouter_explanation_only_response_is_recorded_as_generation_failure(
         }
     )
 
-    assert client.completions.calls == 1
+    assert client.completions.calls == 2
     assert result["generation_status"] == "failed"
     assert result["generation_model_used"] == "nvidia/nemotron-3-super-120b-a12b:free"
     assert result["current_patch"] is None
@@ -381,6 +381,116 @@ def test_unified_diff_validation_accepts_multiple_complete_files():
     assert patch_generation._is_complete_unified_diff(diff)
 
 
+def test_patch_generation_repairs_an_invalid_model_response(monkeypatch, tmp_path):
+    source_dir = tmp_path / "package"
+    source_dir.mkdir()
+    manifest_path = source_dir / "package.json"
+    manifest_path.write_text('{"name":"demo-package","main":"index.js"}', encoding="utf-8")
+    (source_dir / "index.js").write_text("module.exports = 42;\n", encoding="utf-8")
+
+    calls: list[str | None] = []
+
+    def fake_generator(state, vulnerabilities, context_files, repair_feedback=None):
+        calls.append(repair_feedback)
+        if repair_feedback is None:
+            return "patch_generation: model returned an invalid patch response"
+        assert "`edits` list" in repair_feedback
+        assert "Do not modify package.json version metadata" in repair_feedback
+        return {
+            "edits": [{
+                "path": "index.js",
+                "old_text": "module.exports = 42;\n",
+                "new_text": "module.exports = 43;\n",
+            }]
+        }
+
+    monkeypatch.setattr(patch_generation, "_generate_with_openai", fake_generator)
+
+    result = patch_generation.patch_generation(
+        {
+            "package_name": "demo-package",
+            "package_version": "1.0.0",
+            "source_dir": str(source_dir),
+            "package_manifest_path": str(manifest_path),
+            "model_provider": "openai",
+            "vulnerabilities": [{"id": "CVE-TEST-0001"}],
+        }
+    )
+
+    assert calls[0] is None
+    assert len(calls) == 2
+    assert result["generation_status"] == "generated"
+
+
+def test_diff_preflight_rejects_context_that_does_not_match_source(tmp_path):
+    source_dir = tmp_path / "package"
+    source_dir.mkdir()
+    (source_dir / "index.js").write_text("module.exports = 42;\n", encoding="utf-8")
+
+    error = patch_generation._validate_diff_against_source(
+        source_dir,
+        "--- a/index.js\n+++ b/index.js\n@@ -1 +1 @@\n-module.exports = 41;\n+module.exports = 43;\n",
+    )
+
+    assert error is not None
+    assert "patch does not apply" in error
+
+
+def test_structured_edit_requires_exactly_one_source_match(tmp_path):
+    source_dir = tmp_path / "package"
+    source_dir.mkdir()
+    (source_dir / "index.js").write_text("const value = 1;\nconst value = 1;\n", encoding="utf-8")
+
+    result = patch_generation._materialize_structured_edits(
+        source_dir,
+        {
+            "edits": [{
+                "path": "index.js",
+                "old_text": "const value = 1;\n",
+                "new_text": "const value = 2;\n",
+            }]
+        },
+    )
+
+    assert isinstance(result, str)
+    assert "exactly once" in result
+
+
+def test_patch_generation_repairs_a_diff_that_fails_preflight(monkeypatch, tmp_path):
+    source_dir = tmp_path / "package"
+    source_dir.mkdir()
+    manifest_path = source_dir / "package.json"
+    manifest_path.write_text('{"name":"demo-package","main":"index.js"}', encoding="utf-8")
+    (source_dir / "index.js").write_text("module.exports = 42;\n", encoding="utf-8")
+
+    calls: list[str | None] = []
+
+    def fake_generator(state, vulnerabilities, context_files, repair_feedback=None):
+        calls.append(repair_feedback)
+        if repair_feedback is None:
+            return {"diff": "--- a/index.js\n+++ b/index.js\n@@ -1 +1 @@\n-module.exports = 41;\n+module.exports = 43;\n"}
+        assert "patch does not apply" in repair_feedback
+        return {"diff": "--- a/index.js\n+++ b/index.js\n@@ -1 +1 @@\n-module.exports = 42;\n+module.exports = 43;\n"}
+
+    monkeypatch.setattr(patch_generation, "_generate_with_openai", fake_generator)
+
+    result = patch_generation.patch_generation(
+        {
+            "package_name": "demo-package",
+            "package_version": "1.0.0",
+            "source_dir": str(source_dir),
+            "package_manifest_path": str(manifest_path),
+            "model_provider": "openai",
+            "vulnerabilities": [{"id": "CVE-TEST-0001"}],
+        }
+    )
+
+    assert calls[0] is None
+    assert len(calls) == 2
+    assert result["generation_status"] == "generated"
+    assert "+module.exports = 43;" in result["current_patch"]["diff"]
+
+
 def test_context_excerpt_keeps_late_scanner_matched_source(tmp_path):
     source_dir = tmp_path / "package"
     source_dir.mkdir()
@@ -400,3 +510,32 @@ def test_context_excerpt_keeps_late_scanner_matched_source(tmp_path):
 
     assert "function vulnerableParser" in index_excerpt
     assert "omitted unrelated source" in index_excerpt
+
+
+def test_openrouter_prompt_requires_a_reachable_behavioral_security_fix():
+    prompt = patch_generation._build_openrouter_prompt(
+        {"package_name": "demo", "package_version": "1.0.0"},
+        [{"id": "CVE-TEST-0001", "description": "unsafe parser"}],
+        [{"path": "index.js", "content": "function parse(value) { return value; }\n"}],
+    )
+
+    assert "must change reachable runtime behavior on the vulnerable path" in prompt
+    assert "Do not add unused variables" in prompt
+    assert "silently verify" in prompt
+
+
+def test_source_excerpt_prioritizes_a_relevant_function_over_earlier_mentions():
+    contents = (
+        "const templateSettings = {};\n"
+        + ("const unrelated = true;\n" * 3_000)
+        + "function template(value, options) {\n"
+        + "  const imports = options.imports;\n"
+        + "  return imports[value];\n"
+        + "}\n"
+        + ("const trailing = true;\n" * 500)
+    )
+
+    excerpt = patch_generation._source_excerpt(contents, {"template", "imports"})
+
+    assert "function template(value, options)" in excerpt
+    assert "const imports = options.imports;" in excerpt

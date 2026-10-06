@@ -6,6 +6,7 @@ import os
 from typing import Any
 
 from graph import graph  # noqa: F401  (imported first so its dotenv-loading deps run before os.getenv defaults below)
+from model_catalog import patch_evaluator_models
 
 
 def main() -> None:
@@ -20,8 +21,8 @@ def main() -> None:
         choices=["mock", "openai", "anthropic", "gemini", "openrouter"],
         help="Falls back to MODEL_PROVIDER in .env",
     )
-    parser.add_argument("--model-name", default=os.getenv("MODEL_NAME"),
-                        help="Falls back to MODEL_NAME in .env")
+    parser.add_argument("--model-name", default=os.getenv("MODEL_NAME"), choices=patch_evaluator_models(),
+                        help="Patch generator from config/models.json; the other supported model evaluates it")
     parser.add_argument("--patch-scope", default=os.getenv("PATCH_SCOPE", "single"), choices=["single", "all"])
     args = parser.parse_args()
     if not args.package_name or not args.package_version:
