@@ -51,6 +51,19 @@ class AnswerKey(TypedDict, total=False):
     diff: str | None
 
 
+class MaintainerEvalResult(TypedDict, total=False):
+    """LLM-generated qualitative comparison of the generated patch vs the answer key."""
+    status: Literal["evaluated", "skipped", "error"]
+    verdict: Literal["COMPLETE", "PARTIAL", "INCOMPLETE"] | None
+    root_cause_identified: bool | None
+    same_fix_strategy: bool | None
+    summary: str | None
+    differences: list[str]
+    missing_from_generated: list[str]
+    extra_in_generated: list[str]
+    error_message: str | None
+
+
 class PatchScore(TypedDict, total=False):
     status: Literal["scored", "skipped"]
     location: Literal["same", "overlapping", "different", "skipped"]
@@ -121,6 +134,10 @@ class GraphState(TypedDict, total=False):
 
     # 8) generated patch vs official answer key
     patch_score: PatchScore
+
+    # 9) maintainer-level qualitative evaluation (LLM-based)
+    maintainer_eval: MaintainerEvalResult | None
+
     mongo_id: str | None
 
     # control flow / bookkeeping

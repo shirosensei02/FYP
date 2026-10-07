@@ -365,9 +365,9 @@ def patch_scoring(state: GraphState) -> dict[str, Any]:
         "completeness_score": _COMPLETENESS_SCORE.get(completeness),
         "completeness_vendor_coverage": hunk_coverage,
     }
-    mongo_id = state.get("mongo_id")
-    if mongo_id:
-        _persist_score(mongo_id, score, answer_key)
+    # mongo_id = state.get("mongo_id")
+    # if mongo_id:
+    #     _persist_score(mongo_id, score, answer_key)
 
     return {"patch_score": score}
 

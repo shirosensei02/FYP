@@ -7,6 +7,7 @@ from patch_application import patch_application
 from vulnerability_rescan import vulnerability_rescan
 from patch_validation import patch_validation
 from patch_scoring import patch_scoring
+from maintainer_eval import maintainer_eval
 from state import GraphState
 
 
@@ -22,10 +23,10 @@ def route_after_patch_generation(state: GraphState) -> str:
 
 def route_after_classification(state: GraphState) -> str:
     if state.get("classification") == "pass":
-        return "end"
+        return "eval"
 
     if state.get("retry_count") >= state.get("max_retries"):
-        return "end"
+        return "eval"
 
     return "retry"
 
@@ -43,6 +44,7 @@ graph.add_node("patch_application_node", patch_application)
 graph.add_node("vulnerability_rescan_node", vulnerability_rescan)
 graph.add_node("patch_validation_node", patch_validation)
 graph.add_node("patch_scoring_node", patch_scoring)
+graph.add_node("maintainer_eval_node", maintainer_eval)
 graph.add_node("increment_retry", increment_retry)
 
 graph.add_edge(START, "package_input_node")
@@ -65,9 +67,11 @@ graph.add_conditional_edges(
     route_after_classification,
     {
         "retry": "increment_retry",
-        "end": END,
+        "eval": "maintainer_eval_node",
     },
 )
 graph.add_edge("increment_retry", "patch_generation_node")
+graph.add_edge("maintainer_eval_node", END)
 
 graph = graph.compile()
+
