@@ -188,7 +188,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         print(f"  re-scan clean : {(state.get('validation') or {}).get('revalidation_scan_clean')}")
         print(f"  remaining     : {len(remaining)}")
 
-    _sep("NODE 6 - PATCH SCORING  (vs maintainer patch)")
+    _sep("NODE 5 - PATCH SCORING  (vs maintainer patch)")
     from patch_scoring import patch_scoring
     result = patch_scoring(state)
     state.update(result)
@@ -200,7 +200,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  matched files   : {score.get('matched_files')}")
     print(f"  missing files   : {score.get('missing_files')}")
 
-    _sep("NODE 7 - MAINTAINER EVAL")
+    _sep("NODE 6 - MAINTAINER EVAL")
     from maintainer_eval import maintainer_eval
     result = maintainer_eval(state)
     state.update(result)
@@ -211,7 +211,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     
     # Node 5: patch_validation. Generation failures also reach this node
     # for a consistent classification, but are not persisted.
-    _sep("NODE 5 / 5 - PATCH VALIDATION")
+    _sep("NODE 7 - PATCH VALIDATION")
     result = patch_validation(state)
     state.update(result)
 
