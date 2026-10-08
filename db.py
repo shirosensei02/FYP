@@ -163,6 +163,7 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "model_used":      patch.get("model_used") or state.get("generation_model_used"),
         "attempt_id":      patch.get("attempt_id") or state.get("run_attempt_id"),
         "attempt_number":  patch.get("attempt_number"),
+        "raw_output":      patch.get("raw_output"),
         "diff":            patch.get("diff"),
         "validation":      state.get("validation") or {},
         "adversarial_evaluation": state.get("adversarial_evaluation") or {},
@@ -172,43 +173,6 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "errors":          state.get("errors") or [],
         "generation_status": state.get("generation_status"),
         "generation_error": state.get("generation_error"),
+        "patch_score":      state.get("patch_score"),
+        "maintainer_eval" : state.get("maintainer_eval")
     }
-
-
-def update_patch_score(
-    mongo_id: str,
-    patch_score: dict,
-    answer_key: dict | None = None,
-) -> bool:
-    """
-    PATCH the attempt already written by patch_validation.
-
-    `$set`s nested `patch_score` (and `answer_key` if provided) onto:
-      - all_attempts by `_id`
-      - successful_patches by `all_attempts_id` (no-op if the attempt failed)
-    """
-    from bson import ObjectId
-    from bson.errors import InvalidId
-
-    try:
-        oid = ObjectId(mongo_id)
-    except InvalidId:
-        logger.warning("db - update_patch_score: invalid mongo_id=%s", mongo_id)
-        return False
-
-    payload: dict = {"patch_score": patch_score}
-    if answer_key is not None:
-        payload["answer_key"] = answer_key
-
-    try:
-        db = _get_db()
-        all_result = db[_COL_ATTEMPTS].update_one({"_id": oid}, {"$set": payload})
-        db[_COL_PASS].update_one({"all_attempts_id": mongo_id}, {"$set": payload})
-        if all_result.matched_count == 0:
-            logger.warning("db - update_patch_score: no all_attempts doc for _id=%s", mongo_id)
-            return False
-        logger.info("db - patched patch_score onto _id=%s", mongo_id)
-        return True
-    except errors.PyMongoError as exc:
-        logger.error("db - failed to PATCH patch_score: %s", exc)
-        return False

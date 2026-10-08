@@ -302,7 +302,7 @@ def _write_patched_package(
         # `patch` rejects outright. `git apply --recount` recomputes those
         # counts from the actual +/-/context lines instead of trusting them.
         git_rc, git_out, git_err = _run(
-            ["git", "apply", "--recount", str(diff_file)],
+             ["git", "apply", "--ignore-whitespace", "--unsafe-paths", "--recount", str(diff_file)],
             cwd=work_dir,
             timeout=30,
         )
@@ -323,7 +323,7 @@ def _write_patched_package(
                 hunk_file = work_dir / f"_hunk_{idx}.diff"
                 hunk_file.write_text(hunk_diff, encoding="utf-8")
                 h_rc, h_out, h_err = _run(
-                    ["git", "apply", "--recount", str(hunk_file)],
+                    ["git", "apply", "--ignore-whitespace", "--unsafe-paths", "--recount", str(hunk_file)],
                     cwd=work_dir,
                     timeout=30,
                 )

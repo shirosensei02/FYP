@@ -508,7 +508,7 @@ def _validate_diff_against_source(source_dir: Path, diff: str) -> str | None:
         diff_file = work_dir / ".generated_patch.diff"
         diff_file.write_text(diff if diff.endswith("\n") else f"{diff}\n", encoding="utf-8")
         completed = subprocess.run(
-            [git, "apply", "--check", "--recount", str(diff_file)],
+            [git, "apply", "--ignore-whitespace", "--recount", "-C1", "--check", str(diff_file)],
             cwd=work_dir,
             capture_output=True,
             text=True,
@@ -736,12 +736,19 @@ def patch_generation(state: GraphState) -> dict:
     manifest_path_value = state.get("package_manifest_path")
     manifest_path = Path(manifest_path_value) if manifest_path_value else source_path / "package.json"
     if not manifest_path.exists():
-        return patch_attempt(state, generation_error=f"patch_generation: package manifest not found: {manifest_path}", selected_vulnerabilities=selected_vulnerabilities)
+        return patch_attempt(
+            state,
+            generation_error=f"patch_generation: package manifest not found: {manifest_path}", 
+            selected_vulnerabilities=selected_vulnerabilities)
 
     provider = state.get("model_provider", "mock")
     default_model = DEFAULT_MODELS.get(provider)
     if default_model is None:
-        return patch_attempt(state, generation_error=f"patch_generation: unsupported model_provider: {provider}", provider=provider, selected_vulnerabilities=selected_vulnerabilities)
+        return patch_attempt(
+            state, 
+            generation_error=f"patch_generation: unsupported model_provider: {provider}", 
+            provider=provider, 
+            selected_vulnerabilities=selected_vulnerabilities)
     model_name = state.get("model_name", default_model)
     context_files = _read_context_files(
         source_path,
@@ -764,7 +771,13 @@ def patch_generation(state: GraphState) -> dict:
             _invalid_response_feedback(payload),
         )
         if isinstance(payload, str):
-            return patch_attempt(state, payload, provider=provider, model_name=model_name, generation_error=f"patch_generation: repair attempt failed after invalid diff response: {payload}", selected_vulnerabilities=selected_vulnerabilities)
+            return patch_attempt(
+                state, 
+                payload, 
+                provider=provider, 
+                model_name=model_name, 
+                generation_error=f"patch_generation: repair attempt failed after invalid diff response: {payload}", 
+                selected_vulnerabilities=selected_vulnerabilities)
 
     payload = _normalize_patch_payload(source_path, payload)
     if isinstance(payload, str):
@@ -810,7 +823,8 @@ def patch_generation(state: GraphState) -> dict:
         repair_feedback = (
             f"The previous unified diff could not be applied to {state.get('package_name')}@"
             f"{state.get('package_version')}.\n"
-            f"git apply --check --recount reported:\n{preflight_error}"
+            f"git apply --check --ignore-whitespace --recount reported:\n{preflight_error}.\n"
+            "Please return the complete patch with all necessary files, do not remove any initial files that is not changed."
         )
         payload = _generate_patch_payload(
             provider,
@@ -839,7 +853,7 @@ def patch_generation(state: GraphState) -> dict:
                 selected_vulnerabilities=selected_vulnerabilities
             )
 
-        diff = payload.get("diff")
+        diff = payload.get("diff")  
         if not isinstance(diff, str) or not diff.strip():
             return patch_attempt(
                 state,

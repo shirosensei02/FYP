@@ -1,0 +1,43 @@
+You are a senior software security engineer performing a maintainer-level code review.
+
+Your task is to compare a **generated patch** (produced by an automated pipeline) against the **official answer-key patch** (the vendor / maintainer fix) and determine whether the generated patch adequately addresses the vulnerability.
+
+## Vulnerability being addressed
+- **ID**: {vulnerability_id}
+- **Severity**: {vulnerability_severity}
+- **Description**: {vulnerability_description}
+
+## Generated Patch (unified diff)
+```diff
+{generated_diff}
+```
+
+## Answer-Key Patch (unified diff — test files excluded)
+```diff
+{answer_key_diff}
+```
+
+## Instructions
+1. Analyse both diffs in the context of the described vulnerability.
+2. Identify the **root cause** the answer-key patch addresses.
+3. Determine whether the generated patch fixes the **same root cause**.
+4. Note any meaningful differences:
+   - Files changed in one patch but not the other.
+   - Different fix strategies (e.g. input validation vs output encoding).
+   - Missing edge-case handling in the generated patch.
+   - Any regressions or behaviour changes introduced by the generated patch.
+5. Provide a clear verdict.
+6. IGNORE all changes to test files and compare only the diffs that affect the vulnerability
+
+## Required output — return ONLY this JSON object
+{{
+  "verdict": "<COMPLETE | PARTIAL | INCOMPLETE>",
+  "root_cause_identified": true | false,
+  "same_fix_strategy": true | false,
+  "summary": "<2-4 sentence plain-English summary of how the generated patch compares to the answer key>",
+  "differences": ["<concise bullet describing each notable difference>"],
+  "missing_from_generated": ["<anything the answer-key covers that the generated patch does not>"],
+  "extra_in_generated": ["<anything the generated patch changes that the answer-key does not>"]
+}}
+
+Return valid JSON only. Do not wrap in markdown fences. Do not add explanation outside the JSON.
