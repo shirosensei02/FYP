@@ -26,6 +26,7 @@ class Vulnerability(TypedDict, total=False):
 class PatchAttempt(TypedDict, total=False):
     attempt_number: int
     attempt_id: str
+    raw_output: str
     diff: str  # unified diff or full file replacement
     model_used: str
     vulnerability_id: str

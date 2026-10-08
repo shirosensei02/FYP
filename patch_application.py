@@ -642,6 +642,7 @@ def patch_application(state: GraphState) -> dict:
     package_name: str = state.get("package_name", "unknown-package")
     package_version: str = state.get("package_version", "0.0.0")
     current_patch = state.get("current_patch")
+    generation_status = state.get("generation_status")
 
     print("\n" + "=" * 60, flush=True)
     print(f"  PATCH APPLICATION NODE", flush=True)
@@ -649,8 +650,8 @@ def patch_application(state: GraphState) -> dict:
     print(f"  Attempt : {(current_patch or {}).get('attempt_number', 1)}", flush=True)
     print("=" * 60, flush=True)
 
-    if not current_patch:
-        msg = "patch_application: no current_patch in state; skipping sandbox."
+    if generation_status == "failed":
+        msg = "patch_application: generation failed; skipping sandbox."
         logger.warning(msg)
         errors.append(msg)
         return {
