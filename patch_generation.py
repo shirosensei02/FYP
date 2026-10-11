@@ -296,10 +296,9 @@ def _build_messages(
         "Return valid JSON only. Return exact text replacements, not a unified diff. "
         "Only change files that are necessary for the fix. Use only exact source lines supplied "
         "in the repository context; never invent surrounding code or apply a remembered upstream patch."
+        "DO NOT try to infer what package and version this is from, just look at the context file and generate lines correctly"
     )
     user_payload = {
-        "package_name": state.get("package_name"),
-        "package_version": state.get("package_version"),
         "patch_scope": state.get("patch_scope", "single"),
         "vulnerabilities": vulnerabilities,
         "context_files": context_files,
@@ -413,14 +412,16 @@ def _materialize_structured_edits(source_dir: Path, payload: dict[str, Any]) -> 
             return f"edit target does not exist: {edit['path']!r}"
         if target not in originals:
             try:
-                originals[target] = target.read_text(encoding="utf-8")
+                originals[target] = target.read_text(encoding="utf-8").replace("\r\n", "\n")
             except UnicodeDecodeError:
                 return f"edit target is not UTF-8 text: {edit['path']!r}"
             modified[target] = originals[target]
-        occurrences = modified[target].count(edit["old_text"])
+        old_text = edit["old_text"].replace("\r\n", "\n")
+        new_text = edit["new_text"].replace("\r\n", "\n")
+        occurrences = modified[target].count(old_text)
         if occurrences != 1:
             return f"old_text must occur exactly once in {edit['path']!r}; found {occurrences} occurrences"
-        modified[target] = modified[target].replace(edit["old_text"], edit["new_text"], 1)
+        modified[target] = modified[target].replace(old_text, new_text, 1)
 
     diffs: list[str] = []
     target_files: list[str] = []
@@ -506,7 +507,8 @@ def _validate_diff_against_source(source_dir: Path, diff: str) -> str | None:
             ignore=shutil.ignore_patterns("node_modules", ".git"),
         )
         diff_file = work_dir / ".generated_patch.diff"
-        diff_file.write_text(diff if diff.endswith("\n") else f"{diff}\n", encoding="utf-8")
+        clean_diff = diff.replace("\r\n", "\n")
+        diff_file.write_text(clean_diff if clean_diff.endswith("\n") else f"{diff}\n", encoding="utf-8")
         completed = subprocess.run(
             [git, "apply", "--ignore-whitespace", "--recount", "-C1", "--check", str(diff_file)],
             cwd=work_dir,
@@ -673,11 +675,14 @@ def _invalid_response_feedback(error: str) -> str:
         f"Validator result: {error[:600]}"
     )
 
-
-def _structured_edit_feedback(error: str) -> str:
+def _structured_edit_feedback(error: str, attempted_files: list[str] | None = None) -> str:
+    files_msg = ""
+    if attempted_files:
+        files_msg = f"Your previous patch modified: {attempted_files}. You MUST keep all of these files in your replacement response.\n"
     return (
-        "The previous structured edit could not be applied. Return a new JSON `edits` list whose `old_text` "
-        "occurs exactly once in the supplied source.\n"
+        f"{files_msg}"
+        "The previous structured edit could not be applied. Return a complete JSON `edits` list containing all required files "
+        "whose `old_text` occurs exactly once in the supplied source.\n"
         f"Validation result: {error[:600]}"
     )
     
@@ -779,6 +784,15 @@ def patch_generation(state: GraphState) -> dict:
                 generation_error=f"patch_generation: repair attempt failed after invalid diff response: {payload}", 
                 selected_vulnerabilities=selected_vulnerabilities)
 
+    raw_payload = payload
+    attempted_files = []
+    if isinstance(raw_payload, dict):
+        attempted_files = [
+            edit["path"]
+            for edit in raw_payload.get("edits", [])
+            if isinstance(edit, dict) and "path" in edit
+        ]
+    print("attempted files:", attempted_files)
     payload = _normalize_patch_payload(source_path, payload)
     if isinstance(payload, str):
         logger.warning("patch_generation - structured edit failed source validation: %s", payload)
@@ -787,7 +801,7 @@ def patch_generation(state: GraphState) -> dict:
             state,
             selected_vulnerabilities,
             context_files,
-            _structured_edit_feedback(payload),
+            _structured_edit_feedback(payload, attempted_files),
         )
         if isinstance(repaired_payload, str):
             return patch_attempt(

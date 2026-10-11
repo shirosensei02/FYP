@@ -46,6 +46,9 @@ Patch requirements:
 9. Do not return placeholder text or an incomplete edit.
 10. Use only exact source lines shown in the repository context. If a source section is omitted, do
     not modify it.
+11. Multi-Platform & Multi-File Consistency:
+If the package contains multiple platform-specific files or multiple functions handling the same vulnerable parameter, you MUST generate edits for ALL affected files. 
+Never patch only one platform if other platforms have the same vulnerable sink.
 
 Response contract:
 Return valid JSON only, with exactly this field:
