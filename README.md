@@ -129,15 +129,14 @@ For live patch generation, the pipeline supports OpenRouter through the OpenAI-c
 
 ```bash
 OPENROUTER_API_KEY=your_openrouter_api_key_here \
-python run_live_pipeline.py \
+python test_local_pipeline.py \
   --package-name semver \
   --package-version 7.5.1 \
   --model-provider openrouter \
   --model-name anthropic/claude-sonnet-5
 ```
 
-`run_live_pipeline.py` executes the complete LangGraph flow, including Docker
-validation. Every terminal outcome is stored in `fyp_patches.all_attempts`;
+Every terminal outcome is stored in `fyp_patches.all_attempts`;
 patches that pass Docker build and package validation are additionally stored
 in `fyp_patches.successful_patches`.
 
