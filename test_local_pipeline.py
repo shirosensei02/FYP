@@ -76,6 +76,31 @@ def _mock_vulnerability(package_name: str, package_version: str) -> dict[str, An
         "aliases": [],
     }
 
+
+def _vulnerability_identifiers(vulnerability: dict[str, Any]) -> list[str]:
+    return [
+        str(identifier)
+        for identifier in [vulnerability.get("id"), *(vulnerability.get("aliases") or [])]
+        if identifier
+    ]
+
+
+def _find_vulnerability(
+    vulnerabilities: list[dict[str, Any]], requested_id: str
+) -> dict[str, Any] | None:
+    requested = requested_id.strip().casefold()
+    return next(
+        (
+            vulnerability
+            for vulnerability in vulnerabilities
+            if requested in {
+                identifier.casefold()
+                for identifier in _vulnerability_identifiers(vulnerability)
+            }
+        ),
+        None,
+    )
+
 # ---------------------------------------------------------------------------
 # Main runner
 # ---------------------------------------------------------------------------
@@ -139,6 +164,28 @@ def run_pipeline(args: argparse.Namespace) -> None:
         if state.get("errors"):
             print(f"  [warnings] {state['errors']}")
             state["errors"] = []
+
+    vulns = state.get("current_vulnerabilities", [])
+    if args.list_vulnerabilities:
+        _sep("DISCOVERED TARGET VULNERABILITIES")
+        for index, vulnerability in enumerate(vulns, start=1):
+            aliases = ", ".join(vulnerability.get("aliases") or []) or "none"
+            print(f"  [{index}] {vulnerability.get('id')}")
+            print(f"      aliases       : {aliases}")
+            print(f"      severity      : {vulnerability.get('severity')}")
+            print(f"      fixed version : {vulnerability.get('fixed_version') or 'unknown'}")
+            print(f"      description   : {vulnerability.get('description') or 'none'}")
+        return
+
+    if args.vulnerability_id:
+        selected = _find_vulnerability(vulns, args.vulnerability_id)
+        if selected is None:
+            available = sorted({identifier for vuln in vulns for identifier in _vulnerability_identifiers(vuln)})
+            print(f"ERROR: requested vulnerability was not detected: {args.vulnerability_id}")
+            print(f"  Available IDs and aliases: {', '.join(available) or 'none'}")
+            sys.exit(1)
+        state["current_vulnerabilities"] = [selected]
+        print(f"  Selected vulnerability: {selected.get('id')} (requested: {args.vulnerability_id})")
 
     # Official patch lookup (answer key). Not fed into generation.
     _sep("NODE 2b - OG PATCH RESOLUTION")
@@ -276,6 +323,10 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--model-name", default=os.getenv("MODEL_NAME"),
                    help="Falls https://github.com/shirosensei02/FYP/pull/2/conflict?name=test_local_pipeline.py&ancestor_oid=63064658e8e6b77ba2e65a71046f5b725fbcaa52&base_oid=9bee0576733745a9e13d7689856f572f058a8737&head_oid=cdd5fa5747b1ab622df63006e76644a4c190b233back to MODEL_NAME in .env")
     p.add_argument("--patch-scope", default=os.getenv("PATCH_SCOPE", "single"), choices=["single", "all"])
+    p.add_argument("--vulnerability-id", default=os.getenv("VULNERABILITY_ID"),
+                   help="Patch one detected vulnerability by its primary ID or alias")
+    p.add_argument("--list-vulnerabilities", action="store_true", default=_env_bool("LIST_VULNERABILITIES"),
+                   help="List detected target-package vulnerabilities and exit before patch generation")
     p.add_argument("--max-retries", type=int, default=int(os.getenv("MAX_RETRIES", "0")))
     p.add_argument("--source-dir", default=os.getenv("SOURCE_DIR"),
                    help="Pre-extracted package source dir (skips npm pack + extract)")
