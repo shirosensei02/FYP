@@ -37,6 +37,7 @@ DEFAULT_MODELS = {
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "baseline.txt"
 MAX_CONTEXT_FILES = 16
+MAX_RELEVANT_CONTEXT_FILES = 6
 MAX_CONTEXT_CHARS_PER_FILE = 12_000
 MAX_SOURCE_CONTEXT_CHARS = 32_000
 MAX_DEPENDENCY_CONTEXT_FILES = 8
@@ -45,6 +46,11 @@ OPENROUTER_MAX_TOKENS = 40_000
 ANCHOR_CONTEXT_BEFORE_CHARS = 1_000
 ANCHOR_CONTEXT_AFTER_CHARS = 5_000
 SOURCE_SUFFIXES = (".js", ".cjs", ".mjs", ".ts")
+FOCUS_STOPWORDS = {
+    "allow", "allows", "directory", "file", "files", "outside",
+    "output", "package", "path", "security", "the", "traversal", "version",
+    "vulnerability", "vulnerable", "write", "writing",
+}
 LOCAL_IMPORT_PATTERN = re.compile(
     r"(?:require\(\s*|from\s+|import\s*)[\"'](\.[^\"']+)[\"']"
 )
@@ -102,14 +108,72 @@ def _focus_terms(vulnerabilities: list[Vulnerability]) -> set[str]:
     """Extract identifier-like terms from scanner findings for source excerpting."""
     terms: set[str] = set()
     for vulnerability in vulnerabilities:
+        stopwords = set(FOCUS_STOPWORDS)
+        stopwords.update(
+            term.lower()
+            for term in re.findall(r"[A-Za-z_$][A-Za-z0-9_$]{2,}", str(vulnerability.get("package", "")))
+        )
         text = " ".join(
             str(vulnerability.get(key, ""))
             for key in ("id", "description", "title", "details")
         )
+        lowered_text = text.lower()
+        for phrase, identifier in {
+            "output directory": "outdir",
+            "writing files": "writefile",
+        }.items():
+            if phrase in lowered_text:
+                terms.add(identifier)
         for term in re.findall(r"[A-Za-z_$][A-Za-z0-9_$-]{2,}", text):
-            if term.lower() not in {"cve", "ghsa", "vulnerability", "package", "version"}:
-                terms.add(term.lower())
+            normalized = term.lower()
+            if normalized.startswith(("cve-", "ghsa-")):
+                continue
+            if normalized not in {"cve", "ghsa", *stopwords}:
+                terms.add(normalized)
+            if "-" in term:
+                continue
+            for component in re.findall(r"[A-Z]+(?=[A-Z]|$)|[A-Z]?[a-z]+", term):
+                normalized_component = component.lower()
+                if len(normalized_component) >= 3 and normalized_component not in stopwords:
+                    terms.add(normalized_component)
     return terms
+
+
+def _rank_relevant_source_files(source_dir: Path, focus_terms: set[str]) -> list[Path]:
+    """Rank runtime files by deterministic package-wide advisory-term matches."""
+    if not focus_terms:
+        return []
+
+    terms = sorted(focus_terms, key=lambda term: (-len(term), term))
+    ranked: list[tuple[int, str, Path]] = []
+    for path in sorted(source_dir.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in SOURCE_SUFFIXES:
+            continue
+        if path.name.endswith(".d.ts"):
+            continue
+        relative = path.relative_to(source_dir).as_posix()
+        lowered_path = relative.lower()
+        try:
+            contents = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        lowered_contents = contents.lower()
+        score = 0
+        for term in terms:
+            occurrences = lowered_contents.count(term)
+            if term in lowered_path:
+                score += 100 + len(term)
+            if occurrences:
+                score += min(occurrences, 10) * (10 + len(term))
+            declaration = re.search(
+                rf"\b(?:function|class|const|let|var)\s+{re.escape(term)}\b",
+                lowered_contents,
+            )
+            if declaration:
+                score += 500
+        if score:
+            ranked.append((-score, relative, path))
+    return [path for _, _, path in sorted(ranked)]
 
 
 def _source_excerpt(contents: str, focus_terms: set[str]) -> str:
@@ -143,7 +207,7 @@ def _source_excerpt(contents: str, focus_terms: set[str]) -> str:
         used += extra_chars
 
     anchored_terms: set[str] = set()
-    for term in sorted(focus_terms, key=len, reverse=True)[:12]:
+    for term in sorted(focus_terms, key=lambda term: (-len(term), term))[:12]:
         declaration = re.compile(
             rf"(?<![A-Za-z0-9_$])(?:async\s+)?(?:function|class)\s+{re.escape(term)}(?![A-Za-z0-9_$])",
             re.IGNORECASE,
@@ -159,7 +223,7 @@ def _source_excerpt(contents: str, focus_terms: set[str]) -> str:
     # Retain the first literal use only for terms that did not identify a
     # function/class declaration. Anchored windows above already contain the
     # meaningful implementation and are much safer diff context.
-    for term in sorted(focus_terms - anchored_terms, key=len, reverse=True)[:12]:
+    for term in sorted(focus_terms - anchored_terms, key=lambda term: (-len(term), term))[:12]:
         match = re.search(re.escape(term), contents, re.IGNORECASE)
         if match:
             add_range(max(0, match.start() - 1_500), min(len(contents), match.end() + 2_500))
@@ -210,6 +274,11 @@ def _read_context_files(
         return None
 
     add_context_file(manifest_path)
+
+    for candidate_path in _rank_relevant_source_files(source_dir, focus_terms or set())[
+        :MAX_RELEVANT_CONTEXT_FILES
+    ]:
+        add_context_file(candidate_path, queue_for_imports=True)
 
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

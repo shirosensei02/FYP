@@ -262,6 +262,41 @@ def test_context_follows_entrypoint_local_imports(tmp_path):
     assert {"index.js", "lib/entry.js", "internal/fix.js"} <= context_paths
 
 
+def test_context_prioritizes_package_wide_advisory_symbol_matches(tmp_path):
+    source_dir = tmp_path / "package"
+    source_dir.mkdir()
+    manifest_path = source_dir / "package.json"
+    manifest_path.write_text('{"name":"demo-package","main":"index.js"}', encoding="utf-8")
+    (source_dir / "index.js").write_text("module.exports = 42\n", encoding="utf-8")
+    adapters_dir = source_dir / "dist" / "adapter"
+    adapters_dir.mkdir(parents=True)
+    for index in range(20):
+        (adapters_dir / f"adapter-{index:02}.js").write_text("export const adapter = true\n", encoding="utf-8")
+    ssg_dir = source_dir / "dist" / "helper" / "ssg"
+    ssg_dir.mkdir(parents=True)
+    (ssg_dir / "ssg.js").write_text(
+        'import { joinPaths } from "./utils.js"\n'
+        "const generateFilePath = (routePath, outDir) => joinPaths(outDir, routePath)\n"
+        "const toSSG = async () => generateFilePath('../escape', 'public')\n",
+        encoding="utf-8",
+    )
+    (ssg_dir / "utils.js").write_text(
+        "export const joinPaths = (...paths) => paths.join('/')\n",
+        encoding="utf-8",
+    )
+
+    terms = patch_generation._focus_terms(
+        [{"id": "GHSA-test", "description": "Path traversal in toSSG allows writing files outside the output directory"}]
+    )
+    first = patch_generation._read_context_files(source_dir, manifest_path, terms)
+    second = patch_generation._read_context_files(source_dir, manifest_path, terms)
+    context_paths = [item["path"] for item in first]
+
+    assert "dist/helper/ssg/ssg.js" in context_paths
+    assert "dist/helper/ssg/utils.js" in context_paths
+    assert first == second
+
+
 def test_patch_generation_gemini_provider_uses_configured_model(monkeypatch, tmp_path):
     source_dir = tmp_path / "package"
     source_dir.mkdir()
