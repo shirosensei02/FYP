@@ -381,6 +381,10 @@ DOCKERFILE_TEMPLATE = textwrap.dedent(
     # 1. Create a non-root working directory
     WORKDIR /app
 
+    # git is needed for dependencies declared as GitHub/git URLs. Installed
+    # before COPY so the layer is cached across packages.
+    RUN apk add --no-cache git || true
+
     # 2. Copy the (already patched) package source into the image
     COPY . .
 

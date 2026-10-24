@@ -500,6 +500,9 @@ def _materialize_structured_edits(source_dir: Path, payload: dict[str, Any]) -> 
             return f"edit for {target.relative_to(source_dir).as_posix()!r} makes no change"
         relative_path = target.relative_to(source_dir).as_posix()
         target_files.append(relative_path)
+        # Without a per-file header, `git apply --recount` folds the next
+        # file's `--- a/...` line into the previous hunk as a deletion.
+        diffs.append(f"diff --git a/{relative_path} b/{relative_path}\n")
         diffs.extend(difflib.unified_diff(
             original.splitlines(keepends=True),
             updated.splitlines(keepends=True),
