@@ -36,13 +36,13 @@ DEFAULT_MODELS = {
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "baseline.txt"
-MAX_CONTEXT_FILES = 16
+MAX_CONTEXT_FILES = 32
 MAX_RELEVANT_CONTEXT_FILES = 6
-MAX_CONTEXT_CHARS_PER_FILE = 12_000
-MAX_SOURCE_CONTEXT_CHARS = 32_000
-MAX_DEPENDENCY_CONTEXT_FILES = 8
-MAX_OPENROUTER_CONTEXT_CHARS = 36_000
-OPENROUTER_MAX_TOKENS = 40_000
+MAX_CONTEXT_CHARS_PER_FILE = 16_000
+MAX_SOURCE_CONTEXT_CHARS = 64_000
+MAX_DEPENDENCY_CONTEXT_FILES = 16
+MAX_OPENROUTER_CONTEXT_CHARS = 64_000
+OPENROUTER_MAX_TOKENS = 64_000
 ANCHOR_CONTEXT_BEFORE_CHARS = 1_000
 ANCHOR_CONTEXT_AFTER_CHARS = 5_000
 SOURCE_SUFFIXES = (".js", ".cjs", ".mjs", ".ts")
@@ -273,7 +273,8 @@ def _read_context_files(
                 return candidate
         return None
 
-    add_context_file(manifest_path)
+    # Note: manifest_path is intentionally NOT added as a context file.
+    # still parsed below for entrypoint discovery (main/module/browser).
 
     for candidate_path in _rank_relevant_source_files(source_dir, focus_terms or set())[
         :MAX_RELEVANT_CONTEXT_FILES
@@ -832,6 +833,9 @@ def patch_generation(state: GraphState) -> dict:
         manifest_path,
         _focus_terms(selected_vulnerabilities),
     )
+    context_file_paths = [f["path"] for f in context_files]
+    # Persist file paths fed to the model so downstream nodes can store them.
+    state["context_file_paths"] = context_file_paths
 
     payload = _generate_patch_payload(provider, state, selected_vulnerabilities, context_files)
 

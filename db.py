@@ -173,6 +173,7 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "errors":          state.get("errors") or [],
         "generation_status": state.get("generation_status"),
         "generation_error": state.get("generation_error"),
+        "context_file_paths": state.get("context_file_paths") or [],
         "patch_score":      state.get("patch_score"),
         "maintainer_eval" : state.get("maintainer_eval")
     }

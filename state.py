@@ -121,6 +121,7 @@ class GraphState(TypedDict, total=False):
     answer_key: AnswerKey
 
     # 3) patch generation
+    context_file_paths: list[str]
     patch_attempts: list[PatchAttempt]
     current_patch: PatchAttempt | None
     run_attempt_id: str
