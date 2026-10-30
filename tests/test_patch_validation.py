@@ -37,6 +37,90 @@ def test_patch_validation_pass_persists_attempt_and_result(monkeypatch):
     assert calls["result"] == [{"passed": True, "all_attempts_id": "fake_attempt_id"}]
 
 
+def test_no_regression_is_the_only_comparison_success(monkeypatch):
+    calls = _stub_persistence(monkeypatch)
+
+    result = patch_validation(
+        {
+            "regression_status": "NO_REGRESSION",
+            "validation": {"build_succeeded": True, "tests_passed": True},
+        }
+    )
+
+    assert result["classification"] == "pass"
+    assert result["classification_reason"] == (
+        "Baseline and patched package validation passed; no regression was detected."
+    )
+    assert calls["result"] == [{"passed": True, "all_attempts_id": "fake_attempt_id"}]
+
+
+def test_published_package_no_regression_explains_compatibility_scope(monkeypatch):
+    _stub_persistence(monkeypatch)
+
+    result = patch_validation(
+        {
+            "regression_status": "NO_REGRESSION",
+            "validation": {
+                "validation_mode": "published_package",
+                "build_status": "SKIPPED",
+                "test_status": "SKIPPED",
+                "consumer_smoke_status": "PASS",
+            },
+        }
+    )
+
+    assert result["classification"] == "pass"
+    assert "no compatibility regression" in result["classification_reason"]
+    assert "does not independently confirm" in result["classification_reason"]
+
+
+def test_regression_fails_even_when_patched_flags_are_true(monkeypatch):
+    calls = _stub_persistence(monkeypatch)
+
+    result = patch_validation(
+        {
+            "regression_status": "REGRESSION",
+            "validation": {"build_succeeded": True, "tests_passed": True},
+        }
+    )
+
+    assert result["classification"] == "fail"
+    assert result["classification_reason"] == (
+        "The baseline passed, but the patched package failed validation."
+    )
+    assert calls["result"] == []
+
+
+def test_inconclusive_baseline_is_not_saved_as_success(monkeypatch):
+    calls = _stub_persistence(monkeypatch)
+
+    result = patch_validation(
+        {
+            "regression_status": "INCONCLUSIVE",
+            "validation": {"build_succeeded": False, "tests_passed": False},
+        }
+    )
+
+    assert result["classification"] == "fail"
+    assert "could not be determined" in result["classification_reason"]
+    assert calls["result"] == []
+
+
+def test_patched_only_pass_remains_inconclusive(monkeypatch):
+    calls = _stub_persistence(monkeypatch)
+
+    result = patch_validation(
+        {
+            "regression_status": "PATCHED_ONLY_PASS",
+            "validation": {"build_succeeded": True, "tests_passed": True},
+        }
+    )
+
+    assert result["classification"] == "fail"
+    assert "failed baseline" in result["classification_reason"]
+    assert calls["result"] == []
+
+
 def test_patch_validation_fail_on_build_skips_result_save(monkeypatch):
     calls = _stub_persistence(monkeypatch)
 

@@ -5,8 +5,8 @@ LangGraph node: validates source-code patch outcomes and persists them to MongoD
 
 Decision logic
 --------------
-  PASS  ─ build succeeded  AND  tests passed
-  FAIL  ─ anything else
+  PASS  - baseline and patched validation both pass (NO_REGRESSION)
+  FAIL  - regression, inconclusive baseline, or incomplete validation
 
 Every terminal outcome is written to ``all_attempts``. Passing results are also
 written to ``successful_patches`` via db.save_patch_result().
@@ -35,14 +35,21 @@ def patch_validation(state: GraphState) -> dict:
     version    = state.get("package_version", "?")
     model      = (state.get("current_patch") or {}).get("model_used") or state.get("generation_model_used", "?")
 
-    build_ok   = bool(validation.get("build_succeeded"))
-    tests_ok   = bool(validation.get("tests_passed"))
-    passed     = build_ok and tests_ok
+    build_ok = bool(validation.get("build_succeeded"))
+    tests_ok = bool(validation.get("tests_passed"))
+    consumer_smoke_ok = validation.get("consumer_smoke_status") == "PASS"
+    regression_status = state.get("regression_status")
+    passed = (
+        regression_status == "NO_REGRESSION"
+        if regression_status
+        else build_ok and tests_ok
+    )
 
     logger.info(
-        "patch_validation - %s@%s [%s]: build=%s tests=%s → %s",
+        "patch_validation - %s@%s [%s]: regression=%s build=%s tests=%s consumer_smoke=%s -> %s",
         package, version, model,
-        build_ok, tests_ok,
+        regression_status or "legacy",
+        build_ok, tests_ok, consumer_smoke_ok,
         "PASS" if passed else "FAIL",
     )
 
@@ -64,6 +71,20 @@ def patch_validation(state: GraphState) -> dict:
     # ── Build human-readable reason ───────────────────────────────────────────
     if state.get("generation_status") == "failed":
         reason = state.get("generation_error") or "Patch generation failed before sandbox validation."
+    elif regression_status == "NO_REGRESSION":
+        if validation.get("validation_mode") == "published_package":
+            reason = (
+                "Baseline and patched consumer validation passed; no compatibility regression "
+                "was detected. This does not independently confirm that the vulnerability was fixed."
+            )
+        else:
+            reason = "Baseline and patched package validation passed; no regression was detected."
+    elif regression_status == "REGRESSION":
+        reason = "The baseline passed, but the patched package failed validation."
+    elif regression_status == "INCONCLUSIVE":
+        reason = "The baseline package failed validation, so patch regression could not be determined."
+    elif regression_status == "PATCHED_ONLY_PASS":
+        reason = "Only the patched package passed; the failed baseline makes the comparison inconclusive."
     elif passed:
         reason = "Docker build succeeded and package validation passed."
     elif not build_ok:

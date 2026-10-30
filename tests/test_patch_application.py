@@ -23,12 +23,21 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pytest
+
 # ── Make sure the project root is on the path ──────────────────────────────
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from patch_application import patch_application
-from patch_application import _seed_workspace_from_source
+import patch_application as patch_application_module
+from patch_application import (
+    DOCKERFILE_TEMPLATE,
+    _classify_regression,
+    _select_validation_commands,
+    _seed_workspace_from_source,
+    _validate_workspace,
+    patch_application,
+)
 from patch_validation import patch_validation
 from state import GraphState, PatchAttempt
 
@@ -47,6 +56,127 @@ def test_seed_workspace_from_source_preserves_package_files(tmp_path):
     assert (work_dir / "package.json").exists()
     assert (work_dir / "template.js").read_text(encoding="utf-8") == "module.exports = 'original';\n"
     assert not (work_dir / "node_modules").exists()
+
+
+def _validation(success: bool):
+    return {
+        "validation_mode": "published_package",
+        "docker_status": "PASS" if success else "FAIL",
+        "installation_status": "PASS" if success else "FAIL",
+        "consumer_smoke_status": "PASS" if success else "FAIL",
+        "docker_image_built": success,
+        "install_succeeded": success,
+        "build_succeeded": None,
+        "tests_passed": None,
+    }
+
+
+@pytest.mark.parametrize(
+    ("baseline_ok", "patched_ok", "expected"),
+    [
+        (True, True, "NO_REGRESSION"),
+        (True, False, "REGRESSION"),
+        (False, False, "INCONCLUSIVE"),
+        (False, True, "PATCHED_ONLY_PASS"),
+    ],
+)
+def test_classify_regression_matrix(baseline_ok, patched_ok, expected):
+    assert _classify_regression(
+        _validation(baseline_ok),
+        _validation(patched_ok),
+    ) == expected
+
+
+def test_select_validation_commands_uses_public_package_import(tmp_path):
+    (tmp_path / "package.json").write_text(
+        json.dumps({"name": "demo", "scripts": {"build": "tsc", "test": "vitest --run"}}),
+        encoding="utf-8",
+    )
+
+    build_command, test_command = _select_validation_commands(tmp_path)
+
+    assert build_command is None
+    assert test_command[:3] == ["node", "--input-type=module", "-e"]
+    assert test_command[-1] == "demo"
+    assert "await import(name)" in test_command[3]
+
+
+def test_select_validation_commands_falls_back_to_smoke_test(tmp_path):
+    (tmp_path / "package.json").write_text('{"main":"index.js"}', encoding="utf-8")
+
+    build_command, test_command = _select_validation_commands(tmp_path)
+
+    assert build_command is None
+    assert test_command[-1] == "."
+
+
+def test_dockerfile_installs_repacked_artifact_as_consumer():
+    assert "tar --exclude=./Dockerfile" in DOCKERFILE_TEMPLATE
+    assert "-czf /tmp/package-artifact/package.tgz" in DOCKERFILE_TEMPLATE
+    assert "npm pack" not in DOCKERFILE_TEMPLATE
+    assert "npm install --prefer-offline --omit=dev" in DOCKERFILE_TEMPLATE
+    assert "WORKDIR /consumer" in DOCKERFILE_TEMPLATE
+    assert "npm run build" not in DOCKERFILE_TEMPLATE
+    assert "npm test" not in DOCKERFILE_TEMPLATE
+
+
+def test_validate_workspace_stops_after_install_failure(monkeypatch, tmp_path):
+    build_results = iter([(True, "source ok"), (False, "install failed")])
+    monkeypatch.setattr(patch_application_module, "_write_dockerfile", lambda path: path)
+    monkeypatch.setattr(
+        patch_application_module,
+        "_build_image",
+        lambda *args: next(build_results),
+    )
+    monkeypatch.setattr(patch_application_module, "_teardown", lambda *args: None)
+    monkeypatch.setattr(
+        patch_application_module,
+        "_run_consumer_smoke",
+        lambda *args: pytest.fail("consumer smoke must not run after install failure"),
+    )
+
+    result = _validate_workspace(tmp_path, "image:test", "container-test")
+
+    assert result["docker_image_built"] is True
+    assert result["install_succeeded"] is False
+    assert result["build_status"] == "SKIPPED"
+    assert result["test_status"] == "SKIPPED"
+    assert result["consumer_smoke_status"] == "SKIPPED"
+    assert result["build_succeeded"] is None
+    assert result["tests_passed"] is None
+
+
+def test_patch_application_compares_baseline_and_patched(monkeypatch, tmp_path):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "package.json").write_text('{"name":"demo"}', encoding="utf-8")
+    validations = iter([_validation(True), _validation(False)])
+    monkeypatch.setattr(patch_application_module, "PATCH_WORKSPACE_ROOT", tmp_path / "runs")
+    monkeypatch.setattr(
+        patch_application_module,
+        "_validate_workspace",
+        lambda *args: next(validations),
+    )
+    monkeypatch.setattr(
+        patch_application_module,
+        "_write_patched_package",
+        lambda *args: True,
+    )
+
+    result = patch_application(
+        {
+            "package_name": "demo",
+            "package_version": "1.0.0",
+            "source_dir": str(source_dir),
+            "current_patch": {"diff": "patch", "attempt_number": 1},
+            "errors": [],
+        }
+    )
+
+    assert result["regression_status"] == "REGRESSION"
+    assert result["sandbox_apply_success"] is False
+    assert result["baseline_validation"] == _validation(True)
+    assert result["patched_validation"] == _validation(False)
 
 # ===========================================================================
 # Choose which test scenario to run
@@ -197,8 +327,9 @@ def main() -> None:
 
     val = result.get("validation", {})
     if val:
-        print(f"\n  validation.build_succeeded        : {val.get('build_succeeded')}")
-        print(f"  validation.tests_passed           : {val.get('tests_passed')}")
+        print(f"\n  validation.build_status           : {val.get('build_status')}")
+        print(f"  validation.test_status            : {val.get('test_status')}")
+        print(f"  validation.consumer_smoke_status  : {val.get('consumer_smoke_status')}")
         print(f"  validation.revalidation_scan_clean: {val.get('revalidation_scan_clean')}")
         log_snippet = (val.get("logs") or "")[:800]
         print(f"\n  validation.logs (first 800 chars):\n{log_snippet}")

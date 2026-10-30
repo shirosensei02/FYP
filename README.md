@@ -136,9 +136,20 @@ python test_local_pipeline.py \
   --model-name anthropic/claude-sonnet-5
 ```
 
-Every terminal outcome is stored in `fyp_patches.all_attempts`;
-patches that pass Docker build and package validation are additionally stored
-in `fyp_patches.successful_patches`.
+Every generated patch is compared with an untouched baseline under identical
+Docker conditions. Each workspace is repacked as an npm tarball, installed in
+a clean consumer project, and imported through its public package entry point.
+Repository-native build and test scripts are recorded as `SKIPPED` because
+published npm artifacts do not reliably contain their source assets or
+project-specific tooling. Every terminal outcome is stored in
+`fyp_patches.all_attempts`; only `NO_REGRESSION` outcomes are additionally
+stored in `fyp_patches.successful_patches`. This validates compatibility, not
+whether the vulnerability itself was fixed.
+
+The Docker validator defaults to `node:22-bookworm-slim`, 2 GB memory, two CPUs
+and ten-minute command/build timeouts. These can be changed with
+`PATCH_SANDBOX_BASE_IMAGE`, `PATCH_SANDBOX_MEMORY`, `PATCH_SANDBOX_CPUS`,
+`PATCH_SANDBOX_TIMEOUT_SECONDS`, and `PATCH_DOCKER_BUILD_TIMEOUT` in `.env`.
 
 ### Generator and evaluator models
 

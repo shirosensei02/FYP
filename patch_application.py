@@ -5,14 +5,13 @@ LangGraph node: **Step 4 - Patch Application (Docker Sandbox)**
 
 Responsibilities
 ----------------
-1. Materialise the patched npm package on-disk from the patch produced in
-   step 3 (patch_generation).
-2. Build an isolated Docker image that contains *only* the patched package.
-3. Run ``npm install`` inside the container and capture logs.
-4. Run ``npm test``  inside the container and capture logs.
-5. Tear down the container (always) and report success/failure back through
-   GraphState so that patch_validation and outcome_classification can act on
-   the results.
+1. Validate the untouched vulnerable package in Docker as the baseline.
+2. Materialise the generated patch in a separate workspace.
+3. Repack each workspace and install it into a clean consumer project.
+4. Run the same public-entry-point smoke test against both packages.
+5. Classify the comparison as no regression, regression, inconclusive, or a
+   patched-only pass.
+6. Tear down Docker resources and retain patched source for re-scanning.
 
 The node intentionally prints a rich step-by-step trace to stdout so that a
 human watching the orchestrator can follow exactly what is happening inside the
@@ -31,9 +30,11 @@ GraphState keys consumed
 GraphState keys produced
 ------------------------
 - ``sandbox_id``           : str | None   - Docker container ID
-- ``sandbox_apply_success``: bool | None  - True only if install + test pass
-- ``validation``           : ValidationResult - pre-populated with raw logs so
-                              patch_validation can refine them
+- ``sandbox_apply_success``: bool | None  - True only for NO_REGRESSION
+- ``baseline_validation``  : ValidationResult - untouched package result
+- ``patched_validation``   : ValidationResult - generated patch result
+- ``validation``           : ValidationResult - alias for patched_validation
+- ``regression_status``    : str - baseline-versus-patched classification
 - ``errors``               : list[str]    - appended with any runtime errors
 """
 
@@ -43,6 +44,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -68,9 +70,11 @@ logging.basicConfig(
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-BASE_IMAGE = "node:20-alpine"          # lightweight, reproducible Node image
-SANDBOX_TIMEOUT_SECONDS = 120          # max time the container may run
-DOCKER_BUILD_TIMEOUT = 180             # docker build can be slow on first pull
+BASE_IMAGE = os.getenv("PATCH_SANDBOX_BASE_IMAGE", "node:22-bookworm-slim")
+SANDBOX_TIMEOUT_SECONDS = int(os.getenv("PATCH_SANDBOX_TIMEOUT_SECONDS", "600"))
+DOCKER_BUILD_TIMEOUT = int(os.getenv("PATCH_DOCKER_BUILD_TIMEOUT", "600"))
+SANDBOX_MEMORY = os.getenv("PATCH_SANDBOX_MEMORY", "2g")
+SANDBOX_CPUS = os.getenv("PATCH_SANDBOX_CPUS", "2")
 PATCH_WORKSPACE_ROOT = Path(__file__).resolve().parent / ".workspace" / "patched"
 
 
@@ -374,26 +378,27 @@ def _write_patched_package(
 
 DOCKERFILE_TEMPLATE = textwrap.dedent(
     """\
-    # Docker sandbox for npm patch validation
-    # Base image: {base_image}
-    FROM {base_image}
+    FROM {base_image} AS source
+    WORKDIR /package
+    RUN if command -v apk >/dev/null 2>&1; then \
+          apk add --no-cache git; \
+        elif command -v apt-get >/dev/null 2>&1; then \
+          apt-get update && apt-get install -y --no-install-recommends git && \
+          rm -rf /var/lib/apt/lists/*; \
+        fi
+    COPY . /package
 
-    # 1. Create a non-root working directory
-    WORKDIR /app
-
-    # git is needed for dependencies declared as GitHub/git URLs. Installed
-    # before COPY so the layer is cached across packages.
-    RUN apk add --no-cache git || true
-
-    # 2. Copy the (already patched) package source into the image
-    COPY . .
-
-    # 3. Install dependencies (ci is stricter than install; falls back if no
-    #    package-lock.json is present)
-    RUN npm install --prefer-offline --no-audit 2>&1 || true
-
-    # 4. Default command: run the package's own test suite
-    CMD ["npm", "test"]
+    FROM source AS installed
+    RUN mkdir -p /tmp/package-artifact && \
+        tar --exclude=./Dockerfile \
+            --exclude=./patch_input.diff \
+            --transform='s,^\\./,package/,' \
+            -czf /tmp/package-artifact/package.tgz .
+    RUN mkdir -p /consumer && \
+        cd /consumer && \
+        npm init -y && \
+        npm install --prefer-offline --omit=dev --no-audit /tmp/package-artifact/*.tgz
+    WORKDIR /consumer
     """
 )
 
@@ -415,13 +420,11 @@ def _write_dockerfile(work_dir: Path) -> Path:
 # Step C - Build Docker image
 # ---------------------------------------------------------------------------
 
-def _build_image(work_dir: Path, image_tag: str) -> tuple[bool, str]:
-    """
-    Run ``docker build`` and return (success, combined_log).
-    """
-    _step(f"C . Building Docker image  ->  {image_tag}")
+def _build_image(work_dir: Path, image_tag: str, target: str) -> tuple[bool, str]:
+    """Build one Docker stage and return ``(success, combined_log)``."""
+    _step(f"Building Docker stage {target}  ->  {image_tag}")
 
-    cmd = ["docker", "build", "--tag", image_tag, "."]
+    cmd = ["docker", "build", "--target", target, "--tag", image_tag, "."]
     print(f"    $ {' '.join(cmd)}", flush=True)
 
     rc, out, err = _run(
@@ -433,76 +436,22 @@ def _build_image(work_dir: Path, image_tag: str) -> tuple[bool, str]:
 
     combined = out + err
     if rc == 0:
-        print(f"\n    OK  Image built successfully: {image_tag}", flush=True)
+        print(f"\n    OK  Docker stage {target} built successfully", flush=True)
     else:
-        print(f"\n    FAIL  docker build failed (exit {rc})", flush=True)
+        print(f"\n    FAIL  Docker stage {target} failed (exit {rc})", flush=True)
 
     return rc == 0, combined
 
 
-# ---------------------------------------------------------------------------
-# Step D - Run npm install inside container
-# ---------------------------------------------------------------------------
-
-def _run_npm_install(image_tag: str, container_name: str) -> tuple[bool, str]:
-    """
-    Run a *separate* ephemeral container just for ``npm install`` so we can
-    capture its output distinctly from the test run.
-
-    We use ``--rm`` so Docker cleans it up automatically.
-    """
-    _step("D . Running  npm install  inside Docker sandbox")
-
-    cmd = [
-        "docker", "run",
-        "--rm",
-        "--name", f"{container_name}-install",
-        "--network", "none",          # no outbound network for safety
-        "--memory", "512m",
-        "--cpus", "1",
-        image_tag,
-        "sh", "-c", "npm install --prefer-offline --no-audit 2>&1; echo EXIT_CODE:$?",
-    ]
-    print(f"    $ {' '.join(cmd)}", flush=True)
-
-    rc, out, err = _run(
-        cmd,
-        timeout=SANDBOX_TIMEOUT_SECONDS,
-        stream=True,
-    )
-
-    # Extract the embedded exit code we echoed
-    embedded = re.search(r"EXIT_CODE:(\d+)", out)
-    inner_rc = int(embedded.group(1)) if embedded else rc
-
-    success = inner_rc == 0
-    log = out + err
-    if success:
-        print("    OK  npm install completed successfully", flush=True)
-    else:
-        print(f"    FAIL  npm install failed (exit {inner_rc})", flush=True)
-
-    return success, log
-
-
-# ---------------------------------------------------------------------------
-# Step E - Run npm test inside container
-# ---------------------------------------------------------------------------
-
-def _run_npm_test(
+def _run_consumer_smoke(
     image_tag: str,
     container_name: str,
-    test_command: list[str],
+    smoke_command: list[str],
 ) -> tuple[bool, str, str]:
-    """
-    Spin up the sandbox container, run ``npm test``, capture its output,
-    and return (success, container_id, logs).
-
-    We use ``docker run`` in detached mode, wait for completion, then fetch
-    logs, so we always have the container ID for later inspection.
-    """
-    label = " ".join(test_command)
-    _step(f"E . Running  {label}  inside Docker sandbox")
+    """Import the installed package from a clean, network-isolated consumer."""
+    smoke_shell = shlex.join(smoke_command)
+    script = f"{smoke_shell}; smoke_rc=$?; echo __SMOKE_EXIT__:$smoke_rc; exit 0"
+    _step("Running published-package consumer smoke test")
 
     # Start detached
     start_cmd = [
@@ -510,10 +459,10 @@ def _run_npm_test(
         "--detach",
         "--name", container_name,
         "--network", "none",
-        "--memory", "512m",
-        "--cpus", "1",
+        "--memory", SANDBOX_MEMORY,
+        "--cpus", SANDBOX_CPUS,
         image_tag,
-        *test_command,
+        "sh", "-c", script,
     ]
     print(f"    $ {' '.join(start_cmd)}", flush=True)
 
@@ -558,30 +507,63 @@ def _run_npm_test(
     )
     full_logs = logs_out + logs_err
 
-    success = exit_code == 0
-    if success:
-        print(f"\n    OK  validation command passed (exit 0)", flush=True)
-    else:
-        print(f"\n    FAIL  validation command failed (exit {exit_code})", flush=True)
-
-    return success, container_id, full_logs
+    smoke_match = re.search(r"__SMOKE_EXIT__:(\d+)", full_logs)
+    smoke_ok = exit_code == 0 and bool(smoke_match) and smoke_match.group(1) == "0"
+    print(f"\n    Consumer smoke test: {'PASS' if smoke_ok else 'FAIL'}", flush=True)
+    return smoke_ok, container_id, full_logs
 
 
-def _select_test_command(work_dir: Path) -> list[str]:
-    """Use the package tests when published; otherwise perform a load smoke test."""
+def _select_validation_commands(work_dir: Path) -> tuple[list[str] | None, list[str]]:
+    """Return skipped native build and a public-package import smoke test."""
     try:
         package_json = json.loads((work_dir / "package.json").read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
-        return ["node", "-e", "require('./')"]
+        package_json = {}
 
-    scripts = package_json.get("scripts", {})
-    has_test_assets = any(
-        (work_dir / path).exists()
-        for path in ("test", "tests", ".eslintrc", ".eslintrc.json", ".eslintrc.js")
+    package_name = package_json.get("name")
+    if not isinstance(package_name, str) or not package_name.strip():
+        package_name = "."
+    smoke_script = (
+        "const name = process.argv[1]; "
+        "const loaded = await import(name); "
+        "if (loaded == null) throw new Error('Package import returned no module'); "
+        "console.log('Consumer import succeeded:', name);"
     )
-    if isinstance(scripts.get("test"), str) and has_test_assets:
-        return ["npm", "test"]
-    return ["node", "-e", "require('./')"]
+    return None, ["node", "--input-type=module", "-e", smoke_script, package_name]
+
+
+def _validation_succeeded(validation: ValidationResult | None) -> bool:
+    if not validation:
+        return False
+    if validation.get("validation_mode") == "published_package":
+        return all(
+            validation.get(field) == "PASS"
+            for field in ("docker_status", "installation_status", "consumer_smoke_status")
+        )
+    return all(
+        bool(validation.get(field))
+        for field in (
+            "docker_image_built",
+            "install_succeeded",
+            "build_succeeded",
+            "tests_passed",
+        )
+    )
+
+
+def _classify_regression(
+    baseline: ValidationResult | None,
+    patched: ValidationResult | None,
+) -> str:
+    baseline_ok = _validation_succeeded(baseline)
+    patched_ok = _validation_succeeded(patched)
+    if baseline_ok and patched_ok:
+        return "NO_REGRESSION"
+    if baseline_ok and not patched_ok:
+        return "REGRESSION"
+    if not baseline_ok and patched_ok:
+        return "PATCHED_ONLY_PASS"
+    return "INCONCLUSIVE"
 
 
 # ---------------------------------------------------------------------------
@@ -590,33 +572,80 @@ def _select_test_command(work_dir: Path) -> list[str]:
 
 def _teardown(
     container_id: str,
-    image_tag: str,
-    work_dir: Path,
-    *,
-    preserve_workspace: bool,
+    image_tags: list[str],
 ) -> None:
-    """Remove Docker resources and retain patched files for re-scanning."""
-    _step("F . Tearing down sandbox resources")
+    """Remove Docker resources created by one validation run."""
+    _step("Tearing down sandbox resources")
 
     if container_id:
         rc, _, _ = _run(["docker", "rm", "--force", container_id], timeout=20)
         if rc == 0:
             print(f"    OK  Container {container_id[:12]} removed", flush=True)
 
-    if image_tag:
-        rc, _, _ = _run(["docker", "rmi", "--force", image_tag], timeout=30)
-        if rc == 0:
-            print(f"    OK  Image {image_tag} removed", flush=True)
+    for image_tag in image_tags:
+        if image_tag:
+            rc, _, _ = _run(["docker", "rmi", "--force", image_tag], timeout=30)
+            if rc == 0:
+                print(f"    OK  Image {image_tag} removed", flush=True)
 
-    if preserve_workspace:
-        print(f"    OK  Patched workspace retained for re-scan: {work_dir}", flush=True)
-        return
+
+def _validate_workspace(
+    work_dir: Path,
+    image_tag: str,
+    container_name: str,
+) -> ValidationResult:
+    """Install and import one package exactly as a published-package consumer.
+
+    The workspace was extracted from an npm tarball, so it already contains
+    only published files. Re-archive those files directly instead of invoking
+    ``npm pack``, which can run repository-only lifecycle scripts such as
+    ``prepare`` even when their source tooling is absent.
+    """
+    source_tag = f"{image_tag}-source"
+    container_id = ""
+    logs: list[str] = []
+    image_ok = install_ok = smoke_ok = False
+    build_command, smoke_command = _select_validation_commands(work_dir)
+    smoke_status = "SKIPPED"
 
     try:
-        shutil.rmtree(work_dir, ignore_errors=True)
-        print(f"    OK  Temp directory {work_dir} deleted", flush=True)
-    except Exception as exc:
-        logger.warning("Could not delete temp dir %s: %s", work_dir, exc)
+        _write_dockerfile(work_dir)
+        image_ok, source_log = _build_image(work_dir, source_tag, "source")
+        logs.append("=== docker source stage ===\n" + source_log)
+        if image_ok:
+            install_ok, install_log = _build_image(work_dir, image_tag, "installed")
+            logs.append("=== dependency installation ===\n" + install_log)
+        if install_ok:
+            smoke_ok, container_id, command_log = _run_consumer_smoke(
+                image_tag,
+                container_name,
+                smoke_command,
+            )
+            smoke_status = "PASS" if smoke_ok else "FAIL"
+            logs.append("=== consumer smoke validation ===\n" + command_log)
+    finally:
+        _teardown(container_id, [image_tag, source_tag])
+
+    return ValidationResult(
+        validation_mode="published_package",
+        docker_status="PASS" if image_ok else "FAIL",
+        installation_status=("PASS" if install_ok else "FAIL") if image_ok else "SKIPPED",
+        build_status="SKIPPED",
+        build_reason="Published npm package is validated as a consumer artifact, not a source repository.",
+        test_status="SKIPPED",
+        test_reason="Repository test assets and project-specific tooling are not guaranteed in npm artifacts.",
+        consumer_smoke_status=smoke_status,
+        consumer_smoke_succeeded=smoke_ok,
+        consumer_smoke_command=smoke_command,
+        docker_image_built=image_ok,
+        install_succeeded=install_ok,
+        build_succeeded=None,
+        tests_passed=None,
+        build_command=build_command,
+        test_command=smoke_command,
+        revalidation_scan_clean=False,
+        logs="\n".join(logs),
+    )
 
 
 # ===========================================================================
@@ -624,23 +653,10 @@ def _teardown(
 # ===========================================================================
 
 def patch_application(state: GraphState) -> dict:
-    """
-    LangGraph node - **Step 4: Patch Application (Docker Sandbox)**
-
-    Parameters
-    ----------
-    state : GraphState
-        The shared pipeline state produced by earlier nodes.
-
-    Returns
-    -------
-    dict
-        Partial GraphState update merged by LangGraph.
-    """
+    """Validate the original package, then compare it with the patched package."""
     errors: list[str] = list(state.get("errors", []))
-    container_id: str = ""
-    work_dir: Path | None = None
-    image_tag: str = ""
+    baseline_dir: Path | None = None
+    patched_dir: Path | None = None
 
     # ── Unpack inputs ──────────────────────────────────────────────────────
     package_name: str = state.get("package_name", "unknown-package")
@@ -658,106 +674,126 @@ def patch_application(state: GraphState) -> dict:
         msg = "patch_application: generation failed; skipping sandbox."
         logger.warning(msg)
         errors.append(msg)
+        failed_validation = ValidationResult(
+            validation_mode="published_package",
+            docker_status="SKIPPED",
+            installation_status="SKIPPED",
+            build_status="SKIPPED",
+            test_status="SKIPPED",
+            consumer_smoke_status="SKIPPED",
+            consumer_smoke_succeeded=False,
+            docker_image_built=False,
+            install_succeeded=False,
+            build_succeeded=None,
+            tests_passed=None,
+            revalidation_scan_clean=False,
+            logs=msg,
+        )
         return {
             "sandbox_id": None,
             "sandbox_apply_success": False,
-            "validation": ValidationResult(
-                build_succeeded=False,
-                tests_passed=False,
-                revalidation_scan_clean=False,
-                logs=msg,
-            ),
+            "baseline_validation": None,
+            "patched_validation": failed_validation,
+            "validation": failed_validation,
+            "regression_status": "INCONCLUSIVE",
             "errors": errors,
         }
 
     # ── Unique identifiers for this sandbox run ────────────────────────────
     run_id = uuid.uuid4().hex[:8]
     safe_name = re.sub(r"[^a-z0-9]+", "-", package_name.lower()).strip("-") or "pkg"
-    image_tag = f"patch-sandbox/{safe_name}:{run_id}"
-    container_name = f"patch-{safe_name}-{run_id}"
-
-    # Accumulate all logs across phases
-    all_logs: list[str] = []
-
-    build_ok = False
-    install_ok = False
-    test_ok = False
+    baseline_validation: ValidationResult | None = None
+    patched_validation: ValidationResult | None = None
 
     try:
         # ── A: write files ─────────────────────────────────────────────────
         PATCH_WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
-        work_dir = Path(tempfile.mkdtemp(prefix=f"patch_{safe_name}_", dir=PATCH_WORKSPACE_ROOT))
-        print(f"\n    Sandbox workspace: {work_dir}", flush=True)
+        baseline_dir = Path(
+            tempfile.mkdtemp(prefix=f"baseline_{safe_name}_", dir=PATCH_WORKSPACE_ROOT)
+        )
+        patched_dir = Path(
+            tempfile.mkdtemp(prefix=f"patch_{safe_name}_", dir=PATCH_WORKSPACE_ROOT)
+        )
+        print(f"\n    Baseline workspace: {baseline_dir}", flush=True)
+        print(f"    Patched workspace : {patched_dir}", flush=True)
 
-        _seed_workspace_from_source(state.get("source_dir"), work_dir)
+        _seed_workspace_from_source(state.get("source_dir"), baseline_dir)
+        shutil.copytree(baseline_dir, patched_dir, dirs_exist_ok=True)
+
+        _step("BASELINE - Validating untouched vulnerable package")
+        baseline_validation = _validate_workspace(
+            baseline_dir,
+            f"patch-sandbox/{safe_name}:{run_id}-baseline",
+            f"baseline-{safe_name}-{run_id}",
+        )
 
         patch_applied_ok = _write_patched_package(
-            work_dir,
+            patched_dir,
             package_name,
             package_version,
             current_patch,
         )
 
         if not patch_applied_ok:
-            errors.append("patch failed to apply cleanly; aborting before Docker build")
+            errors.append("patch failed to apply cleanly; patched validation skipped")
             raise RuntimeError("Patch did not apply to the source")
 
-        # ── B: write Dockerfile ────────────────────────────────────────────
-        _write_dockerfile(work_dir)
-
-        # ── C: docker build ────────────────────────────────────────────────
-        build_ok, build_log = _build_image(work_dir, image_tag)
-        all_logs.append("=== docker build ===\n" + build_log)
-
-        if not build_ok:
-            errors.append(f"docker build failed for {image_tag}")
-            raise RuntimeError("Docker image build failed")
-
-        # ── D: npm install ─────────────────────────────────────────────────
-        install_ok, install_log = _run_npm_install(image_tag, container_name)
-        all_logs.append("=== npm install ===\n" + install_log)
-
-        # npm install failure is non-fatal; we still attempt npm test
-        if not install_ok:
-            errors.append("npm install step reported errors (continuing to test)")
-
-        # ── E: package tests or load smoke test ────────────────────────────
-        test_command = _select_test_command(work_dir)
-        test_ok, container_id, test_log = _run_npm_test(image_tag, container_name, test_command)
-        all_logs.append(f"=== {' '.join(test_command)} ===\n" + test_log)
+        # Run the identical validator after applying the generated patch.
+        _step("PATCHED - Validating generated patch")
+        patched_validation = _validate_workspace(
+            patched_dir,
+            f"patch-sandbox/{safe_name}:{run_id}-patched",
+            f"patch-{safe_name}-{run_id}",
+        )
 
     except Exception as exc:
         msg = f"patch_application error: {type(exc).__name__}: {exc}"
         logger.exception(msg)
         errors.append(msg)
-        all_logs.append(f"\n=== EXCEPTION ===\n{msg}\n")
-
-    finally:
-        # ── F: always tear down ────────────────────────────────────────────
-        if work_dir:
-            _teardown(container_id, image_tag, work_dir, preserve_workspace=True)
+    if patched_validation is None:
+        patched_validation = ValidationResult(
+            validation_mode="published_package",
+            docker_status="FAIL",
+            installation_status="SKIPPED",
+            build_status="SKIPPED",
+            test_status="SKIPPED",
+            consumer_smoke_status="SKIPPED",
+            consumer_smoke_succeeded=False,
+            docker_image_built=False,
+            install_succeeded=False,
+            build_succeeded=None,
+            tests_passed=None,
+            revalidation_scan_clean=False,
+            logs="Patched validation did not complete.",
+        )
 
     # ── Summarise ──────────────────────────────────────────────────────────
-    combined_logs = "\n".join(all_logs)
-    apply_success = build_ok and test_ok
+    regression_status = _classify_regression(baseline_validation, patched_validation)
+    apply_success = regression_status == "NO_REGRESSION"
 
-    _step("G . Summary")
-    print(f"    Docker build  : {'PASS' if build_ok  else 'FAIL'}", flush=True)
-    print(f"    npm install   : {'PASS' if install_ok else 'FAIL'}", flush=True)
-    print(f"    npm test      : {'PASS' if test_ok   else 'FAIL'}", flush=True)
-    print(f"    Overall       : {'PASS' if apply_success else 'FAIL'}", flush=True)
-
-    validation = ValidationResult(
-        build_succeeded=build_ok,
-        tests_passed=test_ok,
-        revalidation_scan_clean=False,   # patch_validation will set this
-        logs=combined_logs,
+    _step("Validation comparison summary")
+    print(
+        f"    Baseline consumer validation : {'PASS' if _validation_succeeded(baseline_validation) else 'FAIL'}",
+        flush=True,
     )
+    print(
+        f"    Patched consumer validation  : {'PASS' if _validation_succeeded(patched_validation) else 'FAIL'}",
+        flush=True,
+    )
+    print(f"    Regression status   : {regression_status}", flush=True)
+    if patched_dir and patched_dir.exists():
+        print(f"    Patched source kept : {patched_dir}", flush=True)
+
+    if baseline_dir:
+        shutil.rmtree(baseline_dir, ignore_errors=True)
 
     return {
-        "sandbox_id": container_id or None,
+        "sandbox_id": None,
         "sandbox_apply_success": apply_success,
-        "patched_source_dir": str(work_dir) if work_dir and work_dir.exists() else None,
-        "validation": validation,
+        "patched_source_dir": str(patched_dir) if patched_dir and patched_dir.exists() else None,
+        "baseline_validation": baseline_validation,
+        "patched_validation": patched_validation,
+        "validation": patched_validation,
+        "regression_status": regression_status,
         "errors": errors,
     }

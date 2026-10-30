@@ -279,6 +279,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  classification     : {state.get('classification', 'unknown')}")
     print(f"  classification_why : {state.get('classification_reason', '')}")
     print(f"  sandbox_success    : {state.get('sandbox_apply_success')}")
+    print(f"  regression_status  : {state.get('regression_status')}")
+    validation = state.get("validation") or {}
+    print(f"  validation_mode    : {validation.get('validation_mode')}")
+    print(f"  native_build       : {validation.get('build_status')}")
+    print(f"  native_tests       : {validation.get('test_status')}")
+    print(f"  consumer_smoke     : {validation.get('consumer_smoke_status')}")
     print(f"  answer_key         : {answer.get('status')} ({answer.get('ghsa_id')})")
     print(f"  location           : {score.get('location')} ({score.get('location_overlap')})")
     print(f"  strategy           : {score.get('strategy')}")

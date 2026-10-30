@@ -33,8 +33,22 @@ class PatchAttempt(TypedDict, total=False):
     target_files: list[str]
 
 class ValidationResult(TypedDict, total=False):
-    build_succeeded: bool
-    tests_passed: bool
+    validation_mode: Literal["published_package", "source_repository"]
+    docker_status: Literal["PASS", "FAIL", "SKIPPED"]
+    installation_status: Literal["PASS", "FAIL", "SKIPPED"]
+    build_status: Literal["PASS", "FAIL", "SKIPPED"]
+    build_reason: str
+    test_status: Literal["PASS", "FAIL", "SKIPPED"]
+    test_reason: str
+    consumer_smoke_status: Literal["PASS", "FAIL", "SKIPPED"]
+    consumer_smoke_succeeded: bool
+    consumer_smoke_command: list[str]
+    docker_image_built: bool
+    install_succeeded: bool
+    build_succeeded: bool | None
+    tests_passed: bool | None
+    build_command: list[str] | None
+    test_command: list[str]
     revalidation_scan_clean: bool
     logs: str
 
@@ -140,6 +154,14 @@ class GraphState(TypedDict, total=False):
 
     # 6) validation
     validation: ValidationResult | None
+    baseline_validation: ValidationResult | None
+    patched_validation: ValidationResult | None
+    regression_status: Literal[
+        "NO_REGRESSION",
+        "REGRESSION",
+        "INCONCLUSIVE",
+        "PATCHED_ONLY_PASS",
+    ] | None
 
     # 7) classification
     classification: Literal["pass", "fail"] | None
