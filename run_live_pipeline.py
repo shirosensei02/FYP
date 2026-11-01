@@ -24,7 +24,10 @@ def main() -> None:
     parser.add_argument("--model-name", default=os.getenv("MODEL_NAME"), choices=patch_evaluator_models(),
                         help="Patch generator from config/models.json; the other supported model evaluates it")
     parser.add_argument("--patch-scope", default=os.getenv("PATCH_SCOPE", "single"), choices=["single", "all"])
+    parser.add_argument("--max-retries", type=int, default=int(os.getenv("MAX_RETRIES", "1")))
     args = parser.parse_args()
+    if args.max_retries < 0:
+        parser.error("--max-retries must be nonnegative")
     if not args.package_name or not args.package_version:
         parser.error("--package-name/--package-version are required (pass the flag, or set "
                      "PACKAGE_NAME/PACKAGE_VERSION in .env)")
@@ -34,6 +37,8 @@ def main() -> None:
         "package_version": args.package_version,
         "model_provider": args.model_provider,
         "patch_scope": args.patch_scope,
+        "retry_count": 0,
+        "max_retries": args.max_retries,
         "errors": [],
     }
     if args.model_name:

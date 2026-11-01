@@ -8,7 +8,7 @@ Responsibilities
 1. Materialise the patched npm package on-disk from the patch produced in
    step 3 (patch_generation).
 2. Build an isolated Docker image that contains *only* the patched package.
-3. Run ``npm install`` inside the container and capture logs.
+3. Install development and runtime dependencies once during image creation; capture logs.
 4. Run ``npm test``  inside the container and capture logs.
 5. Tear down the container (always) and report success/failure back through
    GraphState so that patch_validation and outcome_classification can act on
@@ -288,6 +288,7 @@ def _write_patched_package(
         cwd=work_dir,
         timeout=30,
     )
+    (work_dir / "patch_apply.log").write_text(out + "\n" + err, encoding="utf-8")
     if rc != 0:
         logger.warning("patch CLI returned %d; trying git apply --recount.\n%s", rc, err)
         print(f"    WARNING  patch exited {rc}: {err.strip()}", flush=True)
@@ -338,6 +339,9 @@ def _write_patched_package(
                     break
 
             if not hunk_ok:
+                (work_dir / "patch_apply.log").write_text(
+                    out + "\n" + err + "\n" + git_out + "\n" + git_err + "\n" + h_err
+                    if hunks else out + "\n" + err + "\n" + git_err, encoding="utf-8")
                 shutil.rmtree(pristine_backup, ignore_errors=True)
                 return False
             print(f"    OK  unified diff applied successfully hunk-by-hunk ({len(hunks)} hunks)", flush=True)
@@ -378,15 +382,17 @@ DOCKERFILE_TEMPLATE = textwrap.dedent(
     # Base image: {base_image}
     FROM {base_image}
 
-    # 1. Create a non-root working directory
+    # Install Git for dependencies fetched from Git repositories.
+    RUN apk add --no-cache git
+
+    # 1. Create the working directory
     WORKDIR /app
 
     # 2. Copy the (already patched) package source into the image
     COPY . .
 
-    # 3. Install dependencies (ci is stricter than install; falls back if no
-    #    package-lock.json is present)
-    RUN npm install --prefer-offline --no-audit 2>&1 || true
+    # Install once in the image used by validation, including test tooling.
+    RUN npm install --include=dev --prefer-offline --no-audit 2>&1; rc=$?; echo PACKAGE_INSTALL_EXIT_CODE=$rc; exit "$rc"
 
     # 4. Default command: run the package's own test suite
     CMD ["npm", "test"]
@@ -434,51 +440,6 @@ def _build_image(work_dir: Path, image_tag: str) -> tuple[bool, str]:
         print(f"\n    FAIL  docker build failed (exit {rc})", flush=True)
 
     return rc == 0, combined
-
-
-# ---------------------------------------------------------------------------
-# Step D - Run npm install inside container
-# ---------------------------------------------------------------------------
-
-def _run_npm_install(image_tag: str, container_name: str) -> tuple[bool, str]:
-    """
-    Run a *separate* ephemeral container just for ``npm install`` so we can
-    capture its output distinctly from the test run.
-
-    We use ``--rm`` so Docker cleans it up automatically.
-    """
-    _step("D . Running  npm install  inside Docker sandbox")
-
-    cmd = [
-        "docker", "run",
-        "--rm",
-        "--name", f"{container_name}-install",
-        "--network", "none",          # no outbound network for safety
-        "--memory", "512m",
-        "--cpus", "1",
-        image_tag,
-        "sh", "-c", "npm install --prefer-offline --no-audit 2>&1; echo EXIT_CODE:$?",
-    ]
-    print(f"    $ {' '.join(cmd)}", flush=True)
-
-    rc, out, err = _run(
-        cmd,
-        timeout=SANDBOX_TIMEOUT_SECONDS,
-        stream=True,
-    )
-
-    # Extract the embedded exit code we echoed
-    embedded = re.search(r"EXIT_CODE:(\d+)", out)
-    inner_rc = int(embedded.group(1)) if embedded else rc
-
-    success = inner_rc == 0
-    log = out + err
-    if success:
-        print("    OK  npm install completed successfully", flush=True)
-    else:
-        print(f"    FAIL  npm install failed (exit {inner_rc})", flush=True)
-
-    return success, log
 
 
 # ---------------------------------------------------------------------------
@@ -671,11 +632,13 @@ def patch_application(state: GraphState) -> dict:
     image_tag = f"patch-sandbox/{safe_name}:{run_id}"
     container_name = f"patch-{safe_name}-{run_id}"
 
+    patch_applied_ok = False
     # Accumulate all logs across phases
     all_logs: list[str] = []
 
     build_ok = False
-    install_ok = False
+    install_ok = None
+    failure_stage = None
     test_ok = False
 
     try:
@@ -694,6 +657,9 @@ def patch_application(state: GraphState) -> dict:
         )
 
         if not patch_applied_ok:
+            diagnostic = work_dir / "patch_apply.log"
+            if diagnostic.exists():
+                all_logs.append(diagnostic.read_text(encoding="utf-8"))
             errors.append("patch failed to apply cleanly; aborting before Docker build")
             raise RuntimeError("Patch did not apply to the source")
 
@@ -704,22 +670,20 @@ def patch_application(state: GraphState) -> dict:
         build_ok, build_log = _build_image(work_dir, image_tag)
         all_logs.append("=== docker build ===\n" + build_log)
 
+        install_codes = re.findall(r"(?m)^#\d+ [\d.]+ PACKAGE_INSTALL_EXIT_CODE=(\d+)\s*$", build_log)
+        install_ok = (int(install_codes[-1]) == 0) if install_codes else (True if build_ok else None)
         if not build_ok:
-            errors.append(f"docker build failed for {image_tag}")
-            raise RuntimeError("Docker image build failed")
-
-        # ── D: npm install ─────────────────────────────────────────────────
-        install_ok, install_log = _run_npm_install(image_tag, container_name)
-        all_logs.append("=== npm install ===\n" + install_log)
-
-        # npm install failure is non-fatal; we still attempt npm test
-        if not install_ok:
-            errors.append("npm install step reported errors (continuing to test)")
+            failure_stage = "dependencies" if install_ok is False else "setup"
+            errors.append(f"Sandbox {failure_stage} failed for {image_tag}; tests skipped")
+            raise RuntimeError("Dependency installation failed" if install_ok is False else "Sandbox image setup failed")
 
         # ── E: package tests or load smoke test ────────────────────────────
         test_command = _select_test_command(work_dir)
         test_ok, container_id, test_log = _run_npm_test(image_tag, container_name, test_command)
         all_logs.append(f"=== {' '.join(test_command)} ===\n" + test_log)
+        if not test_ok and re.search(r"npm error code (?:EAI_AGAIN|ENOTFOUND|ENETUNREACH)\b", test_log):
+            failure_stage = "setup"
+            errors.append("Package validation requires unavailable network access; source retry skipped")
 
     except Exception as exc:
         msg = f"patch_application error: {type(exc).__name__}: {exc}"
@@ -743,13 +707,16 @@ def patch_application(state: GraphState) -> dict:
     print(f"    Overall       : {'PASS' if apply_success else 'FAIL'}", flush=True)
 
     validation = ValidationResult(
+        install_succeeded=install_ok,
         build_succeeded=build_ok,
         tests_passed=test_ok,
+        failure_stage=failure_stage,
         revalidation_scan_clean=False,   # patch_validation will set this
         logs=combined_logs,
     )
 
     return {
+        "patch_applied": patch_applied_ok,
         "sandbox_id": container_id or None,
         "sandbox_apply_success": apply_success,
         "patched_source_dir": str(work_dir) if work_dir and work_dir.exists() else None,

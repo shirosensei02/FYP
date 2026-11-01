@@ -473,6 +473,9 @@ def test_patch_generation_repairs_a_diff_that_fails_preflight(monkeypatch, tmp_p
         return {"diff": "--- a/index.js\n+++ b/index.js\n@@ -1 +1 @@\n-module.exports = 42;\n+module.exports = 43;\n"}
 
     monkeypatch.setattr(patch_generation, "_generate_with_openai", fake_generator)
+    # The production default temporarily bypasses preflight for debugging;
+    # enable it here to preserve coverage of its repair behaviour.
+    monkeypatch.setattr(patch_generation, "SOURCE_DIFF_PREFLIGHT_ENABLED", True)
 
     result = patch_generation.patch_generation(
         {

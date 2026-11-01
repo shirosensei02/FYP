@@ -22,10 +22,13 @@ def route_after_patch_generation(state: GraphState) -> str:
 
 
 def route_after_classification(state: GraphState) -> str:
+    if (state.get("validation") or {}).get("failure_stage") in {"setup", "dependencies"}:
+        return "end"
+
     if state.get("classification") == "pass":
         return "end"
 
-    if state.get("retry_count") >= state.get("max_retries"):
+    if state.get("retry_count", 0) >= state.get("max_retries", 1):
         return "end"
 
     return "retry"
