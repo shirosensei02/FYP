@@ -199,64 +199,75 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  vendor files    : {answer.get('files') or []}")
     print(f"  vendor diff     : {len(answer.get('diff') or '')} chars")
 
-    # Node 3: patch_generation
-    _sep(f"NODE 3 / 5 - PATCH GENERATION  (provider={args.model_provider})")
-    result = patch_generation(state)
-    state.update(result)
-
-    if not state.get("errors"):
-        patch = state.get("current_patch") or {}
-        diff = patch.get("diff", "")
-        print(f"  model_used  : {patch.get('model_used')}")
-        print(f"  attempt_id  : {patch.get('attempt_id')}")
-        print(f"  diff length : {len(diff)} chars")
-        print("\n  --- diff preview (first 500 chars) ---")
-        print(textwrap.indent(diff[:500], "  "))
-
-    if args.stop_after_patch:
-        if state.get("errors"):
-            _print_errors(state)
-        if args.dump_state:
-            _sep("PATCH GENERATION STATE")
-            print(json.dumps(state, indent=2, default=str))
-        return
-
-    if state.get("current_patch"):
-        # Node 4: patch_application
-        _sep("NODE 4 / 5 - PATCH APPLICATION")
-        result = patch_application(state)
+    while True:
+        # Node 3: patch_generation
+        _sep(f"NODE 3 / 5 - PATCH GENERATION  (provider={args.model_provider})")
+        result = patch_generation(state)
         state.update(result)
-        if state.get("errors"):
-            print(f"  [errors during application] {state['errors']}")
 
-        _sep("NODE 4b - VULNERABILITY RESCAN")
-        from vulnerability_rescan import vulnerability_rescan
-        result = vulnerability_rescan(state)
+        if not state.get("errors"):
+            patch = state.get("current_patch") or {}
+            diff = patch.get("diff", "")
+            print(f"  model_used  : {patch.get('model_used')}")
+            print(f"  attempt_id  : {patch.get('attempt_id')}")
+            print(f"  diff length : {len(diff)} chars")
+            print("\n  --- diff preview (first 500 chars) ---")
+            print(textwrap.indent(diff[:500], "  "))
+
+        if args.stop_after_patch:
+            if state.get("errors"):
+                _print_errors(state)
+            if args.dump_state:
+                _sep("PATCH GENERATION STATE")
+                print(json.dumps(state, indent=2, default=str))
+            return
+
+        if state.get("current_patch"):
+            # Node 4: patch_application
+            _sep("NODE 4 / 5 - PATCH APPLICATION")
+            result = patch_application(state)
+            state.update(result)
+            if state.get("errors"):
+                print(f"  [errors during application] {state['errors']}")
+
+            _sep("NODE 4b - VULNERABILITY RESCAN")
+            from vulnerability_rescan import vulnerability_rescan
+            result = vulnerability_rescan(state)
+            state.update(result)
+            remaining = state.get("remaining_vulnerabilities") or []
+            print(f"  re-scan clean : {(state.get('validation') or {}).get('revalidation_scan_clean')}")
+            print(f"  remaining     : {len(remaining)}")
+
+            _sep("NODE 4c - ADVERSARIAL EVALUATION")
+            result = adversarial_evaluation(state)
+            state.update(result)
+            evaluation = state.get("adversarial_evaluation") or {}
+            print(f"  status        : {evaluation.get('status')}")
+            print(f"  genuine_fix   : {evaluation.get('genuine_fix')}")
+            if evaluation.get("evaluation_error"):
+                print(f"  error         : {evaluation['evaluation_error']}")
+
+        # Classify and record generation failures as well as sandbox outcomes.
+        _sep("NODE 5 / 5 - PATCH VALIDATION")
+        result = patch_validation(state)
         state.update(result)
-        remaining = state.get("remaining_vulnerabilities") or []
-        print(f"  re-scan clean : {(state.get('validation') or {}).get('revalidation_scan_clean')}")
-        print(f"  remaining     : {len(remaining)}")
 
-        _sep("NODE 4c - ADVERSARIAL EVALUATION")
-        result = adversarial_evaluation(state)
+        _sep("NODE 6 - PATCH SCORING  (vs maintainer patch)")
+        from patch_scoring import patch_scoring
+        result = patch_scoring(state)
         state.update(result)
-        evaluation = state.get("adversarial_evaluation") or {}
-        print(f"  status        : {evaluation.get('status')}")
-        print(f"  genuine_fix   : {evaluation.get('genuine_fix')}")
-        if evaluation.get("evaluation_error"):
-            print(f"  error         : {evaluation['evaluation_error']}")
+        score = state.get("patch_score") or {}
+        print(f"  status          : {score.get('status')}")
+        print(f"  location        : {score.get('location')} ({score.get('location_overlap')})")
+        print(f"  strategy        : {score.get('strategy')} ({score.get('strategy_generated')} vs {score.get('strategy_vendor')})")
+        print(f"  completeness    : {score.get('completeness')}")
+        print(f"  matched files   : {score.get('matched_files')}")
+        print(f"  missing files   : {score.get('missing_files')}")
 
-    _sep("NODE 6 - PATCH SCORING  (vs maintainer patch)")
-    from patch_scoring import patch_scoring
-    result = patch_scoring(state)
-    state.update(result)
-    score = state.get("patch_score") or {}
-    print(f"  status          : {score.get('status')}")
-    print(f"  location        : {score.get('location')} ({score.get('location_overlap')})")
-    print(f"  strategy        : {score.get('strategy')} ({score.get('strategy_generated')} vs {score.get('strategy_vendor')})")
-    print(f"  completeness    : {score.get('completeness')}")
-    print(f"  matched files   : {score.get('matched_files')}")
-    print(f"  missing files   : {score.get('missing_files')}")
+        from graph import route_after_classification, increment_retry
+        if route_after_classification(state) != "retry":
+            break
+        state.update(increment_retry(state))
 
     _sep("NODE 6 - MAINTAINER EVAL")
     from maintainer_eval import maintainer_eval
@@ -266,12 +277,6 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  verdict         : {eval.get('verdict')}")
     print(f"  root_cause      : {eval.get('root_cause_identified')}")
     print(f"  summary         : {eval.get('summary')}")
-    
-    # Node 5: patch_validation. Generation failures also reach this node
-    # for a consistent classification, but are not persisted.
-    _sep("NODE 7 - PATCH VALIDATION")
-    result = patch_validation(state)
-    state.update(result)
 
     # Final summary
     _sep("PIPELINE COMPLETE")
@@ -327,7 +332,7 @@ def _parse_args() -> argparse.Namespace:
                    help="Patch one detected vulnerability by its primary ID or alias")
     p.add_argument("--list-vulnerabilities", action="store_true", default=_env_bool("LIST_VULNERABILITIES"),
                    help="List detected target-package vulnerabilities and exit before patch generation")
-    p.add_argument("--max-retries", type=int, default=int(os.getenv("MAX_RETRIES", "0")))
+    p.add_argument("--max-retries", type=int, default=int(os.getenv("MAX_RETRIES", "1")))
     p.add_argument("--source-dir", default=os.getenv("SOURCE_DIR"),
                    help="Pre-extracted package source dir (skips npm pack + extract)")
     p.add_argument("--skip-vuln-detection", action="store_true", default=_env_bool("SKIP_VULN_DETECTION"),

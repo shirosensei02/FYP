@@ -103,3 +103,22 @@ def test_patch_validation_continues_when_attempt_save_fails(monkeypatch):
     assert result["classification"] == "pass"
     assert result["mongo_id"] is None
     assert result_calls == [None]
+
+
+def test_install_failure_is_not_classified_as_broken_patch(monkeypatch):
+    _stub_persistence(monkeypatch)
+    result = patch_validation({'validation': {'build_succeeded': True,
+                                             'install_succeeded': False,
+                                             'tests_passed': False}})
+    assert result['classification'] == 'fail'
+    assert 'Dependency installation failed' in result['classification_reason']
+    assert 'patch broke' not in result['classification_reason']
+
+
+def test_dependency_build_failure_reports_skipped_tests(monkeypatch):
+    _stub_persistence(monkeypatch)
+    result = patch_validation({'validation': {'build_succeeded': False,
+                                             'install_succeeded': False,
+                                             'tests_passed': False,
+                                             'failure_stage': 'dependencies'}})
+    assert result['classification_reason'] == 'Dependency installation failed; package tests were skipped.'

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 
+from failure_context import record_failure
 from state import GraphState
 from db import save_patch_attempt, save_patch_result
 
@@ -37,7 +38,7 @@ def patch_validation(state: GraphState) -> dict:
 
     build_ok   = bool(validation.get("build_succeeded"))
     tests_ok   = bool(validation.get("tests_passed"))
-    passed     = build_ok and tests_ok
+    passed     = build_ok and tests_ok and state.get("generation_status") != "failed"
 
     logger.info(
         "patch_validation - %s@%s [%s]: build=%s tests=%s → %s",
@@ -66,11 +67,21 @@ def patch_validation(state: GraphState) -> dict:
         reason = state.get("generation_error") or "Patch generation failed before sandbox validation."
     elif passed:
         reason = "Docker build succeeded and package validation passed."
+    elif state.get("patch_applied") is False:
+        reason = "Patch could not be applied to the source; Docker build was not run."
+    elif validation.get("failure_stage") == "dependencies":
+        reason = "Dependency installation failed; package tests were skipped."
+    elif validation.get("failure_stage") == "setup":
+        reason = "Sandbox environment setup failed; package validation could not complete reliably."
     elif not build_ok:
         reason = "Docker build failed — patch could not be applied."
+    elif not tests_ok and validation.get("install_succeeded") is False:
+        reason = "Dependency installation failed; package validation could not complete reliably."
     elif not tests_ok:
         reason = "Build succeeded but npm test failed — patch broke the package."
+    failure = record_failure(state, reason) if not passed else None
     return {
+        "retry_feedback": failure,
         "classification": "pass" if passed else "fail",
         "classification_reason": reason,
         "mongo_id": attempt_doc_id,

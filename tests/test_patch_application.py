@@ -19,6 +19,7 @@ Prerequisites
 """
 
 import json
+import pytest
 import sys
 import textwrap
 from pathlib import Path
@@ -218,3 +219,50 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def test_dockerfile_installs_git_and_dependencies_once(tmp_path):
+    from patch_application import _write_dockerfile
+    text = _write_dockerfile(tmp_path).read_text()
+    assert 'apk add --no-cache git' in text
+    assert text.count('npm install') == 1
+    assert '--include=dev' in text
+    assert '|| true' not in text
+    assert text.index('apk add') < text.index('npm install')
+
+
+def test_setup_failure_skips_tests_and_source_retry(tmp_path, monkeypatch):
+    import importlib
+    module = importlib.import_module('patch_application')
+    from graph import route_after_classification
+    monkeypatch.setattr(module, 'PATCH_WORKSPACE_ROOT', tmp_path)
+    monkeypatch.setattr(module, '_seed_workspace_from_source', lambda *a: None)
+    monkeypatch.setattr(module, '_write_patched_package', lambda *a: True)
+    monkeypatch.setattr(module, '_build_image', lambda *a: (False, '#8 2.1 PACKAGE_INSTALL_EXIT_CODE=254\n'))
+    monkeypatch.setattr(module, '_run_npm_test', lambda *a: pytest.fail('Tests must not run after install failure'))
+    monkeypatch.setattr(module, '_teardown', lambda *a, **k: None)
+    result = module.patch_application({'current_patch': {'diff': 'candidate'}})
+    assert result['validation']['install_succeeded'] is False
+    assert result['validation']['failure_stage'] == 'dependencies'
+    assert result['validation']['tests_passed'] is False
+    assert route_after_classification({**result, 'classification': 'fail', 'max_retries': 3}) == 'eval'
+
+
+@pytest.mark.parametrize("network_failure", [False, True])
+def test_successful_image_runs_tests_without_reinstall(tmp_path, monkeypatch, network_failure):
+    import importlib
+    module = importlib.import_module('patch_application')
+    calls = []
+    monkeypatch.setattr(module, 'PATCH_WORKSPACE_ROOT', tmp_path)
+    monkeypatch.setattr(module, '_seed_workspace_from_source', lambda *a: None)
+    monkeypatch.setattr(module, '_write_patched_package', lambda *a: True)
+    monkeypatch.setattr(module, '_build_image', lambda *a: (True, '#8 2.1 PACKAGE_INSTALL_EXIT_CODE=0\n'))
+    monkeypatch.setattr(module, '_select_test_command', lambda *a: ['npm', 'test'])
+    monkeypatch.setattr(module, '_run_npm_test', lambda *a: (calls.append(a) or not network_failure, 'container',
+        'npm error code EAI_AGAIN' if network_failure else 'tests passed'))
+    monkeypatch.setattr(module, '_teardown', lambda *a, **k: None)
+    result = module.patch_application({'current_patch': {'diff': 'candidate'}})
+    assert result['sandbox_apply_success'] is (not network_failure)
+    assert result['validation']['failure_stage'] == ('setup' if network_failure else None)
+    assert result['validation']['install_succeeded'] is True
+    assert len(calls) == 1
