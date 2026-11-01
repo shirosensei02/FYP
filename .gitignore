@@ -24,3 +24,4 @@ Thumbs.db
 
 # Demo UI checkout (cloned by demo/start_chat_ui.sh)
 demo/agent-chat-ui/
+demo/progress-ui/
