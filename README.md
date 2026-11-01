@@ -119,6 +119,21 @@ Once started, access the server resources:
 - 🚀 **API Base URL**: `http://127.0.0.1:2024`
 - 📚 **Interactive API Docs**: `http://127.0.0.1:2024/docs`
 
+### 💬 Chat demo (Agent Chat UI)
+
+`langgraph dev` also serves a `demo` graph (`demo_graph.py`): the same pipeline, but it takes a chat
+message and posts a short summary after each step. To chat with it locally:
+
+```bash
+langgraph dev                  # terminal 1: local server on :2024
+bash demo/start_chat_ui.sh     # terminal 2: clones LangChain's Agent Chat UI (pinned), installs, runs on :3000
+```
+
+Open http://localhost:3000 and send `package@version [advisory ID] [model]`, for example
+`jszip@3.7.1 GHSA-36fh-84j7-cv5h codex` (models: `codex`, `sonnet`, or any OpenRouter model ID).
+Without installing anything, the hosted UI at https://agentchat.vercel.app also works: enter
+`http://localhost:2024` as the deployment URL and `demo` as the graph ID.
+
 ---
 
 ## 🧪 Testing the Pipeline Locally

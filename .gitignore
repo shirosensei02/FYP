@@ -21,3 +21,6 @@ Thumbs.db
 # Tool specific temporary files
 .langgraph_api/
 .workspace/
+
+# Demo UI checkout (cloned by demo/start_chat_ui.sh)
+demo/agent-chat-ui/
