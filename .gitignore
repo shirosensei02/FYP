@@ -25,3 +25,4 @@ Thumbs.db
 # Demo progress UI (demo/progress-ui)
 demo/progress-ui/node_modules/
 demo/progress-ui/dist/
+demo/agent-chat-ui/
