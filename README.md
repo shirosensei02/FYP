@@ -122,17 +122,24 @@ Once started, access the server resources:
 ### 💬 Chat demo (Agent Chat UI)
 
 `langgraph dev` also serves a `demo` graph (`demo_graph.py`): the same pipeline, but it takes a chat
-message and posts a short summary after each step. To chat with it locally:
+message and posts a short summary after each step. Chat with it through LangChain's hosted
+Agent Chat UI; your browser talks to your local server directly, so no data goes through Vercel.
 
-```bash
-langgraph dev                  # terminal 1: local server on :2024
-bash demo/start_chat_ui.sh     # terminal 2: clones LangChain's Agent Chat UI (pinned), installs, runs on :3000
-```
+1. Start the local server: `langgraph dev --no-browser` (serves `http://localhost:2024`).
+2. Open https://agentchat.vercel.app in **Chrome** and enter:
+   - **Deployment URL**: `http://localhost:2024`
+   - **Assistant/Graph ID**: `demo`
+   - **LangSmith API Key**: leave blank
+3. If Chrome asks to allow access to your local network, click **Allow** (it remembers the choice).
+4. Send `package@version [advisory ID] [model]`, for example `jszip@3.7.1 GHSA-36fh-84j7-cv5h codex`
+   (models: `codex`, `sonnet`, or any OpenRouter model ID; without a model, `MODEL_NAME` from `.env`).
 
-Open http://localhost:3000 and send `package@version [advisory ID] [model]`, for example
-`jszip@3.7.1 GHSA-36fh-84j7-cv5h codex` (models: `codex`, `sonnet`, or any OpenRouter model ID).
-Without installing anything, the hosted UI at https://agentchat.vercel.app also works: enter
-`http://localhost:2024` as the deployment URL and `demo` as the graph ID.
+**Fallbacks**
+
+- *Browser blocks localhost* (Safari, Brave, or no permission prompt): run `langgraph dev --tunnel`
+  and use the printed `https://…trycloudflare.com` URL as the deployment URL.
+- *No internet for the hosted site*: `bash demo/start_chat_ui.sh` clones the same app (pinned
+  commit), points it at the `demo` graph, and serves it on http://localhost:3000.
 
 ---
 
