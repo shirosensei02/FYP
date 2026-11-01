@@ -119,6 +119,20 @@ Once started, access the server resources:
 - 🚀 **API Base URL**: `http://127.0.0.1:2024`
 - 📚 **Interactive API Docs**: `http://127.0.0.1:2024/docs`
 
+### 🖥️ Live progress demo (custom UI)
+
+`langgraph dev` also serves a `demo` graph (`demo_graph.py`): the same pipeline, plus a short summary
+after each step. `demo/progress-ui` is a small React page (LangGraph's `useStream` hook) that runs it
+and shows each step lighting up live, ending with the patch and the pass/fail verdict.
+
+```bash
+langgraph dev                                             # terminal 1: local server on :2024
+cd demo/progress-ui && npm install && npm run dev         # terminal 2: page on http://localhost:5173
+```
+
+Pick a package, version, advisory ID and model (or click an example) and press **Run pipeline**.
+Set `VITE_LANGGRAPH_URL` if the server is not on `http://localhost:2024`.
+
 ---
 
 ## 🧪 Testing the Pipeline Locally

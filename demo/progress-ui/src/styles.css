@@ -1,0 +1,258 @@
+:root {
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --text: #1d2433;
+  --muted: #6b7385;
+  --line: #e3e6ee;
+  --accent: #4f46e5;
+  --pass: #15803d;
+  --fail: #b91c1c;
+  --add-bg: #e8f7ee;
+  --del-bg: #fdecec;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+}
+
+.page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+header h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+}
+
+header p {
+  margin: 0 0 24px;
+  color: var(--muted);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.run-form {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.run-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hint {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+input,
+select {
+  font: inherit;
+  font-weight: 400;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.examples {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+button {
+  font: inherit;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 18px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: var(--line);
+  color: var(--text);
+}
+
+button.link {
+  background: none;
+  color: var(--accent);
+  padding: 0 6px;
+}
+
+.error {
+  border-color: var(--fail);
+  color: var(--fail);
+}
+
+.settings {
+  margin: 8px 4px 16px;
+  color: var(--muted);
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.step {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 10px;
+  transition: opacity 0.3s;
+}
+
+.step.pending,
+.step.skipped {
+  opacity: 0.45;
+}
+
+.step.running {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  background: var(--line);
+}
+
+.step.done .badge {
+  background: var(--pass);
+  color: white;
+}
+
+.step-title {
+  font-weight: 600;
+  flex: 1;
+}
+
+.seconds {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.step-body {
+  margin: 10px 0 0 36px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+code {
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+pre.code {
+  background: #fbfcfe;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 0;
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+pre.code div {
+  padding: 0 12px;
+  white-space: pre;
+}
+
+pre.code .add {
+  background: var(--add-bg);
+}
+
+pre.code .del {
+  background: var(--del-bg);
+}
+
+.outcome {
+  text-align: center;
+  font-size: 15px;
+}
+
+.outcome-title {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.outcome.pass {
+  border-color: var(--pass);
+}
+
+.outcome.pass .outcome-title {
+  color: var(--pass);
+}
+
+.outcome.fail {
+  border-color: var(--fail);
+}
+
+.outcome.fail .outcome-title {
+  color: var(--fail);
+}
+
+.outcome-facts {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  margin-top: 10px;
+  color: var(--muted);
+}
