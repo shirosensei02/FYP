@@ -189,7 +189,7 @@ def maintainer_eval(state: GraphState) -> dict:
         appended ``errors``).
     """
     errors: list[str] = list(state.get("errors", []))
-    eval_model = state.get("adversarial_evaluation").get("evaluator_model")
+    eval_model = (state.get("adversarial_evaluation") or {}).get("evaluator_model")
 
     # ── Gather inputs ──────────────────────────────────────────────────────
     current_patch = state.get("current_patch") or {}

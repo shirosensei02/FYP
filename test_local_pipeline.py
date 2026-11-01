@@ -280,6 +280,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  classification_why : {state.get('classification_reason', '')}")
     print(f"  sandbox_success    : {state.get('sandbox_apply_success')}")
     print(f"  regression_status  : {state.get('regression_status')}")
+    print(f"  compatibility      : {state.get('compatibility_status')}")
+    print(f"  security_fix       : {state.get('security_fix_status')}")
+    print(f"  final_patch_status : {state.get('final_patch_status')}")
     validation = state.get("validation") or {}
     print(f"  validation_mode    : {validation.get('validation_mode')}")
     print(f"  native_build       : {validation.get('build_status')}")

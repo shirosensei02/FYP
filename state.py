@@ -162,6 +162,9 @@ class GraphState(TypedDict, total=False):
         "INCONCLUSIVE",
         "PATCHED_ONLY_PASS",
     ] | None
+    compatibility_status: Literal["PASS", "FAIL", "INCONCLUSIVE"] | None
+    security_fix_status: Literal["PASS", "FAIL", "UNCERTAIN"] | None
+    final_patch_status: Literal["PASS", "FAIL", "PARTIAL"] | None
 
     # 7) classification
     classification: Literal["pass", "fail"] | None

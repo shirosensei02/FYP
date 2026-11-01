@@ -6,11 +6,13 @@ def _stub_persistence(monkeypatch, attempt_id="fake_attempt_id", result_id="fake
     calls = {"attempt": [], "result": []}
 
     def fake_save_attempt(state, passed):
-        calls["attempt"].append({"passed": passed})
+        calls["attempt"].append({"state": state, "passed": passed})
         return attempt_id
 
     def fake_save_result(state, passed, all_attempts_id=None):
-        calls["result"].append({"passed": passed, "all_attempts_id": all_attempts_id})
+        calls["result"].append(
+            {"state": state, "passed": passed, "all_attempts_id": all_attempts_id}
+        )
         return result_id if passed else None
 
     monkeypatch.setattr(patch_validation_module, "save_patch_attempt", fake_save_attempt)
@@ -18,131 +20,125 @@ def _stub_persistence(monkeypatch, attempt_id="fake_attempt_id", result_id="fake
     return calls
 
 
-def test_patch_validation_pass_persists_attempt_and_result(monkeypatch):
+def _state(**overrides):
+    state = {
+        "package_name": "demo",
+        "package_version": "1.0.0",
+        "current_patch": {"model_used": "generator", "diff": "patch"},
+        "regression_status": "NO_REGRESSION",
+        "validation": {
+            "validation_mode": "published_package",
+            "build_status": "SKIPPED",
+            "test_status": "SKIPPED",
+            "consumer_smoke_status": "PASS",
+        },
+        "adversarial_evaluation": {"genuine_fix": "true"},
+        "maintainer_eval": {"status": "evaluated", "verdict": "COMPLETE"},
+    }
+    state.update(overrides)
+    return state
+
+
+def test_confirmed_fix_is_the_only_successful_patch(monkeypatch):
+    calls = _stub_persistence(monkeypatch)
+
+    result = patch_validation(_state())
+
+    assert result["compatibility_status"] == "PASS"
+    assert result["security_fix_status"] == "PASS"
+    assert result["final_patch_status"] == "PASS"
+    assert result["classification"] == "pass"
+    assert "confirmed" in result["classification_reason"]
+    assert calls["attempt"][0]["passed"] is True
+    assert calls["attempt"][0]["state"]["final_patch_status"] == "PASS"
+    assert calls["result"][0]["passed"] is True
+    assert calls["result"][0]["all_attempts_id"] == "fake_attempt_id"
+
+
+def test_compatibility_only_result_is_partial_and_not_successful(monkeypatch):
     calls = _stub_persistence(monkeypatch)
 
     result = patch_validation(
-        {
-            "validation": {"build_succeeded": True, "tests_passed": True},
-            "package_name": "lodash",
-            "package_version": "4.17.15",
-            "current_patch": {"model_used": "mock-diff-v1"},
-        }
+        _state(
+            adversarial_evaluation={"genuine_fix": "uncertain"},
+            maintainer_eval={"status": "skipped"},
+        )
     )
 
-    assert result["classification"] == "pass"
-    assert result["classification_reason"] == "Docker build succeeded and package validation passed."
-    assert result["mongo_id"] == "fake_attempt_id"
-    assert calls["attempt"] == [{"passed": True}]
-    assert calls["result"] == [{"passed": True, "all_attempts_id": "fake_attempt_id"}]
-
-
-def test_no_regression_is_the_only_comparison_success(monkeypatch):
-    calls = _stub_persistence(monkeypatch)
-
-    result = patch_validation(
-        {
-            "regression_status": "NO_REGRESSION",
-            "validation": {"build_succeeded": True, "tests_passed": True},
-        }
-    )
-
-    assert result["classification"] == "pass"
-    assert result["classification_reason"] == (
-        "Baseline and patched package validation passed; no regression was detected."
-    )
-    assert calls["result"] == [{"passed": True, "all_attempts_id": "fake_attempt_id"}]
-
-
-def test_published_package_no_regression_explains_compatibility_scope(monkeypatch):
-    _stub_persistence(monkeypatch)
-
-    result = patch_validation(
-        {
-            "regression_status": "NO_REGRESSION",
-            "validation": {
-                "validation_mode": "published_package",
-                "build_status": "SKIPPED",
-                "test_status": "SKIPPED",
-                "consumer_smoke_status": "PASS",
-            },
-        }
-    )
-
-    assert result["classification"] == "pass"
-    assert "no compatibility regression" in result["classification_reason"]
-    assert "does not independently confirm" in result["classification_reason"]
-
-
-def test_regression_fails_even_when_patched_flags_are_true(monkeypatch):
-    calls = _stub_persistence(monkeypatch)
-
-    result = patch_validation(
-        {
-            "regression_status": "REGRESSION",
-            "validation": {"build_succeeded": True, "tests_passed": True},
-        }
-    )
-
+    assert result["compatibility_status"] == "PASS"
+    assert result["security_fix_status"] == "UNCERTAIN"
+    assert result["final_patch_status"] == "PARTIAL"
     assert result["classification"] == "fail"
-    assert result["classification_reason"] == (
-        "The baseline passed, but the patched package failed validation."
-    )
+    assert "not considered successful" in result["classification_reason"]
+    assert calls["attempt"][0]["passed"] is False
     assert calls["result"] == []
 
 
-def test_inconclusive_baseline_is_not_saved_as_success(monkeypatch):
+def test_false_adversarial_verdict_fails_compatible_patch(monkeypatch):
     calls = _stub_persistence(monkeypatch)
 
     result = patch_validation(
-        {
-            "regression_status": "INCONCLUSIVE",
-            "validation": {"build_succeeded": False, "tests_passed": False},
-        }
+        _state(adversarial_evaluation={"genuine_fix": "false"})
     )
 
-    assert result["classification"] == "fail"
+    assert result["compatibility_status"] == "PASS"
+    assert result["security_fix_status"] == "FAIL"
+    assert result["final_patch_status"] == "FAIL"
+    assert "did not fix" in result["classification_reason"]
+    assert calls["result"] == []
+
+
+def test_incomplete_maintainer_verdict_fails_compatible_patch(monkeypatch):
+    calls = _stub_persistence(monkeypatch)
+
+    result = patch_validation(
+        _state(
+            adversarial_evaluation={"genuine_fix": "true"},
+            maintainer_eval={"status": "evaluated", "verdict": "INCOMPLETE"},
+        )
+    )
+
+    assert result["security_fix_status"] == "FAIL"
+    assert result["final_patch_status"] == "FAIL"
+    assert calls["result"] == []
+
+
+def test_partial_maintainer_verdict_remains_uncertain(monkeypatch):
+    _stub_persistence(monkeypatch)
+
+    result = patch_validation(
+        _state(maintainer_eval={"status": "evaluated", "verdict": "PARTIAL"})
+    )
+
+    assert result["security_fix_status"] == "UNCERTAIN"
+    assert result["final_patch_status"] == "PARTIAL"
+
+
+def test_regression_fails_even_with_confirmed_security_evidence(monkeypatch):
+    calls = _stub_persistence(monkeypatch)
+
+    result = patch_validation(_state(regression_status="REGRESSION"))
+
+    assert result["compatibility_status"] == "FAIL"
+    assert result["security_fix_status"] == "PASS"
+    assert result["final_patch_status"] == "FAIL"
+    assert "baseline passed" in result["classification_reason"]
+    assert calls["result"] == []
+
+
+def test_failed_baseline_is_inconclusive_and_not_successful(monkeypatch):
+    calls = _stub_persistence(monkeypatch)
+
+    result = patch_validation(_state(regression_status="INCONCLUSIVE"))
+
+    assert result["compatibility_status"] == "INCONCLUSIVE"
+    assert result["final_patch_status"] == "FAIL"
     assert "could not be determined" in result["classification_reason"]
     assert calls["result"] == []
 
 
-def test_patched_only_pass_remains_inconclusive(monkeypatch):
+def test_generation_failure_reason_takes_priority(monkeypatch):
     calls = _stub_persistence(monkeypatch)
-
-    result = patch_validation(
-        {
-            "regression_status": "PATCHED_ONLY_PASS",
-            "validation": {"build_succeeded": True, "tests_passed": True},
-        }
-    )
-
-    assert result["classification"] == "fail"
-    assert "failed baseline" in result["classification_reason"]
-    assert calls["result"] == []
-
-
-def test_patch_validation_fail_on_build_skips_result_save(monkeypatch):
-    calls = _stub_persistence(monkeypatch)
-
-    result = patch_validation({"validation": {"build_succeeded": False, "tests_passed": False}})
-
-    assert result["classification"] == "fail"
-    assert result["classification_reason"] == "Docker build failed — patch could not be applied."
-    assert calls["attempt"] == [{"passed": False}]
-    assert calls["result"] == []
-
-
-def test_patch_validation_fail_on_tests_only(monkeypatch):
-    _stub_persistence(monkeypatch)
-
-    result = patch_validation({"validation": {"build_succeeded": True, "tests_passed": False}})
-
-    assert result["classification"] == "fail"
-    assert result["classification_reason"] == "Build succeeded but npm test failed — patch broke the package."
-
-
-def test_patch_validation_generation_failed_reason_takes_priority(monkeypatch):
-    _stub_persistence(monkeypatch)
 
     result = patch_validation(
         {
@@ -153,26 +149,27 @@ def test_patch_validation_generation_failed_reason_takes_priority(monkeypatch):
     )
 
     assert result["classification"] == "fail"
+    assert result["security_fix_status"] == "FAIL"
     assert result["classification_reason"] == "Model returned no diff"
+    assert calls["attempt"][0]["passed"] is False
+    assert calls["result"] == []
 
 
-def test_patch_validation_generation_failed_default_reason(monkeypatch):
+def test_legacy_compatibility_flags_still_work(monkeypatch):
     _stub_persistence(monkeypatch)
 
-    result = patch_validation({"generation_status": "failed", "validation": {}})
+    result = patch_validation(
+        _state(
+            regression_status=None,
+            validation={"build_succeeded": True, "tests_passed": True},
+        )
+    )
 
-    assert result["classification_reason"] == "Patch generation failed before sandbox validation."
-
-
-def test_patch_validation_missing_validation_defaults_to_fail(monkeypatch):
-    _stub_persistence(monkeypatch)
-
-    result = patch_validation({})
-
-    assert result["classification"] == "fail"
+    assert result["compatibility_status"] == "PASS"
+    assert result["final_patch_status"] == "PASS"
 
 
-def test_patch_validation_continues_when_attempt_save_fails(monkeypatch):
+def test_attempt_save_failure_does_not_block_success_evaluation(monkeypatch):
     monkeypatch.setattr(patch_validation_module, "save_patch_attempt", lambda state, passed: None)
     result_calls = []
 
@@ -182,8 +179,16 @@ def test_patch_validation_continues_when_attempt_save_fails(monkeypatch):
 
     monkeypatch.setattr(patch_validation_module, "save_patch_result", fake_save_result)
 
-    result = patch_validation({"validation": {"build_succeeded": True, "tests_passed": True}})
+    result = patch_validation(_state())
 
     assert result["classification"] == "pass"
     assert result["mongo_id"] is None
     assert result_calls == [None]
+
+
+def test_db_rejects_non_final_pass_even_when_caller_passes_true(monkeypatch):
+    import db
+
+    monkeypatch.setattr(db, "_get_db", lambda: (_ for _ in ()).throw(AssertionError("must not write")))
+
+    assert db.save_patch_result({"final_patch_status": "PARTIAL"}, passed=True) is None

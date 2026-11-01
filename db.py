@@ -136,7 +136,11 @@ def save_patch_result(
     all_attempts_id: str | None = None,
 ) -> str | None:
     """Persist a validated successful patch to ``successful_patches`` only."""
-    if not passed:
+    if not passed or state.get("final_patch_status") != "PASS":
+        logger.warning(
+            "db - refusing successful_patches insert with final status %s",
+            state.get("final_patch_status"),
+        )
         return None
 
     doc = _build_doc(state, passed=True)
@@ -169,6 +173,9 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "baseline_validation": state.get("baseline_validation") or {},
         "patched_validation": state.get("patched_validation") or {},
         "regression_status": state.get("regression_status"),
+        "compatibility_status": state.get("compatibility_status"),
+        "security_fix_status": state.get("security_fix_status"),
+        "final_patch_status": state.get("final_patch_status"),
         "adversarial_evaluation": state.get("adversarial_evaluation") or {},
         "vulnerabilities": state.get("vulnerabilities") or [],
         "answer_key":      state.get("answer_key") or {},

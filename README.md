@@ -142,9 +142,10 @@ a clean consumer project, and imported through its public package entry point.
 Repository-native build and test scripts are recorded as `SKIPPED` because
 published npm artifacts do not reliably contain their source assets or
 project-specific tooling. Every terminal outcome is stored in
-`fyp_patches.all_attempts`; only `NO_REGRESSION` outcomes are additionally
-stored in `fyp_patches.successful_patches`. This validates compatibility, not
-whether the vulnerability itself was fixed.
+`fyp_patches.all_attempts`. Compatibility, security-fix evidence, and the final
+patch outcome are stored separately. Only patches with compatibility `PASS`,
+an independent `genuine_fix=true` verdict, and a `COMPLETE` maintainer
+comparison are stored in `fyp_patches.successful_patches`.
 
 The Docker validator defaults to `node:22-bookworm-slim`, 2 GB memory, two CPUs
 and ten-minute command/build timeouts. These can be changed with

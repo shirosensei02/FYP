@@ -24,10 +24,10 @@ def route_after_patch_generation(state: GraphState) -> str:
 
 def route_after_classification(state: GraphState) -> str:
     if state.get("classification") == "pass":
-        return "eval"
+        return "end"
 
     if state.get("retry_count") >= state.get("max_retries"):
-        return "eval"
+        return "end"
 
     return "retry"
 
@@ -63,18 +63,18 @@ graph.add_conditional_edges(
 )
 graph.add_edge("patch_application_node", "vulnerability_rescan_node")
 graph.add_edge("vulnerability_rescan_node", "adversarial_evaluation_node")
-graph.add_edge("adversarial_evaluation_node", "patch_validation_node")
-graph.add_edge("patch_validation_node", "patch_scoring_node")
+graph.add_edge("adversarial_evaluation_node", "patch_scoring_node")
+graph.add_edge("patch_scoring_node", "maintainer_eval_node")
+graph.add_edge("maintainer_eval_node", "patch_validation_node")
 graph.add_conditional_edges(
-    "patch_scoring_node",
+    "patch_validation_node",
     route_after_classification,
     {
         "retry": "increment_retry",
-        "eval": "maintainer_eval_node",
+        "end": END,
     },
 )
 graph.add_edge("increment_retry", "patch_generation_node")
-graph.add_edge("maintainer_eval_node", END)
 
 graph = graph.compile()
 
