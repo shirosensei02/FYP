@@ -22,6 +22,7 @@ except ImportError:
 from failure_context import load_feedback, record_failure
 from run_cost import response_cost
 from state import GraphState, PatchAttempt, Vulnerability
+from vulnerability_localization import extract_focus_terms, rank_relevant_source_files
 
 load_dotenv()
 
@@ -51,11 +52,6 @@ ANCHOR_CONTEXT_AFTER_CHARS = 5_000
 # apply the candidate in its isolated workspace before it runs Docker.
 SOURCE_DIFF_PREFLIGHT_ENABLED = False
 SOURCE_SUFFIXES = (".js", ".cjs", ".mjs", ".ts")
-FOCUS_STOPWORDS = {
-    "allow", "allows", "directory", "file", "files", "outside",
-    "output", "package", "path", "security", "the", "traversal", "version",
-    "vulnerability", "vulnerable", "write", "writing",
-}
 LOCAL_IMPORT_PATTERN = re.compile(
     r"(?:require\(\s*|from\s+|import\s*)[\"'](\.[^\"']+)[\"']"
 )
@@ -107,78 +103,6 @@ def _select_vulnerabilities(state: GraphState) -> list[Vulnerability]:
 
     target = _pick_target_vulnerability(vulnerabilities)
     return [target] if target else []
-
-
-def _focus_terms(vulnerabilities: list[Vulnerability]) -> set[str]:
-    """Extract identifier-like terms from scanner findings for source excerpting."""
-    terms: set[str] = set()
-    for vulnerability in vulnerabilities:
-        stopwords = set(FOCUS_STOPWORDS)
-        stopwords.update(
-            term.lower()
-            for term in re.findall(r"[A-Za-z_$][A-Za-z0-9_$]{2,}", str(vulnerability.get("package", "")))
-        )
-        text = " ".join(
-            str(vulnerability.get(key, ""))
-            for key in ("id", "description", "title", "details")
-        )
-        lowered_text = text.lower()
-        for phrase, identifier in {
-            "output directory": "outdir",
-            "writing files": "writefile",
-        }.items():
-            if phrase in lowered_text:
-                terms.add(identifier)
-        for term in re.findall(r"[A-Za-z_$][A-Za-z0-9_$-]{2,}", text):
-            normalized = term.lower()
-            if normalized.startswith(("cve-", "ghsa-")):
-                continue
-            if normalized not in {"cve", "ghsa", *stopwords}:
-                terms.add(normalized)
-            if "-" in term:
-                continue
-            for component in re.findall(r"[A-Z]+(?=[A-Z]|$)|[A-Z]?[a-z]+", term):
-                normalized_component = component.lower()
-                if len(normalized_component) >= 3 and normalized_component not in stopwords:
-                    terms.add(normalized_component)
-    return terms
-
-
-def _rank_relevant_source_files(source_dir: Path, focus_terms: set[str]) -> list[Path]:
-    """Rank runtime files by deterministic package-wide advisory-term matches."""
-    if not focus_terms:
-        return []
-
-    terms = sorted(focus_terms, key=lambda term: (-len(term), term))
-    ranked: list[tuple[int, str, Path]] = []
-    for path in sorted(source_dir.rglob("*")):
-        if not path.is_file() or path.suffix.lower() not in SOURCE_SUFFIXES:
-            continue
-        if path.name.endswith(".d.ts"):
-            continue
-        relative = path.relative_to(source_dir).as_posix()
-        lowered_path = relative.lower()
-        try:
-            contents = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        lowered_contents = contents.lower()
-        score = 0
-        for term in terms:
-            occurrences = lowered_contents.count(term)
-            if term in lowered_path:
-                score += 100 + len(term)
-            if occurrences:
-                score += min(occurrences, 10) * (10 + len(term))
-            declaration = re.search(
-                rf"\b(?:function|class|const|let|var)\s+{re.escape(term)}\b",
-                lowered_contents,
-            )
-            if declaration:
-                score += 500
-        if score:
-            ranked.append((-score, relative, path))
-    return [path for _, _, path in sorted(ranked)]
 
 
 def _source_excerpt(contents: str, focus_terms: set[str]) -> str:
@@ -281,7 +205,8 @@ def _read_context_files(
     # Note: manifest_path is intentionally NOT added as a context file.
     # still parsed below for entrypoint discovery (main/module/browser).
 
-    for candidate_path in _rank_relevant_source_files(source_dir, focus_terms or set())[
+    # Keyword-ranked files (ranking lives in vulnerability_localization).
+    for candidate_path in rank_relevant_source_files(source_dir, focus_terms or set())[
         :MAX_RELEVANT_CONTEXT_FILES
     ]:
         add_context_file(candidate_path, queue_for_imports=True)
@@ -849,13 +774,14 @@ def patch_generation(state: GraphState) -> dict:
         "generation_status": None, "generation_error": None,
         "attempt_record_id": str(uuid.uuid4()),
         "attempt_error_start": len(state.get("errors", [])),
+        "context_file_paths": list(state.get("context_file_paths", [])),
     })
     result = _patch_generation(attempt_state)
     reset = {key: attempt_state[key] for key in (
         "validation", "adversarial_evaluation", "patch_score", "classification",
         "classification_reason", "sandbox_id", "sandbox_apply_success", "patch_applied",
         "patched_source_dir", "remaining_vulnerabilities", "revalidation_artifacts",
-        "attempt_record_id", "attempt_error_start", "run_attempt_id",
+        "attempt_record_id", "attempt_error_start", "run_attempt_id", "context_file_paths",
     )}
     reset.update(result)
     return reset
@@ -887,11 +813,21 @@ def _patch_generation(state: GraphState) -> dict:
             provider=provider, 
             selected_vulnerabilities=selected_vulnerabilities)
     model_name = state.get("model_name", default_model)
-    context_files = _read_context_files(
-        source_path,
-        manifest_path,
-        _focus_terms(selected_vulnerabilities),
-    )
+
+    # use vulnerability localization node for context files
+    context_files = state.get("localized_context_files")
+    if not context_files:
+        # localization skipped/failed -> keyword-ranked fallback
+        logger.info(
+            "patch_generation: no localized context (status=%s); using keyword-ranked fallback",
+            state.get("localization_status"),
+        )
+        context_files = _read_context_files(
+            source_path,
+            manifest_path,
+            extract_focus_terms(selected_vulnerabilities),
+        )
+    
     context_file_paths = [f["path"] for f in context_files]
     # Persist file paths fed to the model so downstream nodes can store them.
     state["context_file_paths"] = context_file_paths

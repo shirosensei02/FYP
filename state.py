@@ -135,6 +135,12 @@ class GraphState(TypedDict, total=False):
     # 2b) official / vendor patch (answer key) — not consumed by patch_generation
     answer_key: AnswerKey
 
+    # 2c) vulnerability localization
+    localized_files: list[str]
+    localized_context_files: list[dict[str, str]]
+    localization_status: Literal["localized", "skipped", "failed"] | None
+    localization_reasoning: str | None
+
     # 3) patch generation
     context_file_paths: list[str]
     patch_attempts: list[PatchAttempt]

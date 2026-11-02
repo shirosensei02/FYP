@@ -64,6 +64,15 @@ For the detected GHSA or CVE, the pipeline queries the GitHub Advisory API and a
 
 This data is intentionally **not passed to the patch generator**. It is used only after generation to assess how closely the generated patch aligns with the official remediation.
 
+### 5. Vulnerability Localisation
+
+**Module:** `vulnerability_localization.py`
+
+This module takes in a ranked file tree for the LLM to decide what files to pass into generation module. 
+Outputs a list of selected context files along with a 30 line preview of their content
+
+snippet = [{"path": path_file, "content": content}]
+
 ### 4. LLM patch generation and source preflight
 
 **Module:** `patch_generation.py`

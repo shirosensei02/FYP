@@ -15,6 +15,12 @@ def _stub_persistence(monkeypatch, attempt_id="fake_attempt_id", result_id="fake
 
     monkeypatch.setattr(patch_validation_module, "save_patch_attempt", fake_save_attempt)
     monkeypatch.setattr(patch_validation_module, "save_patch_result", fake_save_result)
+    orig_pv = patch_validation_module.patch_validation
+    monkeypatch.setattr(
+        patch_validation_module,
+        "patch_validation",
+        lambda state, *args, **kwargs: orig_pv(state, *args, save_to_db=kwargs.get("save_to_db", True)),
+    )
     return calls
 
 

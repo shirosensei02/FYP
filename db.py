@@ -153,6 +153,23 @@ def save_patch_result(
         return None
 
 
+def save_pipeline_result(state: dict) -> tuple[str | None, str | None]:
+    """
+    Persist final pipeline outcome to MongoDB after all evaluation stages complete.
+
+    Both passing and failing attempts are stored in ``all_attempts``.
+    Passing attempts are also stored in ``successful_patches``.
+
+    Returns (attempt_id, result_id).
+    """
+    passed = state.get("classification") == "pass"
+    attempt_doc_id = save_patch_attempt(state, passed=passed)
+    doc_id = None
+    if passed:
+        doc_id = save_patch_result(state, passed=True, all_attempts_id=attempt_doc_id)
+    return attempt_doc_id, doc_id
+
+
 def _build_doc(state: dict, passed: bool) -> dict:
     patch = state.get("current_patch") or {}
     return {
@@ -163,6 +180,8 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "model_used":      patch.get("model_used") or state.get("generation_model_used"),
         "attempt_id":      patch.get("attempt_id") or state.get("run_attempt_id"),
         "attempt_number":  patch.get("attempt_number"),
+        "localization_status": state.get("localization_status"),
+        "context_file_paths": state.get("context_file_paths") or [],
         "raw_output":      patch.get("raw_output"),
         "diff":            patch.get("diff"),
         "validation":      state.get("validation") or {},
@@ -176,7 +195,6 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "errors":          state.get("errors") or [],
         "generation_status": state.get("generation_status"),
         "generation_error": state.get("generation_error"),
-        "context_file_paths": state.get("context_file_paths") or [],
         "patch_score":      state.get("patch_score"),
         "maintainer_eval" : state.get("maintainer_eval")
     }

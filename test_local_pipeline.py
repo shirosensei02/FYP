@@ -23,8 +23,6 @@ python test_local_pipeline.py --package-name lodash --package-version 4.17.15 --
 python test_local_pipeline.py --package-name lodash --package-version 4.17.15 \
     --source-dir ".workspace/packages/lodash/4.17.15/source/package" --skip-vuln-detection
 """
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -47,6 +45,7 @@ from patch_generation import patch_generation
 from patch_application import patch_application
 from patch_validation import patch_validation
 from adversarial_evaluation import adversarial_evaluation
+from vulnerability_localization import vulnerability_localization
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +198,15 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  vendor files    : {answer.get('files') or []}")
     print(f"  vendor diff     : {len(answer.get('diff') or '')} chars")
 
+    # Node 2c: vulnerability localization
+    _sep("Node 2c - VULNERABILITY LOCALIAZTION")
+    result = vulnerability_localization(state)
+    state.update(result)
+    print(f"  status          : {state.get('localization_status')}")
+    print(f"  localized files : {state.get('localized_files') or []}")
+    print(f"  context_files   : {len(state.get('localized_context_files') or [])}")
+    print(f"  reasoning       : {state.get('localized_reasoning') or 'none'}")
+    
     while True:
         # Node 3: patch_generation
         _sep(f"NODE 3 / 5 - PATCH GENERATION  (provider={args.model_provider})")
@@ -277,6 +285,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  verdict         : {eval.get('verdict')}")
     print(f"  root_cause      : {eval.get('root_cause_identified')}")
     print(f"  summary         : {eval.get('summary')}")
+    if state.get("mongo_id"):
+        print(f"  mongo_id        : {state.get('mongo_id')}")
 
     # Final summary
     _sep("PIPELINE COMPLETE")
@@ -294,6 +304,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  location           : {score.get('location')} ({score.get('location_overlap')})")
     print(f"  strategy           : {score.get('strategy')}")
     print(f"  completeness       : {score.get('completeness')}")
+    print(f"  mongo_id           : {state.get('mongo_id')}")
     print(f"  errors             : {state.get('errors', [])}")
 
     if args.dump_state:

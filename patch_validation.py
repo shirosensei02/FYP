@@ -26,10 +26,13 @@ from db import save_patch_attempt, save_patch_result
 logger = logging.getLogger(__name__)
 
 
-def patch_validation(state: GraphState) -> dict:
+def patch_validation(state: GraphState, *, save_to_db: bool | None = None) -> dict:
     """
     Reads `state.validation` produced by patch_application, decides pass/fail,
-    persists the attempt to MongoDB, and returns a partial state update.
+    optionally persists the attempt to MongoDB, and returns a partial state update.
+
+    By default, DB persistence is deferred until after Node 6 (maintainer evaluation)
+    so all evaluation scores and verdicts are included.
     """
     validation = state.get("validation") or {}
     package    = state.get("package_name", "?")
@@ -55,20 +58,22 @@ def patch_validation(state: GraphState) -> dict:
         "PASS" if passed else "FAIL",
     )
 
-    # ── Persist every terminal outcome ───────────────────────────────────────
-    attempt_doc_id = save_patch_attempt(state, passed=passed)
-    if attempt_doc_id:
-        logger.info("patch_validation - attempt persisted to MongoDB _id=%s", attempt_doc_id)
-    else:
-        logger.warning("patch_validation - MongoDB attempt save failed (continuing)")
-
-    # ── Persist validated patches in the success-only collection ─────────────
-    if passed:
-        doc_id = save_patch_result(state, passed=True, all_attempts_id=attempt_doc_id)
-        if doc_id:
-            logger.info("patch_validation - validated patch persisted to MongoDB _id=%s", doc_id)
+    # ── DB persistence (deferred by default to maintainer_eval after Node 6) ──
+    should_save = bool(state.get("save_to_db", False) if save_to_db is None else save_to_db)
+    attempt_doc_id = None
+    if should_save:
+        attempt_doc_id = save_patch_attempt(state, passed=passed)
+        if attempt_doc_id:
+            logger.info("patch_validation - attempt persisted to MongoDB _id=%s", attempt_doc_id)
         else:
-            logger.warning("patch_validation - MongoDB save failed (continuing)")
+            logger.warning("patch_validation - MongoDB attempt save failed (continuing)")
+
+        if passed:
+            doc_id = save_patch_result(state, passed=True, all_attempts_id=attempt_doc_id)
+            if doc_id:
+                logger.info("patch_validation - validated patch persisted to MongoDB _id=%s", doc_id)
+            else:
+                logger.warning("patch_validation - MongoDB save failed (continuing)")
 
     # ── Build human-readable reason ───────────────────────────────────────────
     if state.get("generation_status") == "failed":
