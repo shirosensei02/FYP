@@ -40,6 +40,7 @@ from typing import Any
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from cost_log import record_request
 from run_cost import add_run_cost, response_cost
 from state import GraphState, MaintainerEvalResult
 
@@ -128,7 +129,7 @@ def _parse_eval_response(content: str) -> MaintainerEvalResult | None:
     )
 
 
-def _call_llm(prompt: str, eval_model) -> tuple[str, float]:
+def _call_llm(prompt: str, eval_model, state: GraphState) -> tuple[str, float]:
     """Send the evaluation prompt to the LLM via OpenRouter and return raw content and cost."""
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -146,16 +147,27 @@ def _call_llm(prompt: str, eval_model) -> tuple[str, float]:
         "No markdown fences, no explanation outside the JSON."
     )
 
-    response = client.chat.completions.create(
-        model=eval_model,
-        temperature=0,
-        max_tokens=MAX_TOKENS,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": prompt},
-        ],
-    )
+    try:
+        response = client.chat.completions.create(
+            model=eval_model,
+            temperature=0,
+            max_tokens=MAX_TOKENS,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt},
+            ],
+        )
+    except Exception as exc:
+        record_request(
+            state,
+            node="maintainer_eval",
+            call="evaluate",
+            model=eval_model,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        raise
+    record_request(state, node="maintainer_eval", call="evaluate", model=eval_model, response=response)
     cost = response_cost(response)
 
     choices = getattr(response, "choices", None) or []
@@ -233,7 +245,7 @@ def maintainer_eval(state: GraphState) -> dict:
     # ── Build prompt and call LLM ──────────────────────────────────────────
     try:
         prompt = _build_prompt(generated_diff, answer_key_diff, vulnerability)
-        raw_response, call_cost = _call_llm(prompt, eval_model)
+        raw_response, call_cost = _call_llm(prompt, eval_model, state)
         cost_update = add_run_cost(state, call_cost)
         result = _parse_eval_response(raw_response)
 

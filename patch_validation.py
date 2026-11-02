@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 
+from cost_log import record_attempt_outcome
 from failure_context import record_failure
 from state import GraphState
 from db import save_patch_attempt, save_patch_result
@@ -102,6 +103,7 @@ def patch_validation(state: GraphState) -> dict:
     elif not tests_ok:
         reason = "Build succeeded but npm test failed — patch broke the package."
     failure = record_failure(state, reason) if not passed else None
+    record_attempt_outcome(state, passed=passed)
     return {
         "retry_feedback": failure,
         "classification": "pass" if passed else "fail",

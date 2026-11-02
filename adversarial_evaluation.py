@@ -10,6 +10,7 @@ from typing import Any, Literal
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from cost_log import record_request
 from model_catalog import canonical_model_id, evaluator_for
 from run_cost import add_run_cost, response_cost
 from state import GraphState
@@ -193,12 +194,15 @@ def adversarial_evaluation(state: GraphState) -> dict[str, Any]:
             ],
         )
     except Exception as exc:
+        message = f"{type(exc).__name__}: {exc}"
+        record_request(state, node="adversarial_evaluation", call="evaluate", model=model, error=message)
         return {"adversarial_evaluation": _result(
             provider=provider, model=model, test_suite_pass=test_suite_pass, genuine_fix="uncertain",
             reasoning="Evaluation could not produce a valid evidence-based verdict.",
-            error=f"{type(exc).__name__}: {exc}",
+            error=message,
         )}
 
+    record_request(state, node="adversarial_evaluation", call="evaluate", model=model, response=response)
     cost_update = add_run_cost(state, response_cost(response))
     try:
         choices = getattr(response, "choices", None) or []
