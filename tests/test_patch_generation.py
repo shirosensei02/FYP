@@ -439,7 +439,7 @@ def test_patch_generation_repairs_an_invalid_model_response(monkeypatch, tmp_pat
             }]
         }
 
-    monkeypatch.setattr(patch_generation, "_generate_with_openai", fake_generator)
+    monkeypatch.setattr(patch_generation, "_generate_with_openrouter", fake_generator)
 
     result = patch_generation.patch_generation(
         {
@@ -447,7 +447,7 @@ def test_patch_generation_repairs_an_invalid_model_response(monkeypatch, tmp_pat
             "package_version": "1.0.0",
             "source_dir": str(source_dir),
             "package_manifest_path": str(manifest_path),
-            "model_provider": "openai",
+            "model_provider": "openrouter",
             "vulnerabilities": [{"id": "CVE-TEST-0001"}],
         }
     )
@@ -507,7 +507,10 @@ def test_patch_generation_repairs_a_diff_that_fails_preflight(monkeypatch, tmp_p
         assert "patch does not apply" in repair_feedback
         return {"diff": "--- a/index.js\n+++ b/index.js\n@@ -1 +1 @@\n-module.exports = 42;\n+module.exports = 43;\n"}
 
-    monkeypatch.setattr(patch_generation, "_generate_with_openai", fake_generator)
+    monkeypatch.setattr(patch_generation, "_generate_with_openrouter", fake_generator)
+    # The production default temporarily bypasses preflight for debugging;
+    # enable it here to preserve coverage of its repair behaviour.
+    monkeypatch.setattr(patch_generation, "SOURCE_DIFF_PREFLIGHT_ENABLED", True)
 
     result = patch_generation.patch_generation(
         {
@@ -515,7 +518,7 @@ def test_patch_generation_repairs_a_diff_that_fails_preflight(monkeypatch, tmp_p
             "package_version": "1.0.0",
             "source_dir": str(source_dir),
             "package_manifest_path": str(manifest_path),
-            "model_provider": "openai",
+            "model_provider": "openrouter",
             "vulnerabilities": [{"id": "CVE-TEST-0001"}],
         }
     )

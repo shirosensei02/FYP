@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 
+from failure_context import record_failure
 from state import GraphState
 from db import save_patch_attempt, save_patch_result
 
@@ -39,11 +40,12 @@ def patch_validation(state: GraphState) -> dict:
     tests_ok = bool(validation.get("tests_passed"))
     consumer_smoke_ok = validation.get("consumer_smoke_status") == "PASS"
     regression_status = state.get("regression_status")
-    passed = (
+    validation_passed = (
         regression_status == "NO_REGRESSION"
         if regression_status
         else build_ok and tests_ok
     )
+    passed = validation_passed and state.get("generation_status") != "failed"
 
     logger.info(
         "patch_validation - %s@%s [%s]: regression=%s build=%s tests=%s consumer_smoke=%s -> %s",
@@ -79,19 +81,29 @@ def patch_validation(state: GraphState) -> dict:
             )
         else:
             reason = "Baseline and patched package validation passed; no regression was detected."
+    elif passed:
+        reason = "Docker build succeeded and package validation passed."
+    elif state.get("patch_applied") is False:
+        reason = "Patch could not be applied to the source; Docker build was not run."
+    elif validation.get("failure_stage") == "dependencies":
+        reason = "Dependency installation failed; package tests were skipped."
+    elif validation.get("failure_stage") == "setup":
+        reason = "Sandbox environment setup failed; package validation could not complete reliably."
     elif regression_status == "REGRESSION":
         reason = "The baseline passed, but the patched package failed validation."
     elif regression_status == "INCONCLUSIVE":
         reason = "The baseline package failed validation, so patch regression could not be determined."
     elif regression_status == "PATCHED_ONLY_PASS":
         reason = "Only the patched package passed; the failed baseline makes the comparison inconclusive."
-    elif passed:
-        reason = "Docker build succeeded and package validation passed."
     elif not build_ok:
         reason = "Docker build failed — patch could not be applied."
+    elif not tests_ok and validation.get("install_succeeded") is False:
+        reason = "Dependency installation failed; package validation could not complete reliably."
     elif not tests_ok:
         reason = "Build succeeded but npm test failed — patch broke the package."
+    failure = record_failure(state, reason) if not passed else None
     return {
+        "retry_feedback": failure,
         "classification": "pass" if passed else "fail",
         "classification_reason": reason,
         "mongo_id": attempt_doc_id,

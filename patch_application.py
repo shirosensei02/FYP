@@ -292,6 +292,7 @@ def _write_patched_package(
         cwd=work_dir,
         timeout=30,
     )
+    (work_dir / "patch_apply.log").write_text(out + "\n" + err, encoding="utf-8")
     if rc != 0:
         logger.warning("patch CLI returned %d; trying git apply --recount.\n%s", rc, err)
         print(f"    WARNING  patch exited {rc}: {err.strip()}", flush=True)
@@ -342,6 +343,9 @@ def _write_patched_package(
                     break
 
             if not hunk_ok:
+                (work_dir / "patch_apply.log").write_text(
+                    out + "\n" + err + "\n" + git_out + "\n" + git_err + "\n" + h_err
+                    if hunks else out + "\n" + err + "\n" + git_err, encoding="utf-8")
                 shutil.rmtree(pristine_backup, ignore_errors=True)
                 return False
             print(f"    OK  unified diff applied successfully hunk-by-hunk ({len(hunks)} hunks)", flush=True)
@@ -397,7 +401,8 @@ DOCKERFILE_TEMPLATE = textwrap.dedent(
     RUN mkdir -p /consumer && \
         cd /consumer && \
         npm init -y && \
-        npm install --prefer-offline --omit=dev --no-audit /tmp/package-artifact/*.tgz
+        npm install --prefer-offline --omit=dev --no-audit /tmp/package-artifact/*.tgz 2>&1; \
+        rc=$?; echo PACKAGE_INSTALL_EXIT_CODE=$rc; exit "$rc"
     WORKDIR /consumer
     """
 )
@@ -638,6 +643,17 @@ def _validate_workspace(
         consumer_smoke_succeeded=smoke_ok,
         consumer_smoke_command=smoke_command,
         docker_image_built=image_ok,
+        failure_stage=(
+            None
+            if image_ok and install_ok and smoke_ok
+            else "setup"
+            if not image_ok
+            else "dependencies"
+            if not install_ok
+            else "setup"
+            if re.search(r"npm error code (?:EAI_AGAIN|ENOTFOUND|ENETUNREACH)\b", "\n".join(logs))
+            else "tests"
+        ),
         install_succeeded=install_ok,
         build_succeeded=None,
         tests_passed=None,
@@ -683,6 +699,7 @@ def patch_application(state: GraphState) -> dict:
             consumer_smoke_status="SKIPPED",
             consumer_smoke_succeeded=False,
             docker_image_built=False,
+            failure_stage="generation",
             install_succeeded=False,
             build_succeeded=None,
             tests_passed=None,
@@ -690,6 +707,7 @@ def patch_application(state: GraphState) -> dict:
             logs=msg,
         )
         return {
+            "patch_applied": False,
             "sandbox_id": None,
             "sandbox_apply_success": False,
             "baseline_validation": None,
@@ -704,6 +722,7 @@ def patch_application(state: GraphState) -> dict:
     safe_name = re.sub(r"[^a-z0-9]+", "-", package_name.lower()).strip("-") or "pkg"
     baseline_validation: ValidationResult | None = None
     patched_validation: ValidationResult | None = None
+    patch_applied_ok = False
 
     try:
         # ── A: write files ─────────────────────────────────────────────────
@@ -746,6 +765,12 @@ def patch_application(state: GraphState) -> dict:
             f"patch-{safe_name}-{run_id}",
         )
 
+        # ── B: write Dockerfile ────────────────────────────────────────────
+
+        # ── C: docker build ────────────────────────────────────────────────
+
+        # ── E: package tests or load smoke test ────────────────────────────
+
     except Exception as exc:
         msg = f"patch_application error: {type(exc).__name__}: {exc}"
         logger.exception(msg)
@@ -760,6 +785,7 @@ def patch_application(state: GraphState) -> dict:
             consumer_smoke_status="SKIPPED",
             consumer_smoke_succeeded=False,
             docker_image_built=False,
+            failure_stage="application" if not patch_applied_ok else "setup",
             install_succeeded=False,
             build_succeeded=None,
             tests_passed=None,
@@ -788,6 +814,7 @@ def patch_application(state: GraphState) -> dict:
         shutil.rmtree(baseline_dir, ignore_errors=True)
 
     return {
+        "patch_applied": patch_applied_ok,
         "sandbox_id": None,
         "sandbox_apply_success": apply_success,
         "patched_source_dir": str(patched_dir) if patched_dir and patched_dir.exists() else None,

@@ -44,7 +44,8 @@ class ValidationResult(TypedDict, total=False):
     consumer_smoke_succeeded: bool
     consumer_smoke_command: list[str]
     docker_image_built: bool
-    install_succeeded: bool
+    failure_stage: str | None
+    install_succeeded: bool | None
     build_succeeded: bool | None
     tests_passed: bool | None
     build_command: list[str] | None
@@ -178,6 +179,10 @@ class GraphState(TypedDict, total=False):
     mongo_id: str | None
 
     # control flow / bookkeeping
+    retry_feedback: dict[str, Any] | None
+    attempt_record_id: str
+    attempt_error_start: int
+    patch_applied: bool | None
     retry_count: int
     max_retries: int
     errors: list[str]
