@@ -1,4 +1,4 @@
-from graph import route_after_classification, route_after_patch_generation
+from graph import increment_retry, route_after_classification, route_after_patch_generation
 
 
 def test_generation_failure_skips_docker_and_goes_to_validation():
@@ -28,3 +28,8 @@ def test_route_does_not_retry_infrastructure_failures():
 
 def test_route_retries_while_attempts_remain():
     assert route_after_classification({"classification": "fail", "retry_count": 0, "max_retries": 1}) == "retry"
+
+
+def test_increment_retry_only_advances_the_counter():
+    update = increment_retry({"retry_count": 1, "classification_reason": "npm test failed"})
+    assert update == {"retry_count": 2}

@@ -164,4 +164,6 @@ class GraphState(TypedDict, total=False):
     patch_applied: bool | None
     retry_count: int
     max_retries: int
+    # USD spent by model calls in this run, including retries.
+    run_cost: float
     errors: list[str]

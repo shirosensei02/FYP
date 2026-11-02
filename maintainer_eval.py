@@ -40,6 +40,7 @@ from typing import Any
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from run_cost import add_run_cost, response_cost
 from state import GraphState, MaintainerEvalResult
 
 load_dotenv()
@@ -127,8 +128,8 @@ def _parse_eval_response(content: str) -> MaintainerEvalResult | None:
     )
 
 
-def _call_llm(prompt: str, eval_model) -> str:
-    """Send the evaluation prompt to the LLM via OpenRouter and return raw content."""
+def _call_llm(prompt: str, eval_model) -> tuple[str, float]:
+    """Send the evaluation prompt to the LLM via OpenRouter and return raw content and cost."""
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is not set")
@@ -155,6 +156,7 @@ def _call_llm(prompt: str, eval_model) -> str:
             {"role": "user", "content": prompt},
         ],
     )
+    cost = response_cost(response)
 
     choices = getattr(response, "choices", None) or []
     if not choices:
@@ -164,7 +166,7 @@ def _call_llm(prompt: str, eval_model) -> str:
     if message is None:
         raise RuntimeError("LLM returned no message")
 
-    return (message.content or "").strip()
+    return (message.content or "").strip(), cost
 
 
 # ===========================================================================
@@ -231,7 +233,8 @@ def maintainer_eval(state: GraphState) -> dict:
     # ── Build prompt and call LLM ──────────────────────────────────────────
     try:
         prompt = _build_prompt(generated_diff, answer_key_diff, vulnerability)
-        raw_response = _call_llm(prompt, eval_model)
+        raw_response, call_cost = _call_llm(prompt, eval_model)
+        cost_update = add_run_cost(state, call_cost)
         result = _parse_eval_response(raw_response)
 
         if result is None:
@@ -243,6 +246,7 @@ def maintainer_eval(state: GraphState) -> dict:
                 status="error",
                 error_message=msg,
             )
+            return {"maintainer_eval": result, "errors": errors, **cost_update}
 
     except Exception as exc:
         msg = f"maintainer_eval: {type(exc).__name__}: {exc}"
@@ -252,5 +256,6 @@ def maintainer_eval(state: GraphState) -> dict:
             status="error",
             error_message=msg,
         )
+        return {"maintainer_eval": result, "errors": errors}
 
-    return {"maintainer_eval": result, "errors": errors}
+    return {"maintainer_eval": result, "errors": errors, **cost_update}

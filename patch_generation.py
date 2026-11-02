@@ -19,8 +19,9 @@ try:
 except ImportError:
     genai = None
 
-from state import GraphState, PatchAttempt, Vulnerability
 from failure_context import load_feedback, record_failure
+from run_cost import response_cost
+from state import GraphState, PatchAttempt, Vulnerability
 
 load_dotenv()
 
@@ -660,10 +661,10 @@ def _generate_with_openrouter(
     selected_vulnerabilities: list[Vulnerability],
     context_files: list[dict[str, str]],
     repair_feedback: str | None = None,
-) -> dict[str, Any] | str:
+) -> tuple[dict[str, Any] | str, float]:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        return "patch_generation: OPENROUTER_API_KEY is not set"
+        return "patch_generation: OPENROUTER_API_KEY is not set", 0.0
 
     model_name = state.get("model_name", DEFAULT_MODELS["openrouter"])
     client = OpenAI(
@@ -699,28 +700,41 @@ def _generate_with_openrouter(
             messages=messages,
         )
     except Exception as exc:
-        return f"patch_generation: OpenRouter request failed: {type(exc).__name__}: {exc!r}"
+        return f"patch_generation: OpenRouter request failed: {type(exc).__name__}: {exc!r}", 0.0
 
+    cost = response_cost(response)
     choices = getattr(response, "choices", None) or []
     if not choices:
         response_status = getattr(response, "status_code", "unknown")
-        return f"patch_generation: model returned no choices (status_code={response_status})"
+        return f"patch_generation: model returned no choices (status_code={response_status})", cost
 
     choice = choices[0]
     message = getattr(choice, "message", None)
     if message is None:
-        return "patch_generation: model returned no message"
+        return "patch_generation: model returned no message", cost
     content = (message.content or "").strip()
     payload = _parse_patch_response(content)
     if payload is not None:
-        return payload
+        return payload, cost
 
     finish_reason = getattr(choice, "finish_reason", "unknown")
     preview = content[:300].replace("\n", " ") if content else "<empty response>"
     return (
         "patch_generation: model returned an invalid or incomplete patch response "
         f"(finish_reason={finish_reason}, preview={preview!r})"
-    )
+    ), cost
+
+
+def _split_payload_cost(result: dict[str, Any] | str | tuple) -> tuple[dict[str, Any] | str, float]:
+    """Accept a bare test double or a (payload, cost) pair from OpenRouter."""
+    if (
+        isinstance(result, tuple)
+        and len(result) == 2
+        and isinstance(result[1], (int, float))
+        and not isinstance(result[1], bool)
+    ):
+        return result[0], float(result[1])
+    return result, 0.0
 
 
 def _generate_patch_payload(
@@ -729,13 +743,15 @@ def _generate_patch_payload(
     selected_vulnerabilities: list[Vulnerability],
     context_files: list[dict[str, str]],
     repair_feedback: str | None = None,
-) -> dict[str, Any] | str:
+) -> tuple[dict[str, Any] | str, float]:
     """Generate one patch response, optionally including repair feedback."""
     if provider == "mock":
-        return _build_mock_payload(Path(state["source_dir"]), selected_vulnerabilities, context_files)
+        return _build_mock_payload(Path(state["source_dir"]), selected_vulnerabilities, context_files), 0.0
     if provider == "openrouter":
-        return _generate_with_openrouter(state, selected_vulnerabilities, context_files, repair_feedback)
-    return f"patch_generation: unsupported model_provider: {provider}"
+        return _split_payload_cost(
+            _generate_with_openrouter(state, selected_vulnerabilities, context_files, repair_feedback)
+        )
+    return f"patch_generation: unsupported model_provider: {provider}", 0.0
 
 
 def _is_invalid_patch_response(error: str) -> bool:
@@ -777,7 +793,8 @@ def patch_attempt(
     selected_vulnerabilities=None, 
     generation_error=None, 
     generation_status="failed", 
-    provider=None) -> dict:
+    provider=None,
+    run_cost=None) -> dict:
     patch_attempts = list(state.get("patch_attempts", []))
     attempt_number = state.get("retry_count", 0) + 1
     errors = list(state.get("errors") or [])
@@ -805,7 +822,7 @@ def patch_attempt(
         patch_attempts.append(record)
         current_patch = record
 
-    return {
+    result = {
         "patch_attempts": patch_attempts,
         "current_patch": current_patch,
         "errors": errors,
@@ -815,6 +832,9 @@ def patch_attempt(
         "generation_provider": provider,
         "generation_model_used": model_name,
     }
+    if run_cost is not None:
+        result["run_cost"] = run_cost
+    return result
 
 def patch_generation(state: GraphState) -> dict:
     # Keep every result attempt-local, including when generation exits early.
@@ -876,21 +896,26 @@ def _patch_generation(state: GraphState) -> dict:
     # Persist file paths fed to the model so downstream nodes can store them.
     state["context_file_paths"] = context_file_paths
 
-    payload = _generate_patch_payload(provider, state, selected_vulnerabilities, context_files)
+    spent = float(state.get("run_cost") or 0)
+    payload, call_cost = _split_payload_cost(
+        _generate_patch_payload(provider, state, selected_vulnerabilities, context_files)
+    )
+    spent += call_cost
 
     if isinstance(payload, str):
         if not _is_invalid_patch_response(payload):
-            return patch_attempt(state, provider=provider, model_name=model_name, generation_error=payload, selected_vulnerabilities=selected_vulnerabilities)
+            return patch_attempt(state, provider=provider, model_name=model_name, generation_error=payload, selected_vulnerabilities=selected_vulnerabilities, run_cost=spent)
 
         record_failure({**state, "attempt_record_id": str(uuid.uuid4())}, payload, stage="generation_repair")
         logger.warning("patch_generation - model response failed diff validation: %s", payload)
-        payload = _generate_patch_payload(
+        payload, call_cost = _split_payload_cost(_generate_patch_payload(
             provider,
             state,
             selected_vulnerabilities,
             context_files,
             _invalid_response_feedback(payload),
-        )
+        ))
+        spent += call_cost
         if isinstance(payload, str):
             return patch_attempt(
                 state, 
@@ -898,7 +923,8 @@ def _patch_generation(state: GraphState) -> dict:
                 provider=provider, 
                 model_name=model_name, 
                 generation_error=f"patch_generation: repair attempt failed after invalid diff response: {payload}", 
-                selected_vulnerabilities=selected_vulnerabilities)
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent)
 
     original_payload = payload
     attempted_files = []
@@ -912,20 +938,22 @@ def _patch_generation(state: GraphState) -> dict:
     if isinstance(payload, str):
         record_failure({**state, "attempt_record_id": str(uuid.uuid4())}, payload, stage="generation_repair", candidate=original_payload)
         logger.warning("patch_generation - structured edit failed source validation: %s", payload)
-        repaired_payload = _generate_patch_payload(
+        repaired_payload, call_cost = _split_payload_cost(_generate_patch_payload(
             provider,
             state,
             selected_vulnerabilities,
             context_files,
             _structured_edit_feedback(payload, attempted_files),
-        )
+        ))
+        spent += call_cost
         if isinstance(repaired_payload, str):
             return patch_attempt(
                 state,
                 generation_error = f"patch_generation: repair attempt failed after structured edit validation: {repaired_payload}",
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
         payload = _normalize_patch_payload(source_path, repaired_payload)
         if isinstance(payload, str):
@@ -934,7 +962,8 @@ def _patch_generation(state: GraphState) -> dict:
                 generation_error = f"patch_generation: structured edit could not be applied after repair attempt: {payload}",
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
 
     diff = payload.get("diff")
@@ -944,7 +973,8 @@ def _patch_generation(state: GraphState) -> dict:
             generation_error = "patch_generation: model response did not contain a diff",
             provider=provider,
             model_name=model_name,
-            selected_vulnerabilities=selected_vulnerabilities
+            selected_vulnerabilities=selected_vulnerabilities,
+            run_cost=spent,
         )
 
     # Temporarily bypass source-diff preflight so patch_application can show
@@ -963,13 +993,14 @@ def _patch_generation(state: GraphState) -> dict:
             f"git apply --check --ignore-whitespace --recount reported:\n{preflight_error}.\n"
             "Please return the complete patch with all necessary files, do not remove any initial files that is not changed."
         )
-        payload = _generate_patch_payload(
+        payload, call_cost = _split_payload_cost(_generate_patch_payload(
             provider,
             state,
             selected_vulnerabilities,
             context_files,
             repair_feedback,
-        )
+        ))
+        spent += call_cost
         if isinstance(payload, str):
             return patch_attempt(
                 state,
@@ -977,7 +1008,8 @@ def _patch_generation(state: GraphState) -> dict:
                 generation_error=f"patch_generation: repair attempt failed after diff preflight: {payload}",
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
 
         payload = _normalize_patch_payload(source_path, payload)
@@ -987,7 +1019,8 @@ def _patch_generation(state: GraphState) -> dict:
                 generation_error=f"patch_generation: repair attempt produced an invalid structured edit: {payload}",
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
 
         diff = payload.get("diff")  
@@ -997,7 +1030,8 @@ def _patch_generation(state: GraphState) -> dict:
                 generation_error="patch_generation: repair attempt did not contain a diff",
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
 
         preflight_error = (
@@ -1014,7 +1048,8 @@ def _patch_generation(state: GraphState) -> dict:
                 diff=diff,
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
 
     return patch_attempt(
@@ -1025,4 +1060,5 @@ def _patch_generation(state: GraphState) -> dict:
         selected_vulnerabilities=selected_vulnerabilities,
         generation_status="generated",
         provider=provider,
+        run_cost=spent,
     )

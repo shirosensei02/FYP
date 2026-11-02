@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from model_catalog import canonical_model_id, evaluator_for
+from run_cost import add_run_cost, response_cost
 from state import GraphState
 
 load_dotenv()
@@ -176,6 +177,15 @@ def adversarial_evaluation(state: GraphState) -> dict[str, Any]:
                 {"role": "user", "content": json.dumps(_evaluation_input(state), default=str)},
             ],
         )
+    except Exception as exc:
+        return {"adversarial_evaluation": _result(
+            provider=provider, model=model, test_suite_pass=test_suite_pass, genuine_fix="uncertain",
+            reasoning="Evaluation could not produce a valid evidence-based verdict.",
+            error=f"{type(exc).__name__}: {exc}",
+        )}
+
+    cost_update = add_run_cost(state, response_cost(response))
+    try:
         choices = getattr(response, "choices", None) or []
         content = choices[0].message.content if choices and getattr(choices[0], "message", None) else ""
         payload = _parse_response((content or "").strip())
@@ -186,9 +196,9 @@ def adversarial_evaluation(state: GraphState) -> dict[str, Any]:
             provider=provider, model=model, test_suite_pass=test_suite_pass, genuine_fix="uncertain",
             reasoning="Evaluation could not produce a valid evidence-based verdict.",
             error=f"{type(exc).__name__}: {exc}",
-        )}
+        ), **cost_update}
 
     return {"adversarial_evaluation": _result(
         provider=provider, model=model, test_suite_pass=test_suite_pass,
         genuine_fix=payload["genuine_fix"], reasoning=payload["reasoning"], evidence=payload["evidence"],
-    )}
+    ), **cost_update}
