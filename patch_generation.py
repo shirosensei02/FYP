@@ -19,6 +19,7 @@ try:
 except ImportError:
     genai = None
 
+from cost_log import note_written_lines, record_request
 from failure_context import load_feedback, record_failure
 from run_cost import response_cost
 from state import GraphState, PatchAttempt, Vulnerability
@@ -592,6 +593,7 @@ def _generate_with_openrouter(
         return "patch_generation: OPENROUTER_API_KEY is not set", 0.0
 
     model_name = state.get("model_name", DEFAULT_MODELS["openrouter"])
+    call = "repair" if repair_feedback else "generate"
     client = OpenAI(
         api_key=api_key,
         base_url=os.getenv("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL),
@@ -625,8 +627,11 @@ def _generate_with_openrouter(
             messages=messages,
         )
     except Exception as exc:
-        return f"patch_generation: OpenRouter request failed: {type(exc).__name__}: {exc!r}", 0.0
+        message = f"patch_generation: OpenRouter request failed: {type(exc).__name__}: {exc!r}"
+        record_request(state, node="patch_generation", call=call, model=model_name, error=message)
+        return message, 0.0
 
+    record_request(state, node="patch_generation", call=call, model=model_name, response=response)
     cost = response_cost(response)
     choices = getattr(response, "choices", None) or []
     if not choices:
@@ -913,6 +918,8 @@ def _patch_generation(state: GraphState) -> dict:
             run_cost=spent,
         )
 
+    note_written_lines(state, diff)
+
     # Temporarily bypass source-diff preflight so patch_application can show
     # whether its normal/fallback patch application paths accept the diff.
     preflight_error = (
@@ -969,6 +976,8 @@ def _patch_generation(state: GraphState) -> dict:
                 selected_vulnerabilities=selected_vulnerabilities,
                 run_cost=spent,
             )
+
+        note_written_lines(state, diff)
 
         preflight_error = (
             _validate_diff_against_source(source_path, diff)

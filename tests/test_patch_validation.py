@@ -1,3 +1,4 @@
+import cost_log
 import patch_validation as patch_validation_module
 from patch_validation import patch_validation
 
@@ -32,6 +33,7 @@ def test_patch_validation_pass_persists_attempt_and_result(monkeypatch):
             "validation": {"build_succeeded": True, "tests_passed": True},
             "package_name": "lodash",
             "package_version": "4.17.15",
+            "run_attempt_id": "lodash-fc1",
             "current_patch": {"model_used": "mock-diff-v1"},
         }
     )
@@ -41,6 +43,8 @@ def test_patch_validation_pass_persists_attempt_and_result(monkeypatch):
     assert result["mongo_id"] == "fake_attempt_id"
     assert calls["attempt"] == [{"passed": True}]
     assert calls["result"] == [{"passed": True, "all_attempts_id": "fake_attempt_id"}]
+    logged = next(document for document in cost_log._collection().find() if document["key"] == "lodash-fc1-1")
+    assert logged["totals"]["outcome"] == "success"
 
 
 def test_no_regression_is_the_only_comparison_success(monkeypatch):
@@ -87,6 +91,7 @@ def test_regression_fails_even_when_patched_flags_are_true(monkeypatch):
         {
             "regression_status": "REGRESSION",
             "validation": {"build_succeeded": True, "tests_passed": True},
+            "run_attempt_id": "lodash-fc2",
         }
     )
 
@@ -95,6 +100,8 @@ def test_regression_fails_even_when_patched_flags_are_true(monkeypatch):
         "The baseline passed, but the patched package failed validation."
     )
     assert calls["result"] == []
+    logged = next(document for document in cost_log._collection().find() if document["key"] == "lodash-fc2-1")
+    assert logged["totals"]["outcome"] == "failed"
 
 
 def test_inconclusive_baseline_is_not_saved_as_success(monkeypatch):

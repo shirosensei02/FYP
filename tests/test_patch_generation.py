@@ -1,5 +1,6 @@
 import json
 
+import cost_log
 import patch_generation
 
 
@@ -368,6 +369,16 @@ def test_patch_generation_openrouter_provider_uses_configured_model(monkeypatch,
 
     assert result["current_patch"]["model_used"] == "qwen/qwen3-coder:free"
     assert "--- a/index.js" in result["current_patch"]["diff"]
+    logged = next(iter(cost_log._collection().find()))
+    assert logged["package_name"] == "demo-package"
+    assert logged["package_version"] == "1.0.0"
+    assert logged["model"] == "qwen/qwen3-coder:free"
+    assert logged["attempt_number"] == 1
+    assert logged["key"].endswith("-1")
+    assert logged["requests"][0]["node"] == "patch_generation"
+    assert logged["requests"][0]["call"] == "generate"
+    assert logged["requests"][0]["lines_added"] == 1
+    assert logged["requests"][0]["lines_removed"] == 1
 
 
 def test_openrouter_explanation_only_response_is_repaired_once_then_recorded_as_failure(monkeypatch, tmp_path):
@@ -391,6 +402,9 @@ def test_openrouter_explanation_only_response_is_repaired_once_then_recorded_as_
     )
 
     assert client.completions.calls == 2
+    logged = next(iter(cost_log._collection().find()))
+    assert [item["call"] for item in logged["requests"]] == ["generate", "repair"]
+    assert all(item["lines_added"] is None for item in logged["requests"])
     assert result["generation_status"] == "failed"
     assert result["generation_model_used"] == "nvidia/nemotron-3-super-120b-a12b:free"
     assert result["current_patch"] is None

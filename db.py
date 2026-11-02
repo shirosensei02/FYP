@@ -10,6 +10,7 @@ Collections
 -----------
   fyp_patches.successful_patches  – patches that passed all validation stages
   fyp_patches.all_attempts        – every terminal pipeline attempt
+  fyp_patches.attempt_costs       – token, cost, and line totals for one attempt
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ _MONGO_URI  = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 _DB_NAME    = "fyp_patches"
 _COL_PASS   = "successful_patches"
 _COL_ATTEMPTS = "all_attempts"
+_COL_COSTS = "attempt_costs"
 
 # Atlas TLS handshakes to this cluster intermittently fail with
 # TLSV1_ALERT_INTERNAL_ERROR (~30-40% of cold connections, observed against
@@ -105,6 +107,10 @@ def _ensure_indexes(db) -> None:
         col = db[collection_name]
         col.create_index([("package_name", ASCENDING), ("model_used", ASCENDING)])
         col.create_index([("timestamp", ASCENDING)])
+    db[_COL_COSTS].create_index(
+        [("run_attempt_id", ASCENDING), ("attempt_number", ASCENDING)],
+        unique=True,
+    )
 
 
 # ── Public helpers ────────────────────────────────────────────────────────────

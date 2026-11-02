@@ -11,9 +11,69 @@ def response_cost(response: Any) -> float:
     return found if found is not None else 0.0
 
 
+def response_usage(response: Any) -> dict[str, Any]:
+    """Return token counts and USD cost from a provider response.
+
+    Missing token counts stay None. Cost is 0 when the provider omits it.
+    """
+    usage = _usage_mapping(getattr(response, "usage", None))
+    if not usage and isinstance(response, dict):
+        usage = _usage_mapping(response.get("usage"))
+    prompt = _coerce_int(usage.get("prompt_tokens"))
+    completion = _coerce_int(usage.get("completion_tokens"))
+    total = _coerce_int(usage.get("total_tokens"))
+    if total is None and prompt is not None and completion is not None:
+        total = prompt + completion
+    return {
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "total_tokens": total,
+        "cost": response_cost(response),
+    }
+
+
 def add_run_cost(state: dict, amount: float) -> dict:
     """Return the graph update that adds one call's cost to the running total."""
     return {"run_cost": float(state.get("run_cost") or 0) + float(amount)}
+
+
+def _coerce_int(raw: Any) -> int | None:
+    if isinstance(raw, bool) or raw is None:
+        return None
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float) and raw.is_integer():
+        return int(raw)
+    if isinstance(raw, str):
+        text = raw.strip()
+        if text.isdigit() or (text.startswith("-") and text[1:].isdigit()):
+            return int(text)
+    return None
+
+
+def _usage_mapping(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    mapped: dict[str, Any] = {}
+    dumper = getattr(value, "model_dump", None)
+    if callable(dumper):
+        try:
+            dumped = dumper()
+        except Exception:
+            dumped = None
+        if isinstance(dumped, dict):
+            mapped.update(dumped)
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens", "cost"):
+        if key not in mapped and hasattr(value, key):
+            mapped[key] = getattr(value, key)
+    extra = getattr(value, "model_extra", None)
+    if isinstance(extra, dict):
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens", "cost"):
+            if key not in mapped and key in extra:
+                mapped[key] = extra[key]
+    return mapped
 
 
 def _coerce_cost(raw: Any) -> float | None:
