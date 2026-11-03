@@ -20,7 +20,7 @@ INDEX_ROOT = Path(__file__).resolve().parent / "package_index"
 SOURCE_SUFFIXES = (".js", ".cjs", ".mjs", ".ts", ".jsx", ".tsx", ".cts", ".mts")
 MAX_LOOKUP_FUNCTIONS = 3
 MAX_LOOKUP_BODY_CHARS = 12_000
-MAX_BODY_LOADS = 8
+MAX_BODY_LOADS = 60
 _SKIP_METHODS = {
     "if", "for", "while", "switch", "catch", "function", "return", "do", "else",
 }

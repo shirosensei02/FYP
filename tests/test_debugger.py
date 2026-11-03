@@ -1,5 +1,5 @@
 import symbol_index
-from debugger import build_messages, debugger_node
+from debugger import MAX_DEBUG_ROUNDS, build_messages, debugger_node
 from patch_generation import patch_generation
 from symbol_index import index_node
 
@@ -34,6 +34,27 @@ def _state(source):
         "patch_attempts": [],
         "retry_count": 0,
     }
+
+
+def test_stripped_summary_is_appended_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(symbol_index, "INDEX_ROOT", tmp_path / "index")
+    state = _state(_source(tmp_path))
+    state["answer_key"] = {
+        "status": "resolved",
+        "summary": "secret-pkg before 9.9.9-secret allows a path escape in normalize",
+        "first_patched_version": "9.9.9-secret",
+    }
+    state.update(index_node(state))
+    message = build_messages(state)[1]["content"]
+
+    assert "summary: before allows a path escape in normalize" in message
+    assert "secret-pkg" not in message
+    assert "9.9.9-secret" not in message
+
+    state["current_vulnerabilities"][0]["description"] = "before allows a path escape in normalize"
+    repeat = build_messages(state)[1]["content"]
+    assert repeat.count("before allows a path escape in normalize") == 1
+    assert "summary:" not in repeat
 
 
 def test_history_keeps_advisory_and_catalog_while_bodies_change(tmp_path, monkeypatch):
@@ -77,7 +98,7 @@ def test_debugger_stops_when_the_round_cap_is_reached(tmp_path, monkeypatch):
     monkeypatch.setattr(symbol_index, "INDEX_ROOT", tmp_path / "index")
     state = _state(_source(tmp_path))
     state.update(index_node(state))
-    state["debug_rounds"] = 4
+    state["debug_rounds"] = MAX_DEBUG_ROUNDS
     result = debugger_node(state)
 
     assert result["debug_status"] == "capped"

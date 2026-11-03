@@ -1,4 +1,98 @@
-from og_patch_resolution import og_patch_resolution
+from og_patch_resolution import advisory_bug_statement, og_patch_resolution
+
+PIDUSAGE_DESCRIPTION = """### Overview
+Affected versions of pidusage pass unsanitized input to `child_process.exec()`, resulting in arbitrary code execution in the `ps` method.
+
+This package is vulnerable to this PoC on Darwin, SunOS, FreeBSD, and AIX.
+
+Windows and Linux are not vulnerable.
+
+### Proof of Concept
+```js
+var pid = require('pidusage');
+```
+
+### Remediation
+Update to version 1.1.5 or later.
+"""
+
+PIDUSAGE_SUMMARY = (
+    "Affected versions of pidusage pass unsanitized input to child_process.exec(), "
+    "resulting in arbitrary code execution in the ps method.\n"
+    "\n"
+    "This package is vulnerable to this PoC on Darwin, SunOS, FreeBSD, and AIX.\n"
+    "\n"
+    "Windows and Linux are not vulnerable."
+)
+
+
+def test_advisory_bug_statement_keeps_the_overview():
+    text = advisory_bug_statement(
+        {
+            "summary": "PIDUsage Enables OS Command Injection",
+            "description": PIDUSAGE_DESCRIPTION,
+        }
+    )
+    assert text == PIDUSAGE_SUMMARY
+
+
+def test_og_patch_resolution_uses_overview_as_summary(monkeypatch):
+    def fake_github_get(url):
+        return {
+            "ghsa_id": "GHSA-h2p3-h48h-9jj7",
+            "cve_id": "CVE-2017-1000220",
+            "summary": "PIDUsage Enables OS Command Injection",
+            "description": PIDUSAGE_DESCRIPTION,
+            "references": ["https://github.com/advisories/GHSA-h2p3-h48h-9jj7"],
+            "vulnerabilities": [
+                {
+                    "package": {"ecosystem": "npm", "name": "pidusage"},
+                    "first_patched_version": "1.1.5",
+                }
+            ],
+        }, None
+
+    monkeypatch.setattr("og_patch_resolution._github_get", fake_github_get)
+    result = og_patch_resolution(
+        {
+            "package_name": "pidusage",
+            "current_vulnerabilities": [{"id": "GHSA-h2p3-h48h-9jj7"}],
+        }
+    )
+    assert result["answer_key"]["summary"] == PIDUSAGE_SUMMARY
+    assert result["answer_key"]["status"] == "version_only"
+
+
+def test_og_patch_resolution_uses_osv_when_github_fails(monkeypatch):
+    monkeypatch.setattr(
+        "og_patch_resolution._github_get",
+        lambda url: (None, f"GitHub API 403 for {url}"),
+    )
+    monkeypatch.setattr(
+        "og_patch_resolution._fetch_osv_advisory",
+        lambda vuln_id: {
+            "ghsa_id": "GHSA-h2p3-h48h-9jj7",
+            "cve_id": "CVE-2017-1000220",
+            "summary": "PIDUsage Enables OS Command Injection",
+            "description": PIDUSAGE_DESCRIPTION,
+            "references": [],
+            "vulnerabilities": [
+                {
+                    "package": {"ecosystem": "npm", "name": "pidusage"},
+                    "first_patched_version": "1.1.5",
+                }
+            ],
+        },
+    )
+    result = og_patch_resolution(
+        {
+            "package_name": "pidusage",
+            "current_vulnerabilities": [{"id": "GHSA-h2p3-h48h-9jj7"}],
+        }
+    )
+    assert result["answer_key"]["status"] == "version_only"
+    assert result["answer_key"]["summary"] == PIDUSAGE_SUMMARY
+    assert result["answer_key"]["first_patched_version"] == "1.1.5"
 
 
 def test_og_patch_resolution_unavailable_without_ids():

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from cost_log import record_request
-from run_cost import response_cost
+from run_cost import response_cost, response_usage
 from symbol_index import MAX_BODY_LOADS, lookup_bodies, scan_source
 
 load_dotenv()
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEBUG_MAX_TOKENS = 2_000
-MAX_DEBUG_ROUNDS = 4
+MAX_DEBUG_ROUNDS = 20
 MAX_DEBUG_PROMPT_CHARS = 100_000
 _TERMINAL = {"located", "cannot_locate", "capped"}
 
@@ -38,7 +39,8 @@ _SYSTEM = (
     'Give up: {"action":"cannot_locate"}\n'
     "request names at most 3 functions. drop removes bodies that are unrelated. "
     "A dropped name stays in the catalog and may be requested again. "
-    "The catalog message is the list of files and functions you can ask for."
+    "The catalog message is the list of files and functions you can ask for. "
+    "If the vulnerable behavior is split across files, return each function in locations."
 )
 
 
@@ -71,11 +73,11 @@ def debugger_node(state: dict) -> dict:
     run_id = state.get("run_attempt_id") or f"{state.get('package_name') or 'package'}-{uuid.uuid4()}"
     provider = state.get("model_provider", "mock")
     if provider == "mock":
-        action, cost = _mock_action(state), 0.0
+        action, cost, usage = _mock_action(state), 0.0, _empty_usage()
     elif provider == "openrouter":
-        action, cost = _openrouter_action({**state, "run_attempt_id": run_id}, messages)
+        action, cost, usage = _openrouter_action({**state, "run_attempt_id": run_id}, messages)
     else:
-        action, cost = {"action": "cannot_locate"}, 0.0
+        action, cost, usage = {"action": "cannot_locate"}, 0.0, _empty_usage()
 
     spent = float(state.get("run_cost") or 0) + cost
     actions = list(state.get("debug_actions") or [])
@@ -86,6 +88,8 @@ def debugger_node(state: dict) -> dict:
         "debug_actions": actions,
         "debug_rounds": rounds + 1,
         "debug_request": None,
+        "debug_usage": usage,
+        "debug_prompt_chars": _prompt_chars(messages),
     }
     kind = action.get("action")
     if kind == "lookup":
@@ -110,20 +114,58 @@ def build_messages(state: dict) -> list[dict[str, str]]:
     """Advisory and catalog occupy a stable user message. Bodies are the next one."""
     findings = state.get("current_vulnerabilities") or state.get("vulnerabilities") or []
     finding = findings[0] if findings else {}
-    advisory = "\n".join([
+    description = str(finding.get("description") or "")
+    lines = [
         "Advisory:",
         f"id: {finding.get('id', 'unknown')}",
         f"severity: {finding.get('severity', 'unknown')}",
-        f"description: {finding.get('description', '')}",
-        "",
-        "Catalog:",
-        state.get("symbol_catalog") or "(no functions found)",
-    ])
+        f"description: {description}",
+    ]
+    summary = _stripped_summary(state, finding)
+    if summary and summary.casefold() not in description.casefold():
+        lines.append(f"summary: {summary}")
+    lines.extend(["", "Catalog:", state.get("symbol_catalog") or "(no functions found)"])
+    advisory = "\n".join(lines)
     return [
         {"role": "system", "content": _SYSTEM},
         {"role": "user", "content": advisory},
         {"role": "user", "content": _body_message(state)},
     ]
+
+
+def _stripped_summary(state: dict, finding: dict) -> str:
+    """GitHub advisory summary with package name and version removed."""
+    answer = state.get("answer_key") or {}
+    if answer.get("status") == "error":
+        return ""
+    summary = answer.get("summary")
+    if not isinstance(summary, str):
+        return ""
+    text = summary.strip()
+    if not text or text.lower().startswith("github api"):
+        return ""
+    tokens = [
+        state.get("package_name"),
+        state.get("package_version"),
+        finding.get("package"),
+        finding.get("installed_version"),
+        finding.get("fixed_version"),
+        answer.get("first_patched_version"),
+    ]
+    for token in tokens:
+        if not isinstance(token, str):
+            continue
+        token = token.strip()
+        if len(token) < 2:
+            continue
+        text = re.sub(re.escape(token), "", text, flags=re.IGNORECASE)
+        text = re.sub(rf"v{re.escape(token)}", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\s+([,.;:])", r"\1", text)
+    text = text.strip(" ,.;:-")
+    if len(text) < 8:
+        return ""
+    return text
 
 
 def _body_message(state: dict) -> str:
@@ -226,12 +268,21 @@ def _first_catalog_target(catalog: str, *, advisory_only: bool) -> str | None:
     return None
 
 
-def _openrouter_action(state: dict, messages: list[dict[str, str]]) -> tuple[dict, float]:
+def _empty_usage() -> dict:
+    return {
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+        "cost": 0.0,
+    }
+
+
+def _openrouter_action(state: dict, messages: list[dict[str, str]]) -> tuple[dict, float, dict]:
     api_key = os.getenv("OPENROUTER_API_KEY")
     model_name = state.get("model_name") or "anthropic/claude-sonnet-5"
     if not api_key:
         logger.warning("debugger: OPENROUTER_API_KEY is not set")
-        return {"action": "cannot_locate"}, 0.0
+        return {"action": "cannot_locate"}, 0.0, _empty_usage()
     client = OpenAI(
         api_key=api_key,
         base_url=os.getenv("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL),
@@ -250,13 +301,14 @@ def _openrouter_action(state: dict, messages: list[dict[str, str]]) -> tuple[dic
         message = f"debugger: OpenRouter request failed: {type(exc).__name__}: {exc!r}"
         record_request(state, node="debugger", call="locate", model=model_name, error=message)
         logger.warning(message)
-        return {"action": "cannot_locate"}, 0.0
+        return {"action": "cannot_locate"}, 0.0, _empty_usage()
     record_request(state, node="debugger", call="locate", model=model_name, response=response)
     content = ""
     choices = getattr(response, "choices", None) or []
     if choices and getattr(choices[0], "message", None) is not None:
         content = choices[0].message.content or ""
-    return _parse_action(content), response_cost(response)
+    usage = response_usage(response)
+    return _parse_action(content), response_cost(response), usage
 
 
 def _parse_action(content: str) -> dict:
@@ -284,7 +336,6 @@ def _parse_action(content: str) -> dict:
 
 
 def re_search_json(text: str) -> dict | None:
-    import re
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
         return None
