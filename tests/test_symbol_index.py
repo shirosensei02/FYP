@@ -90,7 +90,7 @@ def test_lookup_drop_does_not_change_the_disk_catalog(tmp_path, monkeypatch):
     assert statuses["lib/parse.js:join"] == "in_prompt"
 
 
-def test_lookup_stops_at_three_functions(tmp_path):
+def test_lookup_adds_every_requested_function(tmp_path):
     source = tmp_path / "src"
     source.mkdir()
     source.joinpath("index.js").write_text(
@@ -104,5 +104,43 @@ def test_lookup_stops_at_three_functions(tmp_path):
         drop=[], in_prompt=[], retrieved=[], body_loads=0,
     )
 
-    assert len(loaded["debug_in_prompt"]) == 3
-    assert loaded["debug_body_loads"] == 3
+    assert [item["name"] for item in loaded["debug_in_prompt"]] == [f"f{i}" for i in range(5)]
+    assert loaded["debug_body_loads"] == 5
+
+
+def test_lookup_skips_a_body_that_would_overflow_the_prompt(tmp_path, monkeypatch):
+    import debugger
+
+    source = tmp_path / "src"
+    source.mkdir()
+    source.joinpath("index.js").write_text(
+        "function f0() { return 0; }\nfunction f1() { return 1; }\n",
+        encoding="utf-8",
+    )
+    symbols = scan_source(source)
+    state = {
+        "symbol_catalog": render_catalog(symbols, set()),
+        "debug_actions": [],
+        "current_vulnerabilities": [],
+    }
+    first = apply_lookup(
+        source, symbols,
+        request=["f0"],
+        drop=[], in_prompt=[], retrieved=[], body_loads=0,
+        state=state,
+    )
+    used = debugger._prompt_chars(debugger.build_messages({
+        **state,
+        "debug_in_prompt": first["debug_in_prompt"],
+        "debug_retrieved": first["debug_retrieved"],
+    }))
+    monkeypatch.setattr(debugger, "MAX_DEBUG_PROMPT_CHARS", used)
+    loaded = apply_lookup(
+        source, symbols,
+        request=["f0", "f1"],
+        drop=[], in_prompt=[], retrieved=[], body_loads=0,
+        state=state,
+    )
+
+    assert [item["name"] for item in loaded["debug_in_prompt"]] == ["f0"]
+    assert "index.js:f1" not in {item["key"] for item in loaded["debug_retrieved"]}

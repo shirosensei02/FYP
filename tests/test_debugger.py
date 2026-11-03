@@ -1,5 +1,6 @@
 import symbol_index
-from debugger import MAX_DEBUG_ROUNDS, build_messages, debugger_node
+import debugger
+from debugger import MAX_DEBUG_ROUNDS, build_messages, debugger_node, route_after_debugger
 from patch_generation import patch_generation
 from symbol_index import index_node
 
@@ -92,6 +93,38 @@ def test_mock_loop_locates_the_advisory_function(tmp_path, monkeypatch):
     assert state["debug_locations"][0]["function"] == "normalize"
     assert state["debug_locations"][0]["path"] == "lib/parse.js"
     assert "return input" in state["debug_locations"][0]["body"]
+    assert "returns its input unchanged" in state["debug_locations"][0]["reason"]
+
+
+def test_cost_cap_stops_before_another_model_call(tmp_path, monkeypatch):
+    monkeypatch.setattr(symbol_index, "INDEX_ROOT", tmp_path / "index")
+    state = _state(_source(tmp_path))
+    state["run_cost"] = 2.01
+    state.update(index_node(state))
+    result = debugger_node(state)
+
+    assert result["debug_status"] == "capped"
+    assert "cost cap" in result["debug_feedback"]
+
+
+def test_located_without_an_explanation_continues_the_loop(tmp_path, monkeypatch):
+    monkeypatch.setattr(symbol_index, "INDEX_ROOT", tmp_path / "index")
+    state = _state(_source(tmp_path))
+    state.update(index_node(state))
+    monkeypatch.setattr(
+        debugger,
+        "_mock_action",
+        lambda state: {
+            "action": "located",
+            "locations": [{"path": "lib/parse.js", "function": "normalize", "reason": "normalize"}],
+        },
+    )
+    state.update(debugger_node(state))
+
+    assert state["debug_status"] == "running"
+    assert state.get("debug_locations") in (None, [])
+    assert "not accepted" in (state.get("debug_feedback") or "")
+    assert route_after_debugger(state) == "index"
 
 
 def test_debugger_stops_when_the_round_cap_is_reached(tmp_path, monkeypatch):

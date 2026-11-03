@@ -27,19 +27,27 @@ logger = logging.getLogger(__name__)
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEBUG_MAX_TOKENS = 2_000
 MAX_DEBUG_ROUNDS = 20
-MAX_DEBUG_PROMPT_CHARS = 100_000
+MAX_DEBUG_PROMPT_CHARS = 256_000
+# Temporary overall cost cap.
+TEMP_COST_CAP = 2.0
 _TERMINAL = {"located", "cannot_locate", "capped"}
 
 _SYSTEM = (
     "You locate vulnerable functions. You are not told the package name or version. "
     "Use only the advisory and the catalog in the conversation. "
     "Reply with one JSON object and nothing else.\n"
-    'Lookup: {"action":"lookup","request":["file.js:name"],"drop":["file.js:other"]}\n'
-    'Found: {"action":"located","locations":[{"path":"file.js","function":"name"}]}\n'
+    'Lookup: {"action":"lookup","request":["file.js:name"],"drop":["file.js:other"],"reason":"why these functions might contain the bug"}\n'
+    'Found: {"action":"located","locations":[{"path":"file.js","function":"name","reason":"how this loaded body produces the vulnerable behavior"}]}\n'
     'Give up: {"action":"cannot_locate"}\n'
-    "request names at most 3 functions. drop removes bodies that are unrelated. "
+    "Request as many functions as you need. drop removes bodies that are unrelated. "
     "A dropped name stays in the catalog and may be requested again. "
+    "A body that does not fit in the prompt is left out and is not marked retrieved, so you can request it again. "
     "The catalog message is the list of files and functions you can ask for. "
+    "Every lookup includes reason. "
+    "Return located only when the loaded function bodies show the vulnerable behavior. "
+    "Each reason must describe the operation in that loaded body and how that operation produces the advisory's effect. "
+    "A function name that matches the advisory is not enough. "
+    "If the loaded bodies do not show that behavior, return lookup for the functions you still need. "
     "If the vulnerable behavior is split across files, return each function in locations."
 )
 
@@ -51,7 +59,7 @@ def route_after_index(state: dict) -> str:
 
 
 def route_after_debugger(state: dict) -> str:
-    if state.get("debug_request"):
+    if state.get("debug_request") or state.get("debug_status") == "running":
         return "index"
     return "generation"
 
@@ -63,6 +71,13 @@ def debugger_node(state: dict) -> dict:
 
     rounds = int(state.get("debug_rounds") or 0)
     loads = int(state.get("debug_body_loads") or 0)
+    if float(state.get("run_cost") or 0) > TEMP_COST_CAP:
+        return {
+            "debug_status": "capped",
+            "debug_request": None,
+            "debug_rounds": rounds,
+            "debug_feedback": f"cost cap ${TEMP_COST_CAP:.2f} exceeded",
+        }
     if rounds >= MAX_DEBUG_ROUNDS or loads >= MAX_BODY_LOADS:
         return {"debug_status": "capped", "debug_request": None, "debug_rounds": rounds}
 
@@ -96,18 +111,31 @@ def debugger_node(state: dict) -> dict:
         return {
             **base,
             "debug_status": "running",
+            "debug_feedback": None,
             "debug_request": {
                 "request": [str(item) for item in action.get("request") or [] if str(item).strip()],
                 "drop": [str(item) for item in action.get("drop") or [] if str(item).strip()],
             },
         }
-    if kind == "located":
+    if kind == "located" and _located_explains(action, state):
         return {
             **base,
             "debug_status": "located",
+            "debug_feedback": None,
             "debug_locations": _locations_with_bodies(state, action.get("locations") or []),
         }
-    return {**base, "debug_status": "cannot_locate", "debug_locations": []}
+    if kind == "located":
+        action["accepted"] = False
+        return {
+            **base,
+            "debug_status": "running",
+            "debug_feedback": (
+                "located was not accepted. A matching function name is not enough. "
+                "Explain how the loaded function bodies produce the vulnerable behavior, "
+                "or look up the functions that show it."
+            ),
+        }
+    return {**base, "debug_status": "cannot_locate", "debug_feedback": None, "debug_locations": []}
 
 
 def build_messages(state: dict) -> list[dict[str, str]]:
@@ -196,7 +224,10 @@ def _body_message(state: dict) -> str:
         else:
             turns.append(f"{index}. {kind}")
     history = "\n".join(turns) if turns else "none"
+    feedback = state.get("debug_feedback") or ""
+    notice = f"Not accepted:\n{feedback}\n\n" if feedback else ""
     return (
+        f"{notice}"
         f"Previous actions:\n{history}\n\n"
         f"already retrieved: {seen}\n\n"
         f"Function bodies:\n{body_text}"
@@ -223,18 +254,24 @@ def _locations_with_bodies(state: dict, locations: list) -> list[dict[str, str]]
             continue
         key = f"{path}:{name}" if path else ""
         item = available.get(key) or by_name.get(name)
+        reason = str(raw.get("reason") or "").strip()
         if item and item.get("body"):
             resolved.append({
                 "path": item.get("path") or path,
                 "function": item.get("name") or name,
                 "body": item["body"],
+                "reason": reason,
             })
         else:
-            missing.append(key or name)
+            missing.append((key or name, reason))
     source_dir = state.get("source_dir")
     if missing and source_dir and Path(source_dir).is_dir():
         symbols = scan_source(Path(source_dir))
-        resolved.extend(lookup_bodies(Path(source_dir), symbols, missing))
+        reasons = {token: reason for token, reason in missing}
+        for item in lookup_bodies(Path(source_dir), symbols, [token for token, _reason in missing]):
+            key = f"{item.get('path')}:{item.get('function')}"
+            item["reason"] = reasons.get(key) or reasons.get(item.get("function") or "") or ""
+            resolved.append(item)
     return resolved
 
 
@@ -243,10 +280,25 @@ def _mock_action(state: dict) -> dict:
     target = _first_catalog_target(catalog, advisory_only=True) or _first_catalog_target(catalog, advisory_only=False)
     in_prompt = {item.get("key") for item in state.get("debug_in_prompt") or []}
     if target and target not in in_prompt:
-        return {"action": "lookup", "request": [target], "drop": []}
+        return {
+            "action": "lookup",
+            "request": [target],
+            "drop": [],
+            "reason": "the advisory names this function",
+        }
     if target:
         path, name = target.rsplit(":", 1)
-        return {"action": "located", "locations": [{"path": path, "function": name}]}
+        return {
+            "action": "located",
+            "locations": [{
+                "path": path,
+                "function": name,
+                "reason": (
+                    "The loaded body returns its input unchanged, so a path in that input "
+                    "is used without a check and produces the path escape described by the advisory."
+                ),
+            }],
+        }
     return {"action": "cannot_locate"}
 
 
@@ -328,11 +380,57 @@ def _parse_action(content: str) -> dict:
             "action": "lookup",
             "request": payload.get("request") if isinstance(payload.get("request"), list) else [],
             "drop": payload.get("drop") if isinstance(payload.get("drop"), list) else [],
+            "reason": _reason_text(payload.get("reason")),
         }
     if action == "located":
         locations = payload.get("locations")
-        return {"action": "located", "locations": locations if isinstance(locations, list) else []}
+        return {
+            "action": "located",
+            "locations": _locations_with_reasons(locations if isinstance(locations, list) else []),
+        }
     return {"action": "cannot_locate"}
+
+
+def _located_explains(action: dict, state: dict) -> bool:
+    """A located result must explain behavior from bodies that were actually loaded."""
+    locations = action.get("locations") or []
+    if not isinstance(locations, list) or not locations:
+        return False
+    loaded = {
+        item.get("key")
+        for item in state.get("debug_in_prompt") or []
+        if item.get("body") and item.get("key")
+    }
+    loaded_names = {
+        item.get("name")
+        for item in state.get("debug_in_prompt") or []
+        if item.get("body") and item.get("name")
+    }
+    for raw in locations:
+        if not isinstance(raw, dict):
+            return False
+        name = str(raw.get("function") or raw.get("name") or "")
+        path = str(raw.get("path") or "").replace("\\", "/")
+        key = f"{path}:{name}" if path and name else ""
+        if key not in loaded and name not in loaded_names:
+            return False
+        reason = _reason_text(raw.get("reason"))
+        if len(reason) < 40:
+            return False
+    return True
+
+
+def _reason_text(value) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _locations_with_reasons(locations: list) -> list[dict]:
+    cleaned = []
+    for raw in locations:
+        if not isinstance(raw, dict):
+            continue
+        cleaned.append({**raw, "reason": _reason_text(raw.get("reason"))})
+    return cleaned
 
 
 def re_search_json(text: str) -> dict | None:

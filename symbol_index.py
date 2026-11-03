@@ -18,8 +18,6 @@ logger = logging.getLogger(__name__)
 
 INDEX_ROOT = Path(__file__).resolve().parent / "package_index"
 SOURCE_SUFFIXES = (".js", ".cjs", ".mjs", ".ts", ".jsx", ".tsx", ".cts", ".mts")
-MAX_LOOKUP_FUNCTIONS = 3
-MAX_LOOKUP_BODY_CHARS = 12_000
 MAX_BODY_LOADS = 60
 _SKIP_METHODS = {
     "if", "for", "while", "switch", "catch", "function", "return", "do", "else",
@@ -96,6 +94,7 @@ def index_node(state: dict) -> dict:
             in_prompt=in_prompt,
             retrieved=retrieved,
             body_loads=body_loads,
+            state={**state, "symbol_catalog": catalog},
         )
         in_prompt = applied["debug_in_prompt"]
         retrieved = applied["debug_retrieved"]
@@ -178,8 +177,9 @@ def apply_lookup(
     in_prompt: list[dict],
     retrieved: list[dict],
     body_loads: int,
+    state: dict | None = None,
 ) -> dict:
-    """Drop named bodies, then add up to three requested bodies."""
+    """Drop named bodies, then add every requested body that fits in the prompt."""
     drop_keys = _resolve_keys(symbols, drop)
     kept = [item for item in in_prompt if item.get("key") not in drop_keys]
     for item in retrieved:
@@ -187,42 +187,46 @@ def apply_lookup(
             item["status"] = "dropped"
 
     loads = body_loads
-    added_chars = 0
-    added = 0
     for token in request:
-        if added >= MAX_LOOKUP_FUNCTIONS or loads >= MAX_BODY_LOADS:
+        if loads >= MAX_BODY_LOADS:
             break
         matches = _resolve_symbols(symbols, token)
         if not matches:
             _mark_retrieved(retrieved, token, token, "not_found")
             continue
         for symbol in matches:
-            if added >= MAX_LOOKUP_FUNCTIONS or loads >= MAX_BODY_LOADS:
+            if loads >= MAX_BODY_LOADS:
                 break
             if any(item.get("key") == symbol.key for item in kept):
                 _mark_retrieved(retrieved, symbol.key, symbol.key, "in_prompt")
                 continue
-            body = _read_body(source_dir, symbol)
-            room = MAX_LOOKUP_BODY_CHARS - added_chars
-            if room < 200:
-                break
-            if len(body) > room:
-                body = body[:room] + "\n/* truncated */\n"
-            kept.append({
+            candidate = {
                 "key": symbol.key,
                 "path": symbol.path,
                 "name": symbol.name,
-                "body": body,
-            })
-            _mark_retrieved(retrieved, symbol.key, symbol.key, "in_prompt")
-            added_chars += len(body)
-            added += 1
+                "body": _read_body(source_dir, symbol),
+            }
+            trial_retrieved = [dict(item) for item in retrieved]
+            _mark_retrieved(trial_retrieved, symbol.key, symbol.key, "in_prompt")
+            if state is not None and not _prompt_fits(state, [*kept, candidate], trial_retrieved):
+                continue
+            kept.append(candidate)
+            retrieved[:] = trial_retrieved
             loads += 1
     return {
         "debug_in_prompt": kept,
         "debug_retrieved": retrieved,
         "debug_body_loads": loads,
     }
+
+
+def _prompt_fits(state: dict, in_prompt: list[dict], retrieved: list[dict]) -> bool:
+    from debugger import MAX_DEBUG_PROMPT_CHARS, build_messages, _prompt_chars
+
+    trial = dict(state)
+    trial["debug_in_prompt"] = in_prompt
+    trial["debug_retrieved"] = retrieved
+    return _prompt_chars(build_messages(trial)) <= MAX_DEBUG_PROMPT_CHARS
 
 
 def lookup_bodies(source_dir: Path, symbols: list[Symbol], names: list[str]) -> list[dict]:

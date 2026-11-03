@@ -22,7 +22,13 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
-from debugger import build_messages, debugger_node, route_after_debugger, route_after_index
+from debugger import (
+    MAX_DEBUG_ROUNDS,
+    build_messages,
+    debugger_node,
+    route_after_debugger,
+    route_after_index,
+)
 from model_catalog import patch_evaluator_models
 from og_patch_resolution import (
     GITHUB_API,
@@ -127,10 +133,13 @@ def main() -> None:
         usage = (state.get("debug_usage") or {}) if sent else {}
         print(
             f"debugger: status={state.get('debug_status')} "
-            f"round={state.get('debug_rounds')} action={action.get('action') or 'not_sent'}"
+            f"round={state.get('debug_rounds')}/{MAX_DEBUG_ROUNDS} "
+            f"action={action.get('action') or 'not_sent'}"
         )
         print(f"requested: {_name_list(action.get('request'))}")
         print(f"dropped: {_name_list(action.get('drop'))}")
+        if action.get("reason"):
+            print(f"reason: {action.get('reason')}")
         if sent:
             prompt_tokens += int(usage.get("prompt_tokens") or 0)
             completion_tokens += int(usage.get("completion_tokens") or 0)
@@ -149,7 +158,9 @@ def main() -> None:
     print(prompt)
     print("\n===== FINAL DEBUGGER OUTPUT =====")
     print(f"status: {state.get('debug_status')}")
-    print(f"rounds: {state.get('debug_rounds')}")
+    if state.get("debug_feedback"):
+        print(f"feedback: {state.get('debug_feedback')}")
+    print(f"rounds: {state.get('debug_rounds')}/{MAX_DEBUG_ROUNDS}")
     print(f"cost: {state.get('run_cost')}")
     print(f"tokens: prompt={prompt_tokens} completion={completion_tokens} total={prompt_tokens + completion_tokens}")
     print("actions:")
@@ -157,6 +168,7 @@ def main() -> None:
     print("locations:")
     for item in state.get("debug_locations") or []:
         print(f"\n--- {item.get('path')} {item.get('function')} ---")
+        print(f"reason: {item.get('reason') or '(none)'}")
         print(item.get("body") or "")
 
 

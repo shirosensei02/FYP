@@ -44,6 +44,7 @@ def test_index_routes_a_finished_debug_loop_to_generation():
 def test_debugger_routes_a_lookup_back_to_the_index():
     assert route_after_debugger({"debug_request": {"request": ["lib/parse.js:normalize"]}}) == "index"
     assert route_after_debugger({"debug_request": None, "debug_status": "located"}) == "generation"
+    assert route_after_debugger({"debug_request": None, "debug_status": "running"}) == "index"
 
 
 def test_increment_retry_only_advances_the_counter():
