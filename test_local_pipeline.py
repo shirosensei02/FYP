@@ -45,7 +45,8 @@ from patch_generation import patch_generation
 from patch_application import patch_application
 from patch_validation import patch_validation
 from adversarial_evaluation import adversarial_evaluation
-from vulnerability_localization import vulnerability_localization
+from debugger import debugger_node, route_after_debugger, route_after_index
+from symbol_index import index_node
 
 
 # ---------------------------------------------------------------------------
@@ -198,15 +199,23 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  vendor files    : {answer.get('files') or []}")
     print(f"  vendor diff     : {len(answer.get('diff') or '')} chars")
 
-    # Node 2c: vulnerability localization
-    _sep("Node 2c - VULNERABILITY LOCALIAZTION")
-    result = vulnerability_localization(state)
-    state.update(result)
-    print(f"  status          : {state.get('localization_status')}")
-    print(f"  localized files : {state.get('localized_files') or []}")
-    print(f"  context_files   : {len(state.get('localized_context_files') or [])}")
-    print(f"  reasoning       : {state.get('localized_reasoning') or 'none'}")
-    
+    _sep("NODE 2c - SYMBOL INDEX AND DEBUGGER")
+    while True:
+        result = index_node(state)
+        state.update(result)
+        print(f"  index status    : {state.get('debug_status')}")
+        print(f"  bodies in prompt: {len(state.get('debug_in_prompt') or [])}")
+        if route_after_index(state) == "generation":
+            break
+        result = debugger_node(state)
+        state.update(result)
+        print(f"  debugger status : {state.get('debug_status')}")
+        print(f"  rounds          : {state.get('debug_rounds')}")
+        if route_after_debugger(state) == "generation":
+            break
+    located = state.get("debug_locations") or []
+    print(f"  located         : {[item.get('function') for item in located]}")
+
     while True:
         # Node 3: patch_generation
         _sep(f"NODE 3 / 5 - PATCH GENERATION  (provider={args.model_provider})")

@@ -141,6 +141,17 @@ class GraphState(TypedDict, total=False):
     localization_status: Literal["localized", "skipped", "failed"] | None
     localization_reasoning: str | None
 
+    # 2d) symbol index and debugger loop. The catalog stays in the message history.
+    symbol_catalog: str
+    debug_status: Literal["running", "located", "cannot_locate", "capped"] | None
+    debug_rounds: int
+    debug_body_loads: int
+    debug_in_prompt: list[dict[str, str]]
+    debug_retrieved: list[dict[str, str]]
+    debug_actions: list[dict[str, Any]]
+    debug_request: dict[str, Any] | None
+    debug_locations: list[dict[str, str]]
+
     # 3) patch generation
     context_file_paths: list[str]
     patch_attempts: list[PatchAttempt]

@@ -819,8 +819,15 @@ def _patch_generation(state: GraphState) -> dict:
             selected_vulnerabilities=selected_vulnerabilities)
     model_name = state.get("model_name", default_model)
 
-    # use vulnerability localization node for context files
-    context_files = state.get("localized_context_files")
+    # Debugger locations are the source slice when the loop found a function.
+    located = [
+        item for item in (state.get("debug_locations") or [])
+        if isinstance(item, dict) and item.get("path") and item.get("body")
+    ]
+    if located:
+        context_files = [{"path": item["path"], "content": item["body"]} for item in located]
+    else:
+        context_files = state.get("localized_context_files")
     if not context_files:
         # localization skipped/failed -> keyword-ranked fallback
         logger.info(

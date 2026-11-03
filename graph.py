@@ -9,6 +9,8 @@ from patch_validation import patch_validation
 from adversarial_evaluation import adversarial_evaluation
 from patch_scoring import patch_scoring
 from maintainer_eval import maintainer_eval
+from symbol_index import index_node
+from debugger import debugger_node, route_after_debugger, route_after_index
 from state import GraphState
 
 
@@ -44,6 +46,8 @@ graph = StateGraph(GraphState)
 graph.add_node("package_input_node", package_input)
 graph.add_node("vulnerability_detection_node", vulnerability_detection)
 graph.add_node("og_patch_resolution_node", og_patch_resolution)
+graph.add_node("index_node", index_node)
+graph.add_node("debugger_node", debugger_node)
 graph.add_node("patch_generation_node", patch_generation)
 graph.add_node("patch_application_node", patch_application)
 graph.add_node("vulnerability_rescan_node", vulnerability_rescan)
@@ -56,7 +60,23 @@ graph.add_node("increment_retry", increment_retry)
 graph.add_edge(START, "package_input_node")
 graph.add_edge("package_input_node", "vulnerability_detection_node")
 graph.add_edge("vulnerability_detection_node", "og_patch_resolution_node")
-graph.add_edge("og_patch_resolution_node", "patch_generation_node")
+graph.add_edge("og_patch_resolution_node", "index_node")
+graph.add_conditional_edges(
+    "index_node",
+    route_after_index,
+    {
+        "debugger": "debugger_node",
+        "generation": "patch_generation_node",
+    },
+)
+graph.add_conditional_edges(
+    "debugger_node",
+    route_after_debugger,
+    {
+        "index": "index_node",
+        "generation": "patch_generation_node",
+    },
+)
 graph.add_conditional_edges(
     "patch_generation_node",
     route_after_patch_generation,
