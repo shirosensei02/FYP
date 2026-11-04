@@ -865,6 +865,8 @@ def patch_generation(state: GraphState) -> dict:
         "sandbox_id": None, "sandbox_apply_success": None, "patch_applied": None,
         "patched_source_dir": None, "remaining_vulnerabilities": [],
         "revalidation_artifacts": {}, "current_patch": None,
+        "regression_status": None, "baseline_validation": None, "patched_validation": None,
+        "package_tests_skipped": None, "security_validation": None,
         "generation_status": None, "generation_error": None,
         "attempt_record_id": str(uuid.uuid4()),
         "attempt_error_start": len(state.get("errors", [])),
@@ -875,6 +877,8 @@ def patch_generation(state: GraphState) -> dict:
         "validation", "adversarial_evaluation", "patch_score", "classification",
         "classification_reason", "sandbox_id", "sandbox_apply_success", "patch_applied",
         "patched_source_dir", "remaining_vulnerabilities", "revalidation_artifacts",
+        "regression_status", "baseline_validation", "patched_validation",
+        "package_tests_skipped", "security_validation",
         "attempt_record_id", "attempt_error_start", "run_attempt_id", "context_file_paths",
     )}
     reset.update(result)

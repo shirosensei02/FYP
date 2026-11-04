@@ -180,6 +180,30 @@ def test_baseline_feedback_identifies_git_prerequisite_failure(monkeypatch, tmp_
     assert any("requires_git_repository" in hint for hint in result["oracle_feedback"]["guidance"])
 
 
+def test_prompt_names_the_advisory_and_the_acceptance_rule():
+    prompt = generation._prompt({
+        "package_name": "pidusage",
+        "package_version": "1.1.0",
+        "answer_key": {
+            "ghsa_id": "GHSA-test-test-test",
+            "cve_id": "CVE-2020-0000",
+            "summary": "Command injection in ps",
+            "advisory_url": "https://github.com/advisories/GHSA-test-test-test",
+            "files": ["lib/ps.js"],
+            "diff": "--- a/lib/ps.js\n+++ b/lib/ps.js\n",
+        },
+        "current_vulnerabilities": [{"id": "GHSA-test-test-test", "description": "command injection"}],
+        "localized_context_files": [{"path": "lib/ps.js", "content": "function ps() {}"}],
+    })
+    payload = __import__("json").loads(prompt.split("INPUT:\n", 1)[1])
+    assert payload["ghsa_id"] == "GHSA-test-test-test"
+    assert payload["advisory"]["summary"] == "Command injection in ps"
+    assert payload["maintainer_patch"]["diff"].startswith("--- a/lib/ps.js")
+    assert payload["source_context"][0]["path"] == "lib/ps.js"
+    assert "operation_completed true and exploit_succeeded false" in prompt
+    assert "exit code is not the verdict" in prompt
+
+
 def test_invalid_candidate_feedback_includes_previous_source():
     rejected_source = SAFE_SOURCE + "\nrequire('node:child_process');"
     result = validation.oracle_validation({

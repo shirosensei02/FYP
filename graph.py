@@ -3,9 +3,9 @@ from package_input import package_input
 from vulnerability_detection import vulnerability_detection
 from og_patch_resolution import og_patch_resolution
 from patch_generation import patch_generation
-from patch_application import patch_application
+from patch_application import apply_patch, package_validation
 from vulnerability_rescan import vulnerability_rescan
-from patch_validation import patch_validation
+from patch_validation import patch_validation, record_locked_oracle_failure, skip_package_tests
 from adversarial_evaluation import adversarial_evaluation
 from patch_scoring import patch_scoring
 from maintainer_eval import maintainer_eval
@@ -23,6 +23,33 @@ def route_after_patch_generation(state: GraphState) -> str:
     if state.get("generation_status") == "failed" or not state.get("current_patch"):
         return "validation"
     return "application"
+
+
+def route_after_apply(state: GraphState) -> str:
+    """A patch that did not land cannot be oracle-tested."""
+    if state.get("patch_applied") is True:
+        return "oracle"
+    return "validation"
+
+
+def _writer_attempts_remain(state: GraphState) -> bool:
+    maximum = state.get("max_retries")
+    limit = 1 if maximum is None else int(maximum)
+    return int(state.get("retry_count") or 0) < limit
+
+
+def route_after_generated_oracle(state: GraphState) -> str:
+    """Package tests run only after the locked oracle passes, or when it cannot judge the patch.
+
+    An exploit that still succeeds, or an ordinary call that fails, goes back to
+    the writer with the oracle output. A crash, timeout, or missing result is
+    not a source defect, so the package tests still run and the writer is not
+    retried for the oracle itself.
+    """
+    status = (state.get("generated_patch_oracle_validation") or {}).get("status")
+    if status in {"SECURITY_FAIL", "REGRESSION"}:
+        return "retry" if _writer_attempts_remain(state) else "terminal"
+    return "package_tests"
 
 
 def route_after_oracle_validation(state: GraphState) -> str:
@@ -45,7 +72,7 @@ def route_after_classification(state: GraphState) -> str:
     if state.get("classification") in {"pass", "inconclusive", "pass_unverified"}:
         return "eval"
 
-    if state.get("retry_count", 0) >= state.get("max_retries", 1):
+    if not _writer_attempts_remain(state):
         return "eval"
 
     return "retry"
@@ -67,11 +94,14 @@ graph.add_node("vulnerability_localization_node", vulnerability_localization)
 graph.add_node("oracle_generation_node", oracle_generation)
 graph.add_node("oracle_validation_node", oracle_validation)
 graph.add_node("patch_generation_node", patch_generation)
-graph.add_node("patch_application_node", patch_application)
+graph.add_node("apply_patch_node", apply_patch)
+graph.add_node("package_validation_node", package_validation)
 graph.add_node("vulnerability_rescan_node", vulnerability_rescan)
 graph.add_node("patch_validation_node", patch_validation)
 graph.add_node("adversarial_evaluation_node", adversarial_evaluation)
 graph.add_node("generated_patch_oracle_validation_node", generated_patch_oracle_validation)
+graph.add_node("record_locked_oracle_failure_node", record_locked_oracle_failure)
+graph.add_node("skip_package_tests_node", skip_package_tests)
 graph.add_node("patch_scoring_node", patch_scoring)
 graph.add_node("maintainer_eval_node", maintainer_eval)
 graph.add_node("increment_retry", increment_retry)
@@ -94,13 +124,31 @@ graph.add_conditional_edges(
     "patch_generation_node",
     route_after_patch_generation,
     {
-        "application": "patch_application_node",
+        "application": "apply_patch_node",
         "validation": "patch_validation_node",
     },
 )
-graph.add_edge("patch_application_node", "vulnerability_rescan_node")
-graph.add_edge("vulnerability_rescan_node", "generated_patch_oracle_validation_node")
-graph.add_edge("generated_patch_oracle_validation_node", "adversarial_evaluation_node")
+graph.add_conditional_edges(
+    "apply_patch_node",
+    route_after_apply,
+    {
+        "oracle": "generated_patch_oracle_validation_node",
+        "validation": "patch_validation_node",
+    },
+)
+graph.add_conditional_edges(
+    "generated_patch_oracle_validation_node",
+    route_after_generated_oracle,
+    {
+        "retry": "record_locked_oracle_failure_node",
+        "package_tests": "package_validation_node",
+        "terminal": "skip_package_tests_node",
+    },
+)
+graph.add_edge("record_locked_oracle_failure_node", "increment_retry")
+graph.add_edge("skip_package_tests_node", "vulnerability_rescan_node")
+graph.add_edge("package_validation_node", "vulnerability_rescan_node")
+graph.add_edge("vulnerability_rescan_node", "adversarial_evaluation_node")
 graph.add_edge("adversarial_evaluation_node", "patch_validation_node")
 graph.add_edge("patch_validation_node", "patch_scoring_node")
 graph.add_conditional_edges(

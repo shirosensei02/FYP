@@ -105,7 +105,7 @@ class AdversarialEvaluation(TypedDict, total=False):
     status: Literal["evaluated", "uncertain"]
     evaluator_provider: str
     evaluator_model: str
-    test_suite_pass: Literal["pass", "fail"]
+    test_suite_pass: Literal["pass", "fail", "skipped"]
     genuine_fix: Literal["true", "false", "uncertain"]
     reasoning: str
     evidence: list[str]
@@ -250,6 +250,8 @@ class GraphState(TypedDict, total=False):
     attempt_record_id: str
     attempt_error_start: int
     patch_applied: bool | None
+    # Package tests are skipped when the locked oracle still fails.
+    package_tests_skipped: bool | None
     retry_count: int
     max_retries: int
     # USD spent by model calls in this run, including retries.

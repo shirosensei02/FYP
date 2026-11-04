@@ -1,6 +1,8 @@
 from graph import (
     increment_retry,
+    route_after_apply,
     route_after_classification,
+    route_after_generated_oracle,
     route_after_oracle_validation,
     route_after_patch_generation,
 )
@@ -59,6 +61,34 @@ def test_invalid_oracle_retries_within_its_budget():
         "oracle_attempt_count": 2,
         "max_oracle_attempts": 5,
     }) == "retry"
+
+
+def test_applied_patch_goes_to_the_oracle_before_package_tests():
+    assert route_after_apply({"patch_applied": True}) == "oracle"
+    assert route_after_apply({"patch_applied": False}) == "validation"
+
+
+def test_locked_oracle_failure_retries_before_package_tests():
+    failing = {
+        "generated_patch_oracle_validation": {"status": "SECURITY_FAIL"},
+        "retry_count": 0,
+        "max_retries": 2,
+    }
+    assert route_after_generated_oracle(failing) == "retry"
+    assert route_after_generated_oracle({
+        **failing,
+        "generated_patch_oracle_validation": {"status": "REGRESSION"},
+    }) == "retry"
+    assert route_after_generated_oracle({**failing, "retry_count": 2}) == "terminal"
+
+
+def test_inconclusive_oracle_still_runs_package_tests():
+    for status in ("SECURITY_PASS", "INCONCLUSIVE", "SKIPPED"):
+        assert route_after_generated_oracle({
+            "generated_patch_oracle_validation": {"status": status},
+            "retry_count": 0,
+            "max_retries": 2,
+        }) == "package_tests"
 
 
 def test_oracle_stops_retrying_at_budget_or_on_error():

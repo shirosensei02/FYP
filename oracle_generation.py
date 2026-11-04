@@ -83,10 +83,18 @@ def _source_context(state: GraphState) -> list[dict[str, str]]:
 
 def _prompt(state: GraphState) -> str:
     answer = dict(state.get("answer_key") or {})
+    vulnerability = _target_vulnerability(state)
     payload = {
+        "ghsa_id": answer.get("ghsa_id") or vulnerability.get("id"),
         "package": state.get("package_name"),
         "vulnerable_version": state.get("package_version"),
-        "vulnerability": _target_vulnerability(state),
+        "advisory": {
+            "ghsa_id": answer.get("ghsa_id"),
+            "cve_id": answer.get("cve_id"),
+            "summary": answer.get("summary"),
+            "advisory_url": answer.get("advisory_url"),
+        },
+        "vulnerability": vulnerability,
         "maintainer_patch": {
             "summary": answer.get("summary"),
             "first_patched_version": answer.get("first_patched_version"),
@@ -111,8 +119,11 @@ def _prompt(state: GraphState) -> str:
         "works; only after that call succeeds may `operation_completed` become true. Then exercise the malicious "
         "input. An exception from the malicious call counts as blocked only after setup and the benign operation "
         "have succeeded. A setup, module-resolution, fixture, or benign-operation exception must report "
-        "operation_completed=false. Do not overfit to the "
-        "maintainer patch's exact error. For denial-of-service cases, choose bounded input sizes so even the "
+        "operation_completed=false. Do not copy the maintainer patch's exact error string. "
+        "The harness accepts the script only when the vulnerable package reports operation_completed true and "
+        "exploit_succeeded true, and the maintainer-patched package reports operation_completed true and "
+        "exploit_succeeded false. A crash, a missing result line, or a failed ordinary call is rejected. "
+        "The process exit code is not the verdict. For denial-of-service cases, choose bounded input sizes so even the "
         "vulnerable call finishes within a few seconds, measure elapsed time, and compare vulnerable behavior "
         "without relying on an interrupting timer. As the final output line, "
         "print exactly `ORACLE_RESULT ` followed by JSON with boolean `operation_completed`, boolean "

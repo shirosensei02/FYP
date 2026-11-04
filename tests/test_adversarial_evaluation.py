@@ -107,6 +107,19 @@ def test_evaluator_failure_is_non_blocking_and_uncertain(monkeypatch):
     assert result["evaluation_error"] == "OPENROUTER_API_KEY is not set"
 
 
+def test_skipped_package_tests_are_not_a_suite_failure(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    result = evaluation.adversarial_evaluation(_state(
+        package_tests_skipped=True,
+        validation={
+            "validation_mode": "published_package",
+            "consumer_smoke_status": "SKIPPED",
+            "test_status": "SKIPPED",
+        },
+    ))["adversarial_evaluation"]
+    assert result["test_suite_pass"] == "skipped"
+
+
 def test_evaluation_input_includes_validated_oracle_evidence():
     payload = evaluation._evaluation_input(_state(
         oracle_validation={

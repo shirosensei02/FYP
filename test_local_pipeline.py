@@ -42,7 +42,7 @@ from model_catalog import patch_evaluator_models
 from package_input import package_input
 from vulnerability_detection import vulnerability_detection
 from patch_generation import patch_generation
-from patch_application import patch_application
+from patch_application import apply_patch, package_validation
 from patch_validation import patch_validation
 from adversarial_evaluation import adversarial_evaluation
 from vulnerability_localization import vulnerability_localization
@@ -256,35 +256,53 @@ def run_pipeline(args: argparse.Namespace) -> None:
             return
 
         if state.get("current_patch"):
-            # Node 4: patch_application
-            _sep("NODE 4 / 5 - PATCH APPLICATION")
-            result = patch_application(state)
-            state.update(result)
+            _sep("NODE 4 - PATCH APPLY")
+            state.update(apply_patch(state))
+            print(f"  patch_applied : {state.get('patch_applied')}")
             if state.get("errors"):
                 print(f"  [errors during application] {state['errors']}")
 
-            _sep("NODE 4b - VULNERABILITY RESCAN")
-            from vulnerability_rescan import vulnerability_rescan
-            result = vulnerability_rescan(state)
-            state.update(result)
-            remaining = state.get("remaining_vulnerabilities") or []
-            print(f"  re-scan clean : {(state.get('validation') or {}).get('revalidation_scan_clean')}")
-            print(f"  remaining     : {len(remaining)}")
+            if state.get("patch_applied") is True:
+                _sep("NODE 4b - LOCKED ORACLE")
+                state.update(generated_patch_oracle_validation(state))
+                patch_oracle = state.get("generated_patch_oracle_validation") or {}
+                print(f"  status        : {patch_oracle.get('status')}")
+                print(f"  reason        : {patch_oracle.get('reason')}")
 
-            _sep("NODE 4c - GENERATED PATCH ORACLE VALIDATION")
-            state.update(generated_patch_oracle_validation(state))
-            patch_oracle = state.get("generated_patch_oracle_validation") or {}
-            print(f"  status        : {patch_oracle.get('status')}")
-            print(f"  reason        : {patch_oracle.get('reason')}")
+                from graph import (
+                    increment_retry,
+                    record_locked_oracle_failure,
+                    route_after_generated_oracle,
+                    skip_package_tests,
+                )
+                oracle_route = route_after_generated_oracle(state)
+                if oracle_route == "retry":
+                    state.update(record_locked_oracle_failure(state))
+                    state.update(increment_retry(state))
+                    continue
+                if oracle_route == "terminal":
+                    state.update(skip_package_tests(state))
+                    print("  package tests : skipped")
+                else:
+                    _sep("NODE 4c - PACKAGE VALIDATION")
+                    state.update(package_validation(state))
+                    print(f"  regression    : {state.get('regression_status')}")
 
-            _sep("NODE 4d - ADVERSARIAL EVALUATION")
-            result = adversarial_evaluation(state)
-            state.update(result)
-            evaluation = state.get("adversarial_evaluation") or {}
-            print(f"  status        : {evaluation.get('status')}")
-            print(f"  genuine_fix   : {evaluation.get('genuine_fix')}")
-            if evaluation.get("evaluation_error"):
-                print(f"  error         : {evaluation['evaluation_error']}")
+                _sep("NODE 4d - VULNERABILITY RESCAN")
+                from vulnerability_rescan import vulnerability_rescan
+                state.update(vulnerability_rescan(state))
+                remaining = state.get("remaining_vulnerabilities") or []
+                print(f"  re-scan clean : {(state.get('validation') or {}).get('revalidation_scan_clean')}")
+                print(f"  remaining     : {len(remaining)}")
+
+                _sep("NODE 4e - ADVERSARIAL EVALUATION")
+                result = adversarial_evaluation(state)
+                state.update(result)
+                evaluation = state.get("adversarial_evaluation") or {}
+                print(f"  status        : {evaluation.get('status')}")
+                print(f"  genuine_fix   : {evaluation.get('genuine_fix')}")
+                if evaluation.get("evaluation_error"):
+                    print(f"  error         : {evaluation['evaluation_error']}")
 
         # Classify and record generation failures as well as sandbox outcomes.
         _sep("NODE 5 / 5 - PATCH VALIDATION")

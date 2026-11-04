@@ -22,10 +22,55 @@ import logging
 
 from cost_log import record_attempt_outcome
 from failure_context import record_failure
-from state import GraphState
+from state import GraphState, ValidationResult
 from db import save_patch_attempt, save_patch_result
 
 logger = logging.getLogger(__name__)
+
+
+def skip_package_tests(state: GraphState) -> dict:
+    """The locked oracle failed and no writer attempts remain, so package tests do not run."""
+    oracle = state.get("generated_patch_oracle_validation") or {}
+    reason = oracle.get("reason") or "Locked oracle did not pass."
+    validation = ValidationResult(
+        validation_mode="published_package",
+        docker_status="SKIPPED",
+        installation_status="SKIPPED",
+        build_status="SKIPPED",
+        build_reason="Package tests were skipped because the locked oracle did not pass.",
+        test_status="SKIPPED",
+        test_reason=reason,
+        consumer_smoke_status="SKIPPED",
+        consumer_smoke_succeeded=False,
+        docker_image_built=False,
+        failure_stage=None,
+        install_succeeded=None,
+        build_succeeded=None,
+        tests_passed=None,
+        revalidation_scan_clean=False,
+        logs="Package tests were not run.",
+    )
+    return {
+        "package_tests_skipped": True,
+        "validation": validation,
+        "patched_validation": validation,
+        "regression_status": None,
+        "sandbox_apply_success": False,
+    }
+
+
+def record_locked_oracle_failure(state: GraphState) -> dict:
+    """Send this attempt's oracle output to the writer. The maintainer result stays out."""
+    oracle = state.get("generated_patch_oracle_validation") or {}
+    reason = oracle.get("reason") or "Locked oracle did not pass."
+    failure = record_failure(state, reason, stage="security_oracle")
+    return {
+        "retry_feedback": failure,
+        "classification": "fail",
+        "classification_reason": reason,
+        "security_validation": "FAIL",
+        "package_tests_skipped": True,
+    }
 
 
 def patch_validation(state: GraphState, *, save_to_db: bool | None = None) -> dict:
@@ -104,7 +149,11 @@ def patch_validation(state: GraphState, *, save_to_db: bool | None = None) -> di
                 logger.warning("patch_validation - MongoDB save failed (continuing)")
 
     # ── Build human-readable reason ───────────────────────────────────────────
-    if state.get("generation_status") == "failed":
+    tests_skipped = bool(state.get("package_tests_skipped"))
+    if tests_skipped:
+        oracle_reason = (state.get("generated_patch_oracle_validation") or {}).get("reason") or "Locked oracle did not pass."
+        reason = f"{oracle_reason} Package tests were not run."
+    elif state.get("generation_status") == "failed":
         reason = state.get("generation_error") or "Patch generation failed before sandbox validation."
     elif regression_status == "NO_REGRESSION":
         if validation.get("validation_mode") == "published_package":
@@ -152,10 +201,17 @@ def patch_validation(state: GraphState, *, save_to_db: bool | None = None) -> di
             )
     elif compatibility_passed and security_validation == "FAIL":
         reason += " Compatibility passed, but the generated patch failed security-oracle validation."
-    failure = record_failure(state, reason) if not passed else None
+    # A missing or crashed oracle is a run fact. It is not a defect the writer can repair.
+    writer_visible = classification != "inconclusive"
+    failure = record_failure(
+        state,
+        reason,
+        stage="security_oracle" if tests_skipped else None,
+        writer_visible=writer_visible,
+    ) if not passed else None
     record_attempt_outcome(state, passed=passed)
     return {
-        "retry_feedback": failure,
+        "retry_feedback": failure if writer_visible else None,
         "classification": classification,
         "classification_reason": reason,
         "compatibility_classification": "pass" if compatibility_passed else "fail",
