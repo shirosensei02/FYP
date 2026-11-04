@@ -297,6 +297,8 @@ def test_runner_can_retain_diagnostic_artifacts(monkeypatch, tmp_path):
     retained = next(workspace.iterdir())
     assert (retained / "oracle.js").is_file()
     assert (retained / "Dockerfile").is_file()
+    assert b"\r\n" not in (retained / "oracle-entrypoint.sh").read_bytes()
+    assert (retained / "oracle-entrypoint.sh").read_bytes().startswith(b"#!/bin/sh\nset -eu\n")
     assert (retained / "runtime.stderr.txt").read_text() == "git: not found"
     assert __import__('json').loads((retained / "attempt.json").read_text())["attempt_number"] == 3
 

@@ -192,7 +192,14 @@ def _run_oracle(source_dir: Path, oracle: dict[str, Any], label: str) -> OracleE
         (context / "oracle.js").write_text(str(oracle.get("source") or ""), encoding="utf-8")
         dockerfile, entrypoint = _oracle_environment(oracle)
         (context / "Dockerfile").write_text(dockerfile, encoding="utf-8")
-        (context / "oracle-entrypoint.sh").write_text(entrypoint, encoding="utf-8")
+        # Docker runs this file with Linux ``sh`` even when the pipeline host
+        # is Windows.  Force LF so CRLF translation cannot turn ``set -eu``
+        # into an invalid shell option inside the container.
+        (context / "oracle-entrypoint.sh").write_text(
+            entrypoint,
+            encoding="utf-8",
+            newline="\n",
+        )
         if _env_true("ORACLE_KEEP_FAILED"):
             (context / "attempt.json").write_text(json.dumps({
                 "label": label,
