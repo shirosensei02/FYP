@@ -5,8 +5,9 @@ LangGraph node: validates source-code patch outcomes and persists them to MongoD
 
 Decision logic
 --------------
-  PASS  - baseline and patched validation both pass (NO_REGRESSION)
-  FAIL  - regression, inconclusive baseline, or incomplete validation
+  PASS          - compatibility and security-oracle validation both pass
+  INCONCLUSIVE  - compatibility passes but security validation is unavailable
+  FAIL          - regression, security failure, or incomplete compatibility validation
 
 Every terminal outcome is written to ``all_attempts``. Passing results are also
 written to ``successful_patches`` via db.save_patch_result().
@@ -49,14 +50,40 @@ def patch_validation(state: GraphState, *, save_to_db: bool | None = None) -> di
         if regression_status
         else build_ok and tests_ok
     )
-    passed = validation_passed and state.get("generation_status") != "failed"
+    compatibility_passed = validation_passed and state.get("generation_status") != "failed"
+
+    oracle_baseline = state.get("oracle_validation") or {}
+    patch_oracle_status = (state.get("generated_patch_oracle_validation") or {}).get("status")
+    attempts = int(state.get("oracle_attempt_count") or 0)
+    maximum = int(state.get("max_oracle_attempts") or 5)
+    oracle_exhausted = oracle_baseline.get("status") == "INVALID" and attempts >= maximum
+    if patch_oracle_status == "SECURITY_PASS":
+        security_validation = "PASS"
+    elif patch_oracle_status in {"SECURITY_FAIL", "REGRESSION"}:
+        security_validation = "FAIL"
+    elif (
+        patch_oracle_status == "INCONCLUSIVE"
+        or oracle_exhausted
+        or oracle_baseline.get("status") == "ERROR"
+    ):
+        security_validation = "INCONCLUSIVE"
+    else:
+        security_validation = "SKIPPED"
+
+    if not compatibility_passed or security_validation == "FAIL":
+        classification = "fail"
+    elif security_validation in {"INCONCLUSIVE", "SKIPPED"}:
+        classification = "inconclusive"
+    else:
+        classification = "pass"
+    passed = classification == "pass"
 
     logger.info(
         "patch_validation - %s@%s [%s]: regression=%s build=%s tests=%s consumer_smoke=%s -> %s",
         package, version, model,
         regression_status or "legacy",
         build_ok, tests_ok, consumer_smoke_ok,
-        "PASS" if passed else "FAIL",
+        classification.upper(),
     )
 
     # ── DB persistence (deferred by default to maintainer_eval after Node 6) ──
@@ -87,7 +114,7 @@ def patch_validation(state: GraphState, *, save_to_db: bool | None = None) -> di
             )
         else:
             reason = "Baseline and patched package validation passed; no regression was detected."
-    elif passed:
+    elif compatibility_passed:
         reason = "Docker build succeeded and package validation passed."
     elif state.get("patch_applied") is False:
         reason = "Patch could not be applied to the source; Docker build was not run."
@@ -107,11 +134,31 @@ def patch_validation(state: GraphState, *, save_to_db: bool | None = None) -> di
         reason = "Dependency installation failed; package validation could not complete reliably."
     elif not tests_ok:
         reason = "Build succeeded but npm test failed — patch broke the package."
+    if classification == "inconclusive":
+        if oracle_exhausted:
+            reason += (
+                " Compatibility validation passed, but security validation is INCONCLUSIVE "
+                "because no oracle distinguished the vulnerable and fixed versions within the attempt budget."
+            )
+        elif security_validation == "INCONCLUSIVE":
+            reason += (
+                " Compatibility validation passed, but security validation is INCONCLUSIVE "
+                "because oracle execution could not complete reliably."
+            )
+        else:
+            reason += (
+                " Compatibility validation passed, but security validation was SKIPPED; "
+                "the vulnerability fix remains unverified."
+            )
+    elif compatibility_passed and security_validation == "FAIL":
+        reason += " Compatibility passed, but the generated patch failed security-oracle validation."
     failure = record_failure(state, reason) if not passed else None
     record_attempt_outcome(state, passed=passed)
     return {
         "retry_feedback": failure,
-        "classification": "pass" if passed else "fail",
+        "classification": classification,
         "classification_reason": reason,
+        "compatibility_classification": "pass" if compatibility_passed else "fail",
+        "security_validation": security_validation,
         "mongo_id": attempt_doc_id,
     }

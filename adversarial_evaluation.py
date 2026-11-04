@@ -97,6 +97,8 @@ def _sanitize_untrusted_evaluation_input(value: Any) -> Any:
 def _evaluation_input(state: GraphState) -> dict[str, Any]:
     validation = state.get("validation") or {}
     baseline = state.get("baseline_validation") or {}
+    oracle_baseline = state.get("oracle_validation") or {}
+    oracle_patch = state.get("generated_patch_oracle_validation") or {}
     logs = str(validation.get("logs", ""))
     payload = {
         "package": {"name": state.get("package_name"), "version": state.get("package_version")},
@@ -118,6 +120,13 @@ def _evaluation_input(state: GraphState) -> dict[str, Any]:
             "logs": logs[-MAX_LOG_CHARS:],
         },
         "remaining_vulnerabilities": state.get("remaining_vulnerabilities") or [],
+        "security_oracle": {
+            "baseline_status": oracle_baseline.get("status"),
+            "vulnerable_status": (oracle_baseline.get("vulnerable") or {}).get("status"),
+            "maintainer_fixed_status": (oracle_baseline.get("fixed") or {}).get("status"),
+            "generated_patch_status": oracle_patch.get("status"),
+            "generated_patch_reason": oracle_patch.get("reason"),
+        },
     }
     return _sanitize_untrusted_evaluation_input(payload)
 
