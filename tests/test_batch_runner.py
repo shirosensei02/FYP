@@ -1,6 +1,12 @@
 import json
 
-from batch_runner import load_batch_config, parse_package, run_batch, should_start_run
+from batch_runner import (
+    load_batch_config,
+    oracle_failure_summaries,
+    parse_package,
+    run_batch,
+    should_start_run,
+)
 from run_cost import response_cost
 
 
@@ -52,6 +58,83 @@ def test_batch_runs_each_package_the_requested_number_of_times_then_stops_at_the
     assert summary["spent"] == 2.0
     assert summary["stopped_reason"] == "cost_cap"
     assert [run["classification"] for run in summary["runs"]] == ["fail", "fail"]
+
+
+def test_oracle_failure_summary_keeps_rejected_attempts_and_a_failed_patch_check():
+    lines = oracle_failure_summaries({
+        "oracle_attempts": [
+            {
+                "attempt_number": 1,
+                "generation": {"status": "generated"},
+                "validation": {
+                    "status": "INVALID",
+                    "reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED.",
+                    "vulnerable": {"status": "OPERATION_FAILED"},
+                    "fixed": {"status": "EXPLOIT_BLOCKED"},
+                },
+            },
+            {
+                "attempt_number": 2,
+                "generation": {"status": "invalid", "explanation": "model response was not JSON"},
+                "validation": {"status": "INVALID", "reason": "model response was not JSON"},
+            },
+            {
+                "attempt_number": 3,
+                "generation": {"status": "generated"},
+                "validation": {"status": "VALID", "reason": "accepted"},
+            },
+        ],
+        "generated_patch_oracle_validation": {
+            "status": "SECURITY_FAIL",
+            "reason": "The accepted exploit still succeeds against the generated patch.",
+        },
+    })
+    assert lines == [
+        "oracle attempt 1: INVALID vulnerable=OPERATION_FAILED fixed=EXPLOIT_BLOCKED "
+        "— Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED.",
+        "oracle attempt 2: INVALID — model response was not JSON",
+        "patch oracle: SECURITY_FAIL — The accepted exploit still succeeds against the generated patch.",
+    ]
+    summary = run_batch(
+        [{"package_name": "pidusage", "package_version": "1.1.4", "num_runs": 1, "model": "mock"}],
+        cost_cap=1,
+        invoke=lambda state: {
+            "run_cost": 0.0,
+            "classification": "inconclusive",
+            "retry_count": 0,
+            "oracle_attempts": [{
+                "attempt_number": 1,
+                "generation": {"status": "failed", "explanation": "Docker image build failed."},
+                "validation": {"status": "ERROR", "reason": "Docker image build failed."},
+            }],
+        },
+    )
+    assert summary["runs"][0]["oracle_failures"] == [
+        "oracle attempt 1: ERROR — Docker image build failed.",
+    ]
+
+
+def test_oracle_failure_summary_includes_the_full_sandbox_log():
+    lines = oracle_failure_summaries({
+        "oracle_attempts": [{
+            "attempt_number": 1,
+            "generation": {"status": "generated"},
+            "validation": {
+                "status": "ERROR",
+                "reason": "Oracle infrastructure failed.",
+                "vulnerable": {
+                    "status": "INFRA_ERROR",
+                    "evidence": "Docker image build failed.",
+                    "stdout": "",
+                    "stderr": "ERROR: dockerDesktopLinuxEngine/_ping Internal Server Error\n" * 3,
+                },
+                "fixed": None,
+            },
+        }],
+    })
+    assert lines[0].startswith("oracle attempt 1: ERROR")
+    assert lines[1] == "vulnerable log:"
+    assert lines[2:].count("ERROR: dockerDesktopLinuxEngine/_ping Internal Server Error") == 3
 
 
 def test_batch_uses_a_fresh_state_for_every_sample():

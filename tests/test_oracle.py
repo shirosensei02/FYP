@@ -29,6 +29,19 @@ def _execution(status, operation=True, exploit=False):
     }
 
 
+def test_oracle_parser_accepts_json_wrapped_in_a_markdown_fence():
+    payload = "```json\n" + __import__("json").dumps({
+        "source": SAFE_SOURCE,
+        "explanation": "wrapped",
+        "requirements": [],
+    }) + "\n```"
+    parsed = generation._parse_candidate(payload, 1, "model")
+    assert not isinstance(parsed, str)
+    assert parsed["status"] == "generated"
+    assert parsed["source"] == SAFE_SOURCE
+    assert generation._response_source(payload) == SAFE_SOURCE
+
+
 def test_oracle_parser_accepts_protocol_and_rejects_process_launching():
     parsed = generation._parse_candidate(
         '{"source": ' + __import__('json').dumps(SAFE_SOURCE) + ', "explanation": "test"}',
@@ -66,6 +79,11 @@ def test_oracle_parser_accepts_only_trusted_fixture_names():
         "requirements": ["run_arbitrary_setup"],
     }), 1, "model")
     assert "unsupported trusted fixture" in rejected
+
+
+def test_oracle_image_installs_ps():
+    dockerfile, _ = validation._oracle_environment({"requirements": []})
+    assert "apt-get install -y --no-install-recommends procps" in dockerfile
 
 
 def test_git_fixture_installs_git_and_initializes_writable_repository():

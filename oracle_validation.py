@@ -30,8 +30,16 @@ ORACLE_CPUS = os.getenv("ORACLE_SANDBOX_CPUS", "1")
 MAX_CAPTURE_CHARS = 40_000
 _RESULT_RE = re.compile(r"^ORACLE_RESULT\s+(.+)$", re.MULTILINE)
 
+_PS_INSTALL = r"""RUN if command -v apk >/dev/null 2>&1; then \
+        apk add --no-cache procps; \
+      elif command -v apt-get >/dev/null 2>&1; then \
+        apt-get update && apt-get install -y --no-install-recommends procps && \
+        rm -rf /var/lib/apt/lists/*; \
+      else echo 'Unsupported base image: ps cannot be installed' >&2; exit 1; fi"""
+
 _DOCKERFILE = textwrap.dedent(
     r"""FROM {base_image}
+    {ps_install}
     {fixture_install}
     WORKDIR /package
     COPY package/ /package/
@@ -146,7 +154,11 @@ def _oracle_environment(oracle: dict[str, Any]) -> tuple[str, str]:
         entrypoint = entrypoint.replace(
             "set -eu\n", "set -eu\nmkdir -p /tmp/oracle-fixtures\n", 1
         )
-    return _DOCKERFILE.format(base_image=BASE_IMAGE, fixture_install=fixture_install), entrypoint
+    return _DOCKERFILE.format(
+        base_image=BASE_IMAGE,
+        ps_install=_PS_INSTALL,
+        fixture_install=fixture_install,
+    ), entrypoint
 
 
 def _write_diagnostic(context: Path, name: str, value: str) -> None:

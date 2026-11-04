@@ -157,9 +157,22 @@ def _bounded_feedback(state: GraphState) -> dict[str, Any] | None:
     return bounded
 
 
+def _json_text(content: str) -> str:
+    """Drop a Markdown fence so a wrapped JSON object can be parsed."""
+    text = content.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, count=1, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text)
+        return text.strip()
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL | re.IGNORECASE)
+    if fenced and not text.startswith("{"):
+        return fenced.group(1).strip()
+    return text
+
+
 def _parse_candidate(content: str, attempt: int, model: str | None) -> OracleSpec | str:
     try:
-        payload = json.loads(content)
+        payload = json.loads(_json_text(content))
     except json.JSONDecodeError as exc:
         return f"model response was not JSON: {exc}"
     if not isinstance(payload, dict):
@@ -195,7 +208,7 @@ def _parse_candidate(content: str, attempt: int, model: str | None) -> OracleSpe
 def _response_source(content: str) -> str:
     """Recover a rejected candidate's source so the next attempt can correct it."""
     try:
-        payload = json.loads(content)
+        payload = json.loads(_json_text(content))
     except (json.JSONDecodeError, TypeError):
         return ""
     source = payload.get("source") if isinstance(payload, dict) else None
