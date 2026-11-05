@@ -73,4 +73,19 @@ def test_demo_graph_has_same_pipeline_nodes_as_main_graph():
 
     main_nodes = set(main_graph.graph.get_graph().nodes) - {"__start__", "__end__"}
     demo_nodes = set(demo_graph.graph.get_graph().nodes) - {"__start__", "__end__", "demo_input"}
-    assert demo_nodes == main_nodes
+    # graph.py does not wire in localization yet; the demo follows test_local_pipeline.py.
+    assert demo_nodes == main_nodes | {"vulnerability_localization_node"}
+
+
+def test_sandbox_summary_reports_stage_statuses_and_regression():
+    summary = demo_graph._summary(
+        "patch_application_node",
+        {
+            "validation": {"docker_status": "PASS", "installation_status": "PASS", "build_status": "SKIPPED",
+                           "test_status": "FAIL", "failure_stage": "tests"},
+            "regression_status": "REGRESSION",
+        },
+    )
+
+    assert "Docker ✅" in summary and "build –" in summary and "tests ❌" in summary
+    assert "Failed at: tests" in summary and "REGRESSION" in summary

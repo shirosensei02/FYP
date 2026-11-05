@@ -3,7 +3,8 @@ demo_graph.py
 =============
 LangGraph graph for the local demo UIs (registered as ``demo`` in langgraph.json).
 
-It runs the same pipeline nodes as graph.py and leaves their logic unchanged.
+It runs the same pipeline nodes, in the same order, as test_local_pipeline.py (graph.py
+plus vulnerability localization) and leaves their logic unchanged.
 On top of that it:
 
 * accepts input either as form fields (``package_name``, ``package_version``,
@@ -40,6 +41,7 @@ from patch_scoring import patch_scoring
 from patch_validation import patch_validation
 from state import GraphState
 from vulnerability_detection import vulnerability_detection
+from vulnerability_localization import vulnerability_localization
 from vulnerability_rescan import vulnerability_rescan
 
 
@@ -169,6 +171,10 @@ def _summary(step: str, state: dict) -> str:
         key = state.get("answer_key") or {}
         commits = ", ".join(c.get("sha", "")[:7] for c in key.get("commit_refs") or []) or "none linked"
         return f"Maintainer fix: {key.get('status')} (commits: {commits}). Kept hidden from the model."
+    if step == "vulnerability_localization_node":
+        files = state.get("localized_files") or []
+        listed = ", ".join(f"`{name}`" for name in files[:6]) + (f" and {len(files) - 6} more" if len(files) > 6 else "")
+        return f"Localization {state.get('localization_status')}: {listed or 'no files'}. {(state.get('localization_reasoning') or '')[:300]}"
     if step == "patch_generation_node":
         if state.get("generation_status") == "failed":
             return f"No patch produced: {state.get('generation_error')}"
@@ -178,8 +184,17 @@ def _summary(step: str, state: dict) -> str:
         return f"`{patch.get('model_used')}` patched {files}:\n\n```diff\n{diff}\n```"
     if step == "patch_application_node":
         v = state.get("validation") or {}
-        tick = lambda ok: "✅" if ok else "❌"  # noqa: E731
-        return f"Sandbox: build {tick(v.get('build_succeeded'))}, tests / load check {tick(v.get('tests_passed'))}."
+        mark = {"PASS": "✅", "FAIL": "❌", "SKIPPED": "–"}
+        stages = [
+            ("Docker", v.get("docker_status")),
+            ("install", v.get("installation_status")),
+            ("build", v.get("build_status")),
+            ("tests", v.get("test_status")),
+            ("consumer smoke", v.get("consumer_smoke_status")),
+        ]
+        checks = ", ".join(f"{name} {mark.get(status, '?')}" for name, status in stages if status)
+        failed_at = f" Failed at: {v['failure_stage']}." if v.get("failure_stage") else ""
+        return f"Sandbox: {checks or 'no results'}.{failed_at} Vs unpatched package: **{state.get('regression_status')}**."
     if step == "vulnerability_rescan_node":
         remaining = len(state.get("remaining_vulnerabilities") or [])
         return f"Version-based rescan still reports {remaining} finding(s); expected, since the version number is unchanged."
@@ -205,6 +220,7 @@ STEP_TITLES = {
     "package_input_node": "📦 Package input",
     "vulnerability_detection_node": "🔍 Vulnerability detection",
     "og_patch_resolution_node": "📚 Maintainer fix lookup",
+    "vulnerability_localization_node": "🎯 Vulnerability localization",
     "patch_generation_node": "🤖 Patch generation",
     "patch_application_node": "🐳 Sandbox build",
     "vulnerability_rescan_node": "🔁 Rescan",
@@ -241,7 +257,7 @@ def route_after_detection(state: DemoState) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Graph (same topology as graph.py, plus input parsing and an early exit)
+# Graph (graph.py topology + localization, as in test_local_pipeline.py; plus input parsing and an early exit)
 # ---------------------------------------------------------------------------
 
 builder = StateGraph(DemoState)
@@ -250,6 +266,7 @@ for name, fn in [
     ("package_input_node", package_input),
     ("vulnerability_detection_node", vulnerability_detection),
     ("og_patch_resolution_node", og_patch_resolution),
+    ("vulnerability_localization_node", vulnerability_localization),
     ("patch_generation_node", patch_generation),
     ("patch_application_node", patch_application),
     ("vulnerability_rescan_node", vulnerability_rescan),
@@ -267,7 +284,8 @@ builder.add_edge("package_input_node", "vulnerability_detection_node")
 builder.add_conditional_edges(
     "vulnerability_detection_node", route_after_detection, {"continue": "og_patch_resolution_node", "end": END}
 )
-builder.add_edge("og_patch_resolution_node", "patch_generation_node")
+builder.add_edge("og_patch_resolution_node", "vulnerability_localization_node")
+builder.add_edge("vulnerability_localization_node", "patch_generation_node")
 builder.add_conditional_edges(
     "patch_generation_node",
     route_after_patch_generation,
