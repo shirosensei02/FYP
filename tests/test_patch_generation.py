@@ -430,6 +430,40 @@ def test_unified_diff_validation_accepts_multiple_complete_files():
     assert patch_generation._is_complete_unified_diff(diff)
 
 
+def test_patch_generation_asks_the_graph_for_a_missing_function(monkeypatch, tmp_path):
+    source_dir = tmp_path / "package"
+    source_dir.mkdir()
+    manifest_path = source_dir / "package.json"
+    manifest_path.write_text('{"name":"demo-package","main":"index.js"}', encoding="utf-8")
+    (source_dir / "index.js").write_text("module.exports = 42;\n", encoding="utf-8")
+
+    def fake_generator(state, vulnerabilities, context_files, repair_feedback=None):
+        return {
+            "action": "tool",
+            "tool": "RetrieveEntity",
+            "arguments": {"entity_ids": ["index.js:run"]},
+        }
+
+    monkeypatch.setattr(patch_generation, "_generate_with_openrouter", fake_generator)
+
+    result = patch_generation.patch_generation({
+        "package_name": "demo-package",
+        "package_version": "1.0.0",
+        "source_dir": str(source_dir),
+        "package_manifest_path": str(manifest_path),
+        "model_provider": "openrouter",
+        "vulnerabilities": [{"id": "CVE-TEST-0001"}],
+    })
+
+    assert result["graph_request"] == {
+        "caller": "patch_generation",
+        "tool": "RetrieveEntity",
+        "arguments": {"entity_ids": ["index.js:run"]},
+    }
+    assert result["generation_graph_fetches"] == 1
+    assert result["current_patch"] is None
+
+
 def test_patch_generation_repairs_an_invalid_model_response(monkeypatch, tmp_path):
     source_dir = tmp_path / "package"
     source_dir.mkdir()

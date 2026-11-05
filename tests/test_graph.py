@@ -47,6 +47,26 @@ def test_debugger_routes_a_lookup_back_to_the_index():
     assert route_after_debugger({"debug_request": None, "debug_status": "running"}) == "index"
 
 
+def test_patch_generation_routes_a_graph_fetch_before_validation():
+    assert route_after_patch_generation({
+        "graph_request": {"caller": "patch_generation", "tool": "RetrieveEntity"},
+        "generation_status": None,
+        "current_patch": None,
+    }) == "repo_graph"
+
+
+def test_locator_and_generation_meet_the_package_graph():
+    from graph import graph as compiled
+
+    edges = {(edge.source, edge.target) for edge in compiled.get_graph().edges}
+    assert ("og_patch_resolution_node", "repo_graph_node") in edges
+    assert ("repo_graph_node", "locator_node") in edges
+    assert ("locator_node", "repo_graph_node") in edges
+    assert ("locator_node", "patch_generation_node") in edges
+    assert ("patch_generation_node", "repo_graph_node") in edges
+    assert ("repo_graph_node", "patch_generation_node") in edges
+
+
 def test_increment_retry_only_advances_the_counter():
     update = increment_retry({"retry_count": 1, "classification_reason": "npm test failed"})
     assert update == {"retry_count": 2}

@@ -141,7 +141,19 @@ class GraphState(TypedDict, total=False):
     localization_status: Literal["localized", "skipped", "failed"] | None
     localization_reasoning: str | None
 
-    # 2d) symbol index and debugger loop. The catalog stays in the message history.
+    # 2d) package graph, locator, and the deprecated symbol-index debugger.
+    repo_graph_ready: bool
+    repo_graph_summary: str
+    graph_request: dict[str, Any] | None
+    graph_result: dict[str, Any] | None
+    graph_return: str | None
+    locate_status: Literal["running", "ranked", "cannot_locate", "capped"] | None
+    locate_sample: int
+    locate_rounds: int
+    locate_samples: list[list[dict[str, Any]]]
+    locate_trace: list[dict[str, Any]]
+    located_entities: list[dict[str, Any]]
+    generation_graph_fetches: int
     symbol_catalog: str
     debug_status: Literal["running", "located", "cannot_locate", "capped"] | None
     debug_rounds: int
