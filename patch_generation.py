@@ -19,7 +19,11 @@ try:
 except ImportError:
     genai = None
 
+from cost_log import note_written_lines, record_request
+from failure_context import load_feedback, record_failure
+from run_cost import response_cost
 from state import GraphState, PatchAttempt, Vulnerability
+from vulnerability_localization import extract_focus_terms, rank_relevant_source_files
 
 load_dotenv()
 
@@ -45,12 +49,10 @@ MAX_OPENROUTER_CONTEXT_CHARS = 64_000
 OPENROUTER_MAX_TOKENS = 64_000
 ANCHOR_CONTEXT_BEFORE_CHARS = 1_000
 ANCHOR_CONTEXT_AFTER_CHARS = 5_000
+# Temporarily disabled for debugging: patch_application still attempts to
+# apply the candidate in its isolated workspace before it runs Docker.
+SOURCE_DIFF_PREFLIGHT_ENABLED = False
 SOURCE_SUFFIXES = (".js", ".cjs", ".mjs", ".ts")
-FOCUS_STOPWORDS = {
-    "allow", "allows", "directory", "file", "files", "outside",
-    "output", "package", "path", "security", "the", "traversal", "version",
-    "vulnerability", "vulnerable", "write", "writing",
-}
 LOCAL_IMPORT_PATTERN = re.compile(
     r"(?:require\(\s*|from\s+|import\s*)[\"'](\.[^\"']+)[\"']"
 )
@@ -102,78 +104,6 @@ def _select_vulnerabilities(state: GraphState) -> list[Vulnerability]:
 
     target = _pick_target_vulnerability(vulnerabilities)
     return [target] if target else []
-
-
-def _focus_terms(vulnerabilities: list[Vulnerability]) -> set[str]:
-    """Extract identifier-like terms from scanner findings for source excerpting."""
-    terms: set[str] = set()
-    for vulnerability in vulnerabilities:
-        stopwords = set(FOCUS_STOPWORDS)
-        stopwords.update(
-            term.lower()
-            for term in re.findall(r"[A-Za-z_$][A-Za-z0-9_$]{2,}", str(vulnerability.get("package", "")))
-        )
-        text = " ".join(
-            str(vulnerability.get(key, ""))
-            for key in ("id", "description", "title", "details")
-        )
-        lowered_text = text.lower()
-        for phrase, identifier in {
-            "output directory": "outdir",
-            "writing files": "writefile",
-        }.items():
-            if phrase in lowered_text:
-                terms.add(identifier)
-        for term in re.findall(r"[A-Za-z_$][A-Za-z0-9_$-]{2,}", text):
-            normalized = term.lower()
-            if normalized.startswith(("cve-", "ghsa-")):
-                continue
-            if normalized not in {"cve", "ghsa", *stopwords}:
-                terms.add(normalized)
-            if "-" in term:
-                continue
-            for component in re.findall(r"[A-Z]+(?=[A-Z]|$)|[A-Z]?[a-z]+", term):
-                normalized_component = component.lower()
-                if len(normalized_component) >= 3 and normalized_component not in stopwords:
-                    terms.add(normalized_component)
-    return terms
-
-
-def _rank_relevant_source_files(source_dir: Path, focus_terms: set[str]) -> list[Path]:
-    """Rank runtime files by deterministic package-wide advisory-term matches."""
-    if not focus_terms:
-        return []
-
-    terms = sorted(focus_terms, key=lambda term: (-len(term), term))
-    ranked: list[tuple[int, str, Path]] = []
-    for path in sorted(source_dir.rglob("*")):
-        if not path.is_file() or path.suffix.lower() not in SOURCE_SUFFIXES:
-            continue
-        if path.name.endswith(".d.ts"):
-            continue
-        relative = path.relative_to(source_dir).as_posix()
-        lowered_path = relative.lower()
-        try:
-            contents = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        lowered_contents = contents.lower()
-        score = 0
-        for term in terms:
-            occurrences = lowered_contents.count(term)
-            if term in lowered_path:
-                score += 100 + len(term)
-            if occurrences:
-                score += min(occurrences, 10) * (10 + len(term))
-            declaration = re.search(
-                rf"\b(?:function|class|const|let|var)\s+{re.escape(term)}\b",
-                lowered_contents,
-            )
-            if declaration:
-                score += 500
-        if score:
-            ranked.append((-score, relative, path))
-    return [path for _, _, path in sorted(ranked)]
 
 
 def _source_excerpt(contents: str, focus_terms: set[str]) -> str:
@@ -276,7 +206,8 @@ def _read_context_files(
     # Note: manifest_path is intentionally NOT added as a context file.
     # still parsed below for entrypoint discovery (main/module/browser).
 
-    for candidate_path in _rank_relevant_source_files(source_dir, focus_terms or set())[
+    # Keyword-ranked files (ranking lives in vulnerability_localization).
+    for candidate_path in rank_relevant_source_files(source_dir, focus_terms or set())[
         :MAX_RELEVANT_CONTEXT_FILES
     ]:
         add_context_file(candidate_path, queue_for_imports=True)
@@ -380,6 +311,9 @@ def _build_messages(
             }],
         },
     }
+    history = load_feedback(state)
+    if history:
+        user_payload["previous_failure_context"] = history
     if repair_feedback:
         user_payload["repair_feedback"] = repair_feedback
     return [
@@ -414,6 +348,9 @@ def _build_openrouter_prompt(
         relevant_source_code=relevant_source_code,
         relevant_tests="Tests are included in the repository context. Do not modify them.",
     )
+    history = load_feedback(state)
+    if history:
+        prompt += "\n\n" + history
     if repair_feedback:
         prompt += (
             "\n\nPrevious patch application failed. Return a replacement patch that fixes "
@@ -650,12 +587,13 @@ def _generate_with_openrouter(
     selected_vulnerabilities: list[Vulnerability],
     context_files: list[dict[str, str]],
     repair_feedback: str | None = None,
-) -> dict[str, Any] | str:
+) -> tuple[dict[str, Any] | str, float]:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        return "patch_generation: OPENROUTER_API_KEY is not set"
+        return "patch_generation: OPENROUTER_API_KEY is not set", 0.0
 
     model_name = state.get("model_name", DEFAULT_MODELS["openrouter"])
+    call = "repair" if repair_feedback else "generate"
     client = OpenAI(
         api_key=api_key,
         base_url=os.getenv("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL),
@@ -689,28 +627,44 @@ def _generate_with_openrouter(
             messages=messages,
         )
     except Exception as exc:
-        return f"patch_generation: OpenRouter request failed: {type(exc).__name__}: {exc!r}"
+        message = f"patch_generation: OpenRouter request failed: {type(exc).__name__}: {exc!r}"
+        record_request(state, node="patch_generation", call=call, model=model_name, error=message)
+        return message, 0.0
 
+    record_request(state, node="patch_generation", call=call, model=model_name, response=response)
+    cost = response_cost(response)
     choices = getattr(response, "choices", None) or []
     if not choices:
         response_status = getattr(response, "status_code", "unknown")
-        return f"patch_generation: model returned no choices (status_code={response_status})"
+        return f"patch_generation: model returned no choices (status_code={response_status})", cost
 
     choice = choices[0]
     message = getattr(choice, "message", None)
     if message is None:
-        return "patch_generation: model returned no message"
+        return "patch_generation: model returned no message", cost
     content = (message.content or "").strip()
     payload = _parse_patch_response(content)
     if payload is not None:
-        return payload
+        return payload, cost
 
     finish_reason = getattr(choice, "finish_reason", "unknown")
     preview = content[:300].replace("\n", " ") if content else "<empty response>"
     return (
         "patch_generation: model returned an invalid or incomplete patch response "
         f"(finish_reason={finish_reason}, preview={preview!r})"
-    )
+    ), cost
+
+
+def _split_payload_cost(result: dict[str, Any] | str | tuple) -> tuple[dict[str, Any] | str, float]:
+    """Accept a bare test double or a (payload, cost) pair from OpenRouter."""
+    if (
+        isinstance(result, tuple)
+        and len(result) == 2
+        and isinstance(result[1], (int, float))
+        and not isinstance(result[1], bool)
+    ):
+        return result[0], float(result[1])
+    return result, 0.0
 
 
 def _generate_patch_payload(
@@ -719,13 +673,15 @@ def _generate_patch_payload(
     selected_vulnerabilities: list[Vulnerability],
     context_files: list[dict[str, str]],
     repair_feedback: str | None = None,
-) -> dict[str, Any] | str:
+) -> tuple[dict[str, Any] | str, float]:
     """Generate one patch response, optionally including repair feedback."""
     if provider == "mock":
-        return _build_mock_payload(Path(state["source_dir"]), selected_vulnerabilities, context_files)
+        return _build_mock_payload(Path(state["source_dir"]), selected_vulnerabilities, context_files), 0.0
     if provider == "openrouter":
-        return _generate_with_openrouter(state, selected_vulnerabilities, context_files, repair_feedback)
-    return f"patch_generation: unsupported model_provider: {provider}"
+        return _split_payload_cost(
+            _generate_with_openrouter(state, selected_vulnerabilities, context_files, repair_feedback)
+        )
+    return f"patch_generation: unsupported model_provider: {provider}", 0.0
 
 
 def _is_invalid_patch_response(error: str) -> bool:
@@ -767,42 +723,76 @@ def patch_attempt(
     selected_vulnerabilities=None, 
     generation_error=None, 
     generation_status="failed", 
-    provider=None) -> dict:
+    provider=None,
+    run_cost=None) -> dict:
     patch_attempts = list(state.get("patch_attempts", []))
-    attempt_number = len(patch_attempts) + 1
-
+    attempt_number = state.get("retry_count", 0) + 1
+    errors = list(state.get("errors") or [])
     if generation_status == "failed":
-        state.get("errors").append(generation_error)
+        errors.append(generation_error)
     # The run_attempt_id is stable for the entire run (same vuln / scope).
     # On the first attempt we derive and store it; on retries we reuse it.
     run_attempt_id = state.get("run_attempt_id") or _build_run_attempt_id(state)
 
-    patch_attempt = PatchAttempt(
+    record = PatchAttempt(
         attempt_number=attempt_number,
         attempt_id=run_attempt_id,
-        raw_output=payload,
+        raw_output=payload if isinstance(payload, dict) else None,
         diff=diff,
         model_used=model_name,
     )
     if selected_vulnerabilities is not None and len(selected_vulnerabilities) == 1:
-        patch_attempt["vulnerability_id"] = selected_vulnerabilities[0].get("id", "unknown")
-    if payload is not None:
+        record["vulnerability_id"] = selected_vulnerabilities[0].get("id", "unknown")
+    if isinstance(payload, dict):
         target_files = payload.get("target_files")
         if isinstance(target_files, list) and all(isinstance(path, str) for path in target_files):
-            patch_attempt["target_files"] = target_files
-        patch_attempts.append(patch_attempt)
+            record["target_files"] = target_files
+    current_patch = None
+    if isinstance(payload, dict) or diff:
+        patch_attempts.append(record)
+        current_patch = record
 
-    return {
+    result = {
         "patch_attempts": patch_attempts,
-        "current_patch": patch_attempt,
+        "current_patch": current_patch,
+        "errors": errors,
         "run_attempt_id": run_attempt_id,
         "generation_status": generation_status,
         "generation_error": generation_error,
         "generation_provider": provider,
         "generation_model_used": model_name,
     }
+    if run_cost is not None:
+        result["run_cost"] = run_cost
+    return result
 
 def patch_generation(state: GraphState) -> dict:
+    # Keep every result attempt-local, including when generation exits early.
+    attempt_state = dict(state)
+    attempt_state.update({
+        "run_attempt_id": state.get("run_attempt_id") or _build_run_attempt_id(state),
+        "validation": None, "adversarial_evaluation": {}, "patch_score": {},
+        "classification": None, "classification_reason": None,
+        "sandbox_id": None, "sandbox_apply_success": None, "patch_applied": None,
+        "patched_source_dir": None, "remaining_vulnerabilities": [],
+        "revalidation_artifacts": {}, "current_patch": None,
+        "generation_status": None, "generation_error": None,
+        "attempt_record_id": str(uuid.uuid4()),
+        "attempt_error_start": len(state.get("errors", [])),
+        "context_file_paths": list(state.get("context_file_paths", [])),
+    })
+    result = _patch_generation(attempt_state)
+    reset = {key: attempt_state[key] for key in (
+        "validation", "adversarial_evaluation", "patch_score", "classification",
+        "classification_reason", "sandbox_id", "sandbox_apply_success", "patch_applied",
+        "patched_source_dir", "remaining_vulnerabilities", "revalidation_artifacts",
+        "attempt_record_id", "attempt_error_start", "run_attempt_id", "context_file_paths",
+    )}
+    reset.update(result)
+    return reset
+
+
+def _patch_generation(state: GraphState) -> dict:
     source_dir = state.get("source_dir")
     if not source_dir:
         return patch_attempt(state, generation_error="patch_generation: missing source_dir")
@@ -828,29 +818,45 @@ def patch_generation(state: GraphState) -> dict:
             provider=provider, 
             selected_vulnerabilities=selected_vulnerabilities)
     model_name = state.get("model_name", default_model)
-    context_files = _read_context_files(
-        source_path,
-        manifest_path,
-        _focus_terms(selected_vulnerabilities),
-    )
+
+    # use vulnerability localization node for context files
+    context_files = state.get("localized_context_files")
+    if not context_files:
+        # localization skipped/failed -> keyword-ranked fallback
+        logger.info(
+            "patch_generation: no localized context (status=%s); using keyword-ranked fallback",
+            state.get("localization_status"),
+        )
+        context_files = _read_context_files(
+            source_path,
+            manifest_path,
+            extract_focus_terms(selected_vulnerabilities),
+        )
+    
     context_file_paths = [f["path"] for f in context_files]
     # Persist file paths fed to the model so downstream nodes can store them.
     state["context_file_paths"] = context_file_paths
 
-    payload = _generate_patch_payload(provider, state, selected_vulnerabilities, context_files)
+    spent = float(state.get("run_cost") or 0)
+    payload, call_cost = _split_payload_cost(
+        _generate_patch_payload(provider, state, selected_vulnerabilities, context_files)
+    )
+    spent += call_cost
 
     if isinstance(payload, str):
         if not _is_invalid_patch_response(payload):
-            return patch_attempt(state, provider=provider, model_name=model_name, generation_error=payload, selected_vulnerabilities=selected_vulnerabilities)
+            return patch_attempt(state, provider=provider, model_name=model_name, generation_error=payload, selected_vulnerabilities=selected_vulnerabilities, run_cost=spent)
 
+        record_failure({**state, "attempt_record_id": str(uuid.uuid4())}, payload, stage="generation_repair")
         logger.warning("patch_generation - model response failed diff validation: %s", payload)
-        payload = _generate_patch_payload(
+        payload, call_cost = _split_payload_cost(_generate_patch_payload(
             provider,
             state,
             selected_vulnerabilities,
             context_files,
             _invalid_response_feedback(payload),
-        )
+        ))
+        spent += call_cost
         if isinstance(payload, str):
             return patch_attempt(
                 state, 
@@ -858,34 +864,37 @@ def patch_generation(state: GraphState) -> dict:
                 provider=provider, 
                 model_name=model_name, 
                 generation_error=f"patch_generation: repair attempt failed after invalid diff response: {payload}", 
-                selected_vulnerabilities=selected_vulnerabilities)
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent)
 
-    raw_payload = payload
+    original_payload = payload
     attempted_files = []
-    if isinstance(raw_payload, dict):
+    if isinstance(original_payload, dict):
         attempted_files = [
             edit["path"]
-            for edit in raw_payload.get("edits", [])
+            for edit in original_payload.get("edits", [])
             if isinstance(edit, dict) and "path" in edit
         ]
-    print("attempted files:", attempted_files)
     payload = _normalize_patch_payload(source_path, payload)
     if isinstance(payload, str):
+        record_failure({**state, "attempt_record_id": str(uuid.uuid4())}, payload, stage="generation_repair", candidate=original_payload)
         logger.warning("patch_generation - structured edit failed source validation: %s", payload)
-        repaired_payload = _generate_patch_payload(
+        repaired_payload, call_cost = _split_payload_cost(_generate_patch_payload(
             provider,
             state,
             selected_vulnerabilities,
             context_files,
             _structured_edit_feedback(payload, attempted_files),
-        )
+        ))
+        spent += call_cost
         if isinstance(repaired_payload, str):
             return patch_attempt(
                 state,
                 generation_error = f"patch_generation: repair attempt failed after structured edit validation: {repaired_payload}",
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
         payload = _normalize_patch_payload(source_path, repaired_payload)
         if isinstance(payload, str):
@@ -894,7 +903,8 @@ def patch_generation(state: GraphState) -> dict:
                 generation_error = f"patch_generation: structured edit could not be applied after repair attempt: {payload}",
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
 
     diff = payload.get("diff")
@@ -904,11 +914,21 @@ def patch_generation(state: GraphState) -> dict:
             generation_error = "patch_generation: model response did not contain a diff",
             provider=provider,
             model_name=model_name,
-            selected_vulnerabilities=selected_vulnerabilities
+            selected_vulnerabilities=selected_vulnerabilities,
+            run_cost=spent,
         )
 
-    preflight_error = _validate_diff_against_source(source_path, diff)
+    note_written_lines(state, diff)
+
+    # Temporarily bypass source-diff preflight so patch_application can show
+    # whether its normal/fallback patch application paths accept the diff.
+    preflight_error = (
+        _validate_diff_against_source(source_path, diff)
+        if SOURCE_DIFF_PREFLIGHT_ENABLED
+        else None
+    )
     if preflight_error:
+        record_failure({**state, "attempt_record_id": str(uuid.uuid4())}, preflight_error, stage="generation_repair", candidate=diff)
         logger.warning("patch_generation - generated diff failed preflight: %s", preflight_error)
         repair_feedback = (
             f"The previous unified diff could not be applied to {state.get('package_name')}@"
@@ -916,13 +936,14 @@ def patch_generation(state: GraphState) -> dict:
             f"git apply --check --ignore-whitespace --recount reported:\n{preflight_error}.\n"
             "Please return the complete patch with all necessary files, do not remove any initial files that is not changed."
         )
-        payload = _generate_patch_payload(
+        payload, call_cost = _split_payload_cost(_generate_patch_payload(
             provider,
             state,
             selected_vulnerabilities,
             context_files,
             repair_feedback,
-        )
+        ))
+        spent += call_cost
         if isinstance(payload, str):
             return patch_attempt(
                 state,
@@ -930,7 +951,8 @@ def patch_generation(state: GraphState) -> dict:
                 generation_error=f"patch_generation: repair attempt failed after diff preflight: {payload}",
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
 
         payload = _normalize_patch_payload(source_path, payload)
@@ -940,7 +962,8 @@ def patch_generation(state: GraphState) -> dict:
                 generation_error=f"patch_generation: repair attempt produced an invalid structured edit: {payload}",
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
 
         diff = payload.get("diff")  
@@ -950,10 +973,17 @@ def patch_generation(state: GraphState) -> dict:
                 generation_error="patch_generation: repair attempt did not contain a diff",
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
 
-        preflight_error = _validate_diff_against_source(source_path, diff)
+        note_written_lines(state, diff)
+
+        preflight_error = (
+            _validate_diff_against_source(source_path, diff)
+            if SOURCE_DIFF_PREFLIGHT_ENABLED
+            else None
+        )
         if preflight_error:
             return patch_attempt(
                 state,
@@ -963,7 +993,17 @@ def patch_generation(state: GraphState) -> dict:
                 diff=diff,
                 provider=provider,
                 model_name=model_name,
-                selected_vulnerabilities=selected_vulnerabilities
+                selected_vulnerabilities=selected_vulnerabilities,
+                run_cost=spent,
             )
 
-    return patch_attempt(state=state, payload=payload, diff=diff, model_name=model_name, selected_vulnerabilities=selected_vulnerabilities, generation_status="generated", provider=provider)
+    return patch_attempt(
+        state=state,
+        payload=payload,
+        diff=diff,
+        model_name=model_name,
+        selected_vulnerabilities=selected_vulnerabilities,
+        generation_status="generated",
+        provider=provider,
+        run_cost=spent,
+    )

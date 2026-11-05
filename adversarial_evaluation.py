@@ -10,7 +10,9 @@ from typing import Any, Literal
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from cost_log import record_request
 from model_catalog import canonical_model_id, evaluator_for
+from run_cost import add_run_cost, response_cost
 from state import GraphState
 
 load_dotenv()
@@ -94,14 +96,24 @@ def _sanitize_untrusted_evaluation_input(value: Any) -> Any:
 
 def _evaluation_input(state: GraphState) -> dict[str, Any]:
     validation = state.get("validation") or {}
+    baseline = state.get("baseline_validation") or {}
     logs = str(validation.get("logs", ""))
     payload = {
         "package": {"name": state.get("package_name"), "version": state.get("package_version")},
         "vulnerabilities": state.get("current_vulnerabilities") or state.get("vulnerabilities") or [],
         "patch": state.get("current_patch") or {},
         "deterministic_validation": {
-            "build_succeeded": bool(validation.get("build_succeeded")),
-            "tests_passed": bool(validation.get("tests_passed")),
+            "regression_status": state.get("regression_status"),
+            "validation_mode": validation.get("validation_mode"),
+            "baseline_consumer_smoke_status": baseline.get("consumer_smoke_status"),
+            "consumer_smoke_status": validation.get("consumer_smoke_status"),
+            "build_status": validation.get("build_status"),
+            "test_status": validation.get("test_status"),
+            "baseline_build_succeeded": baseline.get("build_succeeded"),
+            "baseline_tests_passed": baseline.get("tests_passed"),
+            "install_succeeded": bool(validation.get("install_succeeded")),
+            "build_succeeded": validation.get("build_succeeded"),
+            "tests_passed": validation.get("tests_passed"),
             "revalidation_scan_clean": validation.get("revalidation_scan_clean"),
             "logs": logs[-MAX_LOG_CHARS:],
         },
@@ -118,7 +130,12 @@ def adversarial_evaluation(state: GraphState) -> dict[str, Any]:
     and does not alter the pipeline's existing validation classification.
     """
     validation = state.get("validation") or {}
-    test_suite_pass: Literal["pass", "fail"] = "pass" if validation.get("tests_passed") else "fail"
+    deterministic_pass = (
+        validation.get("consumer_smoke_status") == "PASS"
+        if validation.get("validation_mode") == "published_package"
+        else bool(validation.get("tests_passed"))
+    )
+    test_suite_pass: Literal["pass", "fail"] = "pass" if deterministic_pass else "fail"
     generator_model = (state.get("current_patch") or {}).get("model_used") or state.get("generation_model_used")
     provider = state.get("evaluator_provider") or os.getenv("EVALUATOR_PROVIDER", DEFAULT_EVALUATOR_PROVIDER)
     requested_model = state.get("evaluator_model") or os.getenv("EVALUATOR_MODEL", DEFAULT_EVALUATOR_MODEL)
@@ -176,6 +193,18 @@ def adversarial_evaluation(state: GraphState) -> dict[str, Any]:
                 {"role": "user", "content": json.dumps(_evaluation_input(state), default=str)},
             ],
         )
+    except Exception as exc:
+        message = f"{type(exc).__name__}: {exc}"
+        record_request(state, node="adversarial_evaluation", call="evaluate", model=model, error=message)
+        return {"adversarial_evaluation": _result(
+            provider=provider, model=model, test_suite_pass=test_suite_pass, genuine_fix="uncertain",
+            reasoning="Evaluation could not produce a valid evidence-based verdict.",
+            error=message,
+        )}
+
+    record_request(state, node="adversarial_evaluation", call="evaluate", model=model, response=response)
+    cost_update = add_run_cost(state, response_cost(response))
+    try:
         choices = getattr(response, "choices", None) or []
         content = choices[0].message.content if choices and getattr(choices[0], "message", None) else ""
         payload = _parse_response((content or "").strip())
@@ -186,9 +215,9 @@ def adversarial_evaluation(state: GraphState) -> dict[str, Any]:
             provider=provider, model=model, test_suite_pass=test_suite_pass, genuine_fix="uncertain",
             reasoning="Evaluation could not produce a valid evidence-based verdict.",
             error=f"{type(exc).__name__}: {exc}",
-        )}
+        ), **cost_update}
 
     return {"adversarial_evaluation": _result(
         provider=provider, model=model, test_suite_pass=test_suite_pass,
         genuine_fix=payload["genuine_fix"], reasoning=payload["reasoning"], evidence=payload["evidence"],
-    )}
+    ), **cost_update}

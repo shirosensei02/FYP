@@ -1,11 +1,20 @@
 import json
 
 import adversarial_evaluation as evaluation
+import cost_log
+
+
+class _Usage:
+    prompt_tokens = 30
+    completion_tokens = 12
+    total_tokens = 42
+    cost = 0.125
 
 
 class _Response:
     def __init__(self, content):
         self.choices = [type("Choice", (), {"message": type("Message", (), {"content": content})()})()]
+        self.usage = _Usage()
 
 
 class _Completions:
@@ -48,12 +57,24 @@ def test_evaluator_records_independent_genuine_fix_verdict(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setattr(evaluation, "OpenAI", _Client)
 
-    result = evaluation.adversarial_evaluation(_state())["adversarial_evaluation"]
+    result = evaluation.adversarial_evaluation(_state(run_attempt_id="demo-fc111"))["adversarial_evaluation"]
 
     assert result["status"] == "evaluated"
     assert result["test_suite_pass"] == "pass"
     assert result["genuine_fix"] == "true"
     assert result["evaluator_model"] == "openai/gpt-5.3-codex"
+    logged = next(document for document in cost_log._collection().find() if document["key"] == "demo-fc111-1")
+    assert logged["key"] == "demo-fc111-1"
+    assert logged["package_name"] == "demo"
+    assert logged["package_version"] == "1.0.0"
+    request = logged["requests"][0]
+    assert request["node"] == "adversarial_evaluation"
+    assert request["call"] == "evaluate"
+    assert request["model"] == "openai/gpt-5.3-codex"
+    assert request["prompt_tokens"] == 30
+    assert request["completion_tokens"] == 12
+    assert request["cost"] == 0.125
+    assert request["lines_added"] is None
 
 
 def test_evaluator_selects_the_other_model_when_given_the_generator_model(monkeypatch):

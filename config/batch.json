@@ -1,0 +1,13 @@
+{
+  "cost_cap": 5.0,
+  "max_retries": 1,
+  "model_provider": "openrouter",
+  "patch_scope": "single",
+  "packages": [
+    {
+      "package": "pidusage@1.1.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5"
+    }
+  ]
+}

@@ -33,8 +33,23 @@ class PatchAttempt(TypedDict, total=False):
     target_files: list[str]
 
 class ValidationResult(TypedDict, total=False):
-    build_succeeded: bool
-    tests_passed: bool
+    validation_mode: Literal["published_package", "source_repository"]
+    docker_status: Literal["PASS", "FAIL", "SKIPPED"]
+    installation_status: Literal["PASS", "FAIL", "SKIPPED"]
+    build_status: Literal["PASS", "FAIL", "SKIPPED"]
+    build_reason: str
+    test_status: Literal["PASS", "FAIL", "SKIPPED"]
+    test_reason: str
+    consumer_smoke_status: Literal["PASS", "FAIL", "SKIPPED"]
+    consumer_smoke_succeeded: bool
+    consumer_smoke_command: list[str]
+    docker_image_built: bool
+    failure_stage: str | None
+    install_succeeded: bool | None
+    build_succeeded: bool | None
+    tests_passed: bool | None
+    build_command: list[str] | None
+    test_command: list[str]
     revalidation_scan_clean: bool
     logs: str
 
@@ -120,6 +135,12 @@ class GraphState(TypedDict, total=False):
     # 2b) official / vendor patch (answer key) — not consumed by patch_generation
     answer_key: AnswerKey
 
+    # 2c) vulnerability localization
+    localized_files: list[str]
+    localized_context_files: list[dict[str, str]]
+    localization_status: Literal["localized", "skipped", "failed"] | None
+    localization_reasoning: str | None
+
     # 3) patch generation
     context_file_paths: list[str]
     patch_attempts: list[PatchAttempt]
@@ -141,6 +162,14 @@ class GraphState(TypedDict, total=False):
 
     # 6) validation
     validation: ValidationResult | None
+    baseline_validation: ValidationResult | None
+    patched_validation: ValidationResult | None
+    regression_status: Literal[
+        "NO_REGRESSION",
+        "REGRESSION",
+        "INCONCLUSIVE",
+        "PATCHED_ONLY_PASS",
+    ] | None
 
     # 7) classification
     classification: Literal["pass", "fail"] | None
@@ -156,6 +185,12 @@ class GraphState(TypedDict, total=False):
     mongo_id: str | None
 
     # control flow / bookkeeping
+    retry_feedback: dict[str, Any] | None
+    attempt_record_id: str
+    attempt_error_start: int
+    patch_applied: bool | None
     retry_count: int
     max_retries: int
+    # USD spent by model calls in this run, including retries.
+    run_cost: float
     errors: list[str]

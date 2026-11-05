@@ -1,5 +1,6 @@
 import json
 
+import cost_log
 import patch_generation
 
 
@@ -368,6 +369,16 @@ def test_patch_generation_openrouter_provider_uses_configured_model(monkeypatch,
 
     assert result["current_patch"]["model_used"] == "qwen/qwen3-coder:free"
     assert "--- a/index.js" in result["current_patch"]["diff"]
+    logged = next(iter(cost_log._collection().find()))
+    assert logged["package_name"] == "demo-package"
+    assert logged["package_version"] == "1.0.0"
+    assert logged["model"] == "qwen/qwen3-coder:free"
+    assert logged["attempt_number"] == 1
+    assert logged["key"].endswith("-1")
+    assert logged["requests"][0]["node"] == "patch_generation"
+    assert logged["requests"][0]["call"] == "generate"
+    assert logged["requests"][0]["lines_added"] == 1
+    assert logged["requests"][0]["lines_removed"] == 1
 
 
 def test_openrouter_explanation_only_response_is_repaired_once_then_recorded_as_failure(monkeypatch, tmp_path):
@@ -391,6 +402,9 @@ def test_openrouter_explanation_only_response_is_repaired_once_then_recorded_as_
     )
 
     assert client.completions.calls == 2
+    logged = next(iter(cost_log._collection().find()))
+    assert [item["call"] for item in logged["requests"]] == ["generate", "repair"]
+    assert all(item["lines_added"] is None for item in logged["requests"])
     assert result["generation_status"] == "failed"
     assert result["generation_model_used"] == "nvidia/nemotron-3-super-120b-a12b:free"
     assert result["current_patch"] is None
@@ -439,7 +453,7 @@ def test_patch_generation_repairs_an_invalid_model_response(monkeypatch, tmp_pat
             }]
         }
 
-    monkeypatch.setattr(patch_generation, "_generate_with_openai", fake_generator)
+    monkeypatch.setattr(patch_generation, "_generate_with_openrouter", fake_generator)
 
     result = patch_generation.patch_generation(
         {
@@ -447,7 +461,7 @@ def test_patch_generation_repairs_an_invalid_model_response(monkeypatch, tmp_pat
             "package_version": "1.0.0",
             "source_dir": str(source_dir),
             "package_manifest_path": str(manifest_path),
-            "model_provider": "openai",
+            "model_provider": "openrouter",
             "vulnerabilities": [{"id": "CVE-TEST-0001"}],
         }
     )
@@ -507,7 +521,10 @@ def test_patch_generation_repairs_a_diff_that_fails_preflight(monkeypatch, tmp_p
         assert "patch does not apply" in repair_feedback
         return {"diff": "--- a/index.js\n+++ b/index.js\n@@ -1 +1 @@\n-module.exports = 42;\n+module.exports = 43;\n"}
 
-    monkeypatch.setattr(patch_generation, "_generate_with_openai", fake_generator)
+    monkeypatch.setattr(patch_generation, "_generate_with_openrouter", fake_generator)
+    # The production default temporarily bypasses preflight for debugging;
+    # enable it here to preserve coverage of its repair behaviour.
+    monkeypatch.setattr(patch_generation, "SOURCE_DIFF_PREFLIGHT_ENABLED", True)
 
     result = patch_generation.patch_generation(
         {
@@ -515,7 +532,7 @@ def test_patch_generation_repairs_a_diff_that_fails_preflight(monkeypatch, tmp_p
             "package_version": "1.0.0",
             "source_dir": str(source_dir),
             "package_manifest_path": str(manifest_path),
-            "model_provider": "openai",
+            "model_provider": "openrouter",
             "vulnerabilities": [{"id": "CVE-TEST-0001"}],
         }
     )

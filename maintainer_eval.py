@@ -40,6 +40,9 @@ from typing import Any
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from db import save_pipeline_result
+from cost_log import record_request
+from run_cost import add_run_cost, response_cost
 from state import GraphState, MaintainerEvalResult
 
 load_dotenv()
@@ -127,8 +130,8 @@ def _parse_eval_response(content: str) -> MaintainerEvalResult | None:
     )
 
 
-def _call_llm(prompt: str, eval_model) -> str:
-    """Send the evaluation prompt to the LLM via OpenRouter and return raw content."""
+def _call_llm(prompt: str, eval_model, state: GraphState) -> tuple[str, float]:
+    """Send the evaluation prompt to the LLM via OpenRouter and return raw content and cost."""
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is not set")
@@ -145,16 +148,28 @@ def _call_llm(prompt: str, eval_model) -> str:
         "No markdown fences, no explanation outside the JSON."
     )
 
-    response = client.chat.completions.create(
-        model=eval_model,
-        temperature=0,
-        max_tokens=MAX_TOKENS,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": prompt},
-        ],
-    )
+    try:
+        response = client.chat.completions.create(
+            model=eval_model,
+            temperature=0,
+            max_tokens=MAX_TOKENS,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt},
+            ],
+        )
+    except Exception as exc:
+        record_request(
+            state,
+            node="maintainer_eval",
+            call="evaluate",
+            model=eval_model,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        raise
+    record_request(state, node="maintainer_eval", call="evaluate", model=eval_model, response=response)
+    cost = response_cost(response)
 
     choices = getattr(response, "choices", None) or []
     if not choices:
@@ -164,7 +179,7 @@ def _call_llm(prompt: str, eval_model) -> str:
     if message is None:
         raise RuntimeError("LLM returned no message")
 
-    return (message.content or "").strip()
+    return (message.content or "").strip(), cost
 
 
 # ===========================================================================
@@ -189,7 +204,23 @@ def maintainer_eval(state: GraphState) -> dict:
         appended ``errors``).
     """
     errors: list[str] = list(state.get("errors", []))
-    eval_model = state.get("adversarial_evaluation").get("evaluator_model")
+    eval_model = (state.get("adversarial_evaluation") or {}).get("evaluator_model")
+
+    def _finalize(res: MaintainerEvalResult, extra_errors: list[str] | None = None, cost: dict | None = None) -> dict:
+        merged_errors = errors if extra_errors is None else extra_errors
+        final_state = dict(state)
+        final_state["maintainer_eval"] = res
+        attempt_doc_id, doc_id = save_pipeline_result(final_state)
+        out: dict[str, Any] = {
+            "maintainer_eval": res,
+            "errors": merged_errors,
+            "mongo_id": attempt_doc_id,
+        }
+        if doc_id:
+            out["validated_patch_mongo_id"] = doc_id
+        if cost:
+            out.update(cost)
+        return out
 
     # ── Gather inputs ──────────────────────────────────────────────────────
     current_patch = state.get("current_patch") or {}
@@ -206,14 +237,14 @@ def maintainer_eval(state: GraphState) -> dict:
             status="skipped",
             summary="No generated diff and no answer-key diff available for comparison.",
         )
-        return {"maintainer_eval": result}
+        return _finalize(result)
 
     if not answer_key_diff:
         result = MaintainerEvalResult(
             status="skipped",
             summary="No answer-key diff available; maintainer evaluation skipped.",
         )
-        return {"maintainer_eval": result}
+        return _finalize(result)
 
     if not generated_diff:
         result = MaintainerEvalResult(
@@ -226,12 +257,13 @@ def maintainer_eval(state: GraphState) -> dict:
             missing_from_generated=["Entire answer-key patch is missing from generated output."],
             extra_in_generated=[],
         )
-        return {"maintainer_eval": result}
+        return _finalize(result)
 
     # ── Build prompt and call LLM ──────────────────────────────────────────
     try:
         prompt = _build_prompt(generated_diff, answer_key_diff, vulnerability)
-        raw_response = _call_llm(prompt, eval_model)
+        raw_response, call_cost = _call_llm(prompt, eval_model, state)
+        cost_update = add_run_cost(state, call_cost)
         result = _parse_eval_response(raw_response)
 
         if result is None:
@@ -243,6 +275,7 @@ def maintainer_eval(state: GraphState) -> dict:
                 status="error",
                 error_message=msg,
             )
+            return _finalize(result, extra_errors=errors, cost=cost_update)
 
     except Exception as exc:
         msg = f"maintainer_eval: {type(exc).__name__}: {exc}"
@@ -252,5 +285,6 @@ def maintainer_eval(state: GraphState) -> dict:
             status="error",
             error_message=msg,
         )
+        return _finalize(result, extra_errors=errors)
 
-    return {"maintainer_eval": result, "errors": errors}
+    return _finalize(result, cost=cost_update)
