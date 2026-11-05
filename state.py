@@ -141,7 +141,7 @@ class GraphState(TypedDict, total=False):
     localization_status: Literal["localized", "skipped", "failed"] | None
     localization_reasoning: str | None
 
-    # 2d) package graph, locator, and the deprecated symbol-index debugger.
+    # 2d) package graph and locator. debug_locations is the handoff to patch generation.
     repo_graph_ready: bool
     repo_graph_summary: str
     graph_request: dict[str, Any] | None

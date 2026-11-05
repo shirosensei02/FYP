@@ -40,3 +40,27 @@ def test_parser_binds_a_namespace_member_call():
     assert facts.bindings[0].imported == "*"
     assert facts.calls[0].object == "security"
     assert facts.calls[0].name == "scrub"
+
+
+def test_parser_qualifies_a_nested_function_and_an_object_method():
+    facts = parse_javascript(
+        "lib/a.js",
+        "function run(input) {\n"
+        "  function inner(value) {\n"
+        "    return helper(value);\n"
+        "  }\n"
+        "  return inner(input);\n"
+        "}\n"
+        "const api = {\n"
+        "  stat(input) {\n"
+        "    return helper(input);\n"
+        "  }\n"
+        "};\n",
+    )
+    assert facts is not None
+    qualified = {symbol.qualified for symbol in facts.symbols}
+    assert "run.inner" in qualified
+    assert "api.stat" in qualified
+    owners = {call.owner for call in facts.calls}
+    assert "run.inner" in owners
+    assert "api.stat" in owners

@@ -42,6 +42,7 @@ class JsCall:
     owner: str
     name: str
     object: str
+    is_new: bool = False
 
 
 @dataclass(frozen=True)
@@ -67,8 +68,9 @@ class _Walk:
         self.file = JsFile(path="")
         self.exported = False
         self.default_export = False
-        self.class_name = ""
         self.owner = ""
+        self.stack: list[str] = []
+        self.object_name = ""
 
     def position(self, byte_index: int) -> int:
         return self.chars.get(byte_index, len(self.text))
@@ -140,6 +142,9 @@ def _visit(node, walk: _Walk) -> None:
     if kind == "method_definition":
         _collect_method(node, walk)
         return
+    if kind == "pair":
+        _collect_pair(node, walk)
+        return
     if kind == "variable_declarator":
         _collect_declarator(node, walk)
         return
@@ -164,52 +169,70 @@ def _visit(node, walk: _Walk) -> None:
         _visit(child, walk)
 
 
+def _qualify(walk: _Walk, name: str) -> str:
+    if walk.stack:
+        return ".".join([*walk.stack, name])
+    return name
+
+
+def _enter(walk: _Walk, qualified: str, *, function: bool):
+    """Push the qualified path so nested functions stay under their parent."""
+    saved = (list(walk.stack), walk.owner, walk.object_name)
+    walk.stack = [part for part in qualified.split(".") if part]
+    walk.object_name = ""
+    if function:
+        walk.owner = qualified
+    return saved
+
+
+def _leave(walk: _Walk, saved) -> None:
+    walk.stack, walk.owner, walk.object_name = saved
+
+
 def _collect_class(node, walk: _Walk) -> None:
     name = _declaration_name(node)
     if not name:
         return
-    _add_symbol(node, walk, name, "class", name)
-    previous = walk.class_name
-    walk.class_name = name
+    qualified = _qualify(walk, name)
+    _add_symbol(node, walk, name, "class", qualified)
+    saved = _enter(walk, qualified, function=False)
     heritage = _child(node, "class_heritage")
     if heritage is not None:
         parent = _heritage_name(heritage)
         if parent:
-            walk.file.extends.append(JsExtend(child=name, parent=parent))
+            walk.file.extends.append(JsExtend(child=qualified, parent=parent))
     body = _child(node, "class_body")
     if body is not None:
         for child in body.children:
             _visit(child, walk)
-    walk.class_name = previous
+    _leave(walk, saved)
 
 
 def _collect_function(node, walk: _Walk, name: str) -> None:
     if not name:
         return
-    qualified = f"{walk.class_name}.{name}" if walk.class_name else name
+    qualified = _qualify(walk, name)
     _add_symbol(node, walk, name, "function", qualified)
-    previous = walk.owner
-    walk.owner = qualified
+    saved = _enter(walk, qualified, function=True)
     body = _child(node, "statement_block")
     if body is not None:
         for child in body.children:
             _visit(child, walk)
-    walk.owner = previous
+    _leave(walk, saved)
 
 
 def _collect_method(node, walk: _Walk) -> None:
     name = _declaration_name(node)
-    if not name or not walk.class_name:
+    if not name:
         return
-    qualified = f"{walk.class_name}.{name}"
+    qualified = f"{walk.object_name}.{name}" if walk.object_name else _qualify(walk, name)
     _add_symbol(node, walk, name, "function", qualified)
-    previous = walk.owner
-    walk.owner = qualified
+    saved = _enter(walk, qualified, function=True)
     body = _child(node, "statement_block")
     if body is not None:
         for child in body.children:
             _visit(child, walk)
-    walk.owner = previous
+    _leave(walk, saved)
 
 
 def _collect_declarator(node, walk: _Walk) -> None:
@@ -227,16 +250,28 @@ def _collect_declarator(node, walk: _Walk) -> None:
         return
     if value is not None and value.type in {"function_expression", "arrow_function", "function"} and target.type == "identifier":
         _collect_function_value(target, value, walk, _text(target))
+        return
+    if value is not None and value.type == "object" and target.type == "identifier":
+        _visit_named_object(value, walk, _text(target))
+        return
+    if value is not None:
+        _visit(value, walk)
 
 
 def _collect_assignment(node, walk: _Walk) -> None:
     left = node.children[0] if node.children else None
     value = _assignment_value(node)
+    if left is not None and value is not None and left.type == "identifier" and value.type == "object":
+        _visit_named_object(value, walk, _text(left))
+        return
     if left is None or value is None or left.type != "member_expression":
         for child in node.children:
             _visit(child, walk)
         return
     export_name = _export_member_name(left)
+    if export_name and value.type == "object":
+        _visit_named_object(value, walk, export_name)
+        return
     if export_name and value.type in {"function_expression", "arrow_function", "function"}:
         function_name = _declaration_name(value) or export_name
         previous = walk.exported
@@ -258,8 +293,37 @@ def _collect_assignment(node, walk: _Walk) -> None:
         _visit(child, walk)
 
 
+def _visit_named_object(node, walk: _Walk, name: str) -> None:
+    """Methods on a named object are `api.stat`, contained by the file."""
+    previous = walk.object_name
+    walk.object_name = name
+    for child in node.children:
+        _visit(child, walk)
+    walk.object_name = previous
+
+
+def _collect_pair(node, walk: _Walk) -> None:
+    key, value = _pair_key_value(node)
+    name = _property_text(key)
+    if value is None:
+        return
+    if name and value.type == "object":
+        nested = f"{walk.object_name}.{name}" if walk.object_name else name
+        _visit_named_object(value, walk, nested)
+        return
+    if name and value.type in {"function_expression", "arrow_function", "function"}:
+        _collect_function_value(value, value, walk, name)
+        return
+    _visit(value, walk)
+
+
 def _collect_function_value(node, value, walk: _Walk, name: str, export_name: str | None = None) -> None:
-    qualified = f"{walk.class_name}.{name}" if walk.class_name and name != "default" else name
+    if name == "default":
+        qualified = "default"
+    elif walk.object_name:
+        qualified = f"{walk.object_name}.{name}"
+    else:
+        qualified = _qualify(walk, name)
     names = [export_name or name]
     if walk.default_export and "default" not in names:
         names.append("default")
@@ -274,13 +338,12 @@ def _collect_function_value(node, value, walk: _Walk, name: str, export_name: st
             end=end,
             export_names=tuple(dict.fromkeys(names)),
         ))
-    previous = walk.owner
-    walk.owner = qualified
+    saved = _enter(walk, qualified, function=True)
     for child in value.children:
         if child.type in {"formal_parameters", "identifier", "property_identifier"}:
             continue
         _visit(child, walk)
-    walk.owner = previous
+    _leave(walk, saved)
 
 
 def _collect_import(node, walk: _Walk) -> None:
@@ -332,7 +395,11 @@ def _collect_reexport(node, walk: _Walk) -> None:
 
 
 def _collect_call(node, walk: _Walk) -> None:
-    if not walk.owner or _require_specifier(node):
+    specifier = _require_specifier(node)
+    if specifier:
+        walk.file.bindings.append(JsBinding(local="", specifier=specifier, imported="*"))
+        return
+    if not walk.owner:
         return
     callee = node.children[0] if node.children else None
     if callee is None:
@@ -353,12 +420,12 @@ def _collect_new(node, walk: _Walk) -> None:
         return
     for child in node.children:
         if child.type == "identifier":
-            walk.file.calls.append(JsCall(owner=walk.owner, name=_text(child), object=""))
+            walk.file.calls.append(JsCall(owner=walk.owner, name=_text(child), object="", is_new=True))
             return
         if child.type == "member_expression":
             obj, prop = _member(child)
             if obj and prop:
-                walk.file.calls.append(JsCall(owner=walk.owner, name=prop, object=obj))
+                walk.file.calls.append(JsCall(owner=walk.owner, name=prop, object=obj, is_new=True))
             return
 
 
@@ -402,6 +469,31 @@ def _declarator_value(node):
         if seen_equals:
             return child
     return None
+
+
+def _pair_key_value(node):
+    key = None
+    seen = False
+    for child in node.children:
+        if child.type == ":":
+            seen = True
+            continue
+        if not seen and key is None:
+            key = child
+            continue
+        if seen:
+            return key, child
+    return key, None
+
+
+def _property_text(node) -> str:
+    if node is None:
+        return ""
+    if node.type == "string":
+        return _string_value(node)
+    if node.type in {"property_identifier", "identifier"}:
+        return _text(node)
+    return ""
 
 
 def _assignment_value(node):

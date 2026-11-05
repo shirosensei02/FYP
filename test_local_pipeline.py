@@ -45,8 +45,7 @@ from patch_generation import patch_generation
 from patch_application import patch_application
 from patch_validation import patch_validation
 from adversarial_evaluation import adversarial_evaluation
-from debugger import debugger_node, route_after_debugger, route_after_index
-from symbol_index import index_node
+from isolated_runners.isolate_locator import localize
 
 
 # ---------------------------------------------------------------------------
@@ -199,21 +198,10 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  vendor files    : {answer.get('files') or []}")
     print(f"  vendor diff     : {len(answer.get('diff') or '')} chars")
 
-    _sep("NODE 2c - SYMBOL INDEX AND DEBUGGER")
-    while True:
-        result = index_node(state)
-        state.update(result)
-        print(f"  index status    : {state.get('debug_status')}")
-        print(f"  bodies in prompt: {len(state.get('debug_in_prompt') or [])}")
-        if route_after_index(state) == "generation":
-            break
-        result = debugger_node(state)
-        state.update(result)
-        print(f"  debugger status : {state.get('debug_status')}")
-        print(f"  rounds          : {state.get('debug_rounds')}")
-        if route_after_debugger(state) == "generation":
-            break
+    _sep("NODE 2c - LOCATOR")
+    state.update(localize(state))
     located = state.get("debug_locations") or []
+    print(f"  locate status   : {state.get('locate_status')}")
     print(f"  located         : {[item.get('function') for item in located]}")
 
     while True:

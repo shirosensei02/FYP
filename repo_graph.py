@@ -15,13 +15,14 @@ import logging
 import math
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 
 from js_ast import JsFile, parse_javascript
-from symbol_index import SOURCE_SUFFIXES, _scan_text
 
 logger = logging.getLogger(__name__)
 
+SOURCE_SUFFIXES = (".js", ".cjs", ".mjs", ".ts", ".jsx", ".tsx", ".cts", ".mts")
 INDEX_ROOT = Path(__file__).resolve().parent / "repo_index"
 TOOLS = {"SearchEntity", "TraverseGraph", "RetrieveEntity"}
 ENTITY_TYPES = {"directory", "file", "class", "function"}
@@ -35,8 +36,47 @@ _CALL_RE = re.compile(r"(?<!function\s)\b([A-Za-z_$][\w$]*)\s*\(")
 _EXTENDS_RE = re.compile(
     r"\bclass\s+([A-Za-z_$][\w$]*)\s+extends\s+([A-Za-z_$][\w$]*)"
 )
-_IMPORT_RE = re.compile(
-    r"(?:require\(\s*|from\s+|import\s*)[\"'](\.[^\"']+)[\"']"
+_IDENT = r"[A-Za-z_$][\w$]*"
+_SPEC = r"\.[^\"']+"
+_NAMED_REQUIRE_RE = re.compile(
+    rf"(?:const|let|var)\s*\{{([^}}]+)\}}\s*=\s*require\(\s*[\"']({_SPEC})[\"']\s*\)"
+)
+_NAMESPACE_REQUIRE_RE = re.compile(
+    rf"(?:const|let|var)\s+({_IDENT})\s*=\s*require\(\s*[\"']({_SPEC})[\"']\s*\)"
+)
+_NAMED_IMPORT_RE = re.compile(
+    rf"import\s*\{{([^}}]+)\}}\s*from\s*[\"']({_SPEC})[\"']"
+)
+_DEFAULT_IMPORT_RE = re.compile(
+    rf"import\s+({_IDENT})\s+from\s*[\"']({_SPEC})[\"']"
+)
+_NAMESPACE_IMPORT_RE = re.compile(
+    rf"import\s*\*\s*as\s+({_IDENT})\s+from\s*[\"']({_SPEC})[\"']"
+)
+_SIDE_REQUIRE_RE = re.compile(rf"require\(\s*[\"']({_SPEC})[\"']\s*\)")
+_SIDE_IMPORT_RE = re.compile(rf"import\s*[\"']({_SPEC})[\"']")
+_NEW_RE = re.compile(rf"\bnew\s+({_IDENT})\s*\(")
+_FUNCTION_RE = re.compile(
+    rf"^[ \t]*(?:export\s+)?(?:async\s+)?function\s+(?P<name>{_IDENT})\s*\(",
+    re.MULTILINE,
+)
+_CLASS_RE = re.compile(
+    rf"^[ \t]*(?:export\s+)?class\s+(?P<name>{_IDENT})\b",
+    re.MULTILINE,
+)
+_CONST_RE = re.compile(
+    rf"^[ \t]*(?:export\s+)?(?:const|let|var)\s+(?P<name>{_IDENT})\s*=\s*"
+    rf"(?:async\s+)?(?:function\b|(?:\([^)\n]*\)|{_IDENT})\s*=>)",
+    re.MULTILINE,
+)
+_EXPORT_ASSIGN_RE = re.compile(
+    rf"^[ \t]*(?:module\.)?exports\.(?P<name>{_IDENT})\s*=\s*"
+    rf"(?:async\s+)?(?:function\b|(?:\([^)\n]*\)|{_IDENT})\s*=>)",
+    re.MULTILINE,
+)
+_METHOD_RE = re.compile(
+    rf"^[ \t]*(?:async\s+)?(?P<name>{_IDENT})\s*\([^)\n]*\)\s*\{{",
+    re.MULTILINE,
 )
 _SKIP_CALLS = {
     "if", "for", "while", "switch", "catch", "function", "return", "do", "else",
@@ -177,9 +217,22 @@ def build_graph(source_dir: Path) -> dict:
 
     _apply_ast_relations(ast_files, nodes, edges, seen_edges)
     for relative, file_symbols in regex_files.items():
-        _add_imports(nodes, edges, seen_edges, relative, texts[relative])
+        bindings = _add_regex_imports(nodes, edges, seen_edges, relative, texts[relative])
         _add_inherits(nodes, edges, seen_edges, relative, texts[relative], name_index)
-        _add_invokes(nodes, edges, seen_edges, relative, texts[relative], file_symbols, name_index)
+        _add_invokes(nodes, edges, seen_edges, relative, texts[relative], file_symbols, bindings)
+
+    for relative, text in texts.items():
+        if relative not in nodes:
+            continue
+        spans = [
+            (int(node["start"]), int(node["end"]))
+            for node in nodes.values()
+            if node.get("path") == relative
+            and node.get("type") in {"class", "function"}
+            and node.get("start") is not None
+            and node.get("end") is not None
+        ]
+        nodes[relative]["text"] = _file_chunk(text, spans)
 
     graph = {
         "nodes": list(nodes.values()),
@@ -234,11 +287,13 @@ def attach_entity_index(graph: dict) -> dict:
 
 
 class EntityIndex:
-    """Lookup order is exact id, global name, BM25 over ids, then BM25 over bodies.
+    """Lookup order is exact id, global name, BM25 over ids, then BM25 over code.
 
-    The name dictionary is global. A function in one directory and its caller in
-    another share a name key, and the invoke or inherit edge is what makes them
-    neighbors.
+    Each keyword stops at the first level that hits. Function and class bodies
+    are the code chunks, and top-level statements that sit in neither are the
+    file chunk. The name dictionary is global, so a callee in another directory
+    shares a name with its caller. The invoke or inherit edge is what makes
+    them neighbors.
     """
 
     def __init__(self, graph: dict):
@@ -253,7 +308,7 @@ class EntityIndex:
                 self.names_lower[key.lower()].append(node["id"])
         self.id_bm25 = _BM25([_tokenize(f"{node['id']} {node.get('qualified', '')}") for node in self.nodes])
         self.code_bm25 = _BM25([
-            _tokenize(_node_text(graph, node) if node["type"] in {"class", "function"} else "")
+            _tokenize(_node_text(graph, node) if node["type"] in {"class", "function", "file"} else "")
             for node in self.nodes
         ])
 
@@ -289,13 +344,12 @@ class EntityIndex:
 
 
 def search_entity(graph: dict, keywords, detail: str = "preview") -> dict:
-    """Walk the entity index from the exact id down to the code BM25."""
+    """Walk each keyword from the exact id down to the code BM25."""
     attach_entity_index(graph)
     index: EntityIndex = graph["index"]
     tokens = [str(keyword).strip() for keyword in keywords if str(keyword).strip()]
     found: list[dict] = []
     seen: set[str] = set()
-    missed: list[str] = []
 
     def add(entity_id: str) -> None:
         node = index.by_id.get(entity_id)
@@ -305,23 +359,27 @@ def search_entity(graph: dict, keywords, detail: str = "preview") -> dict:
         found.append(node)
 
     for keyword in tokens:
+        if len(found) >= MAX_SEARCH_HITS:
+            break
         hits = index.lookup(keyword)
         if hits:
             for entity_id in hits:
                 add(entity_id)
-        else:
-            missed.append(keyword)
-    if missed and len(found) < MAX_SEARCH_HITS:
-        query = _tokenize(" ".join(missed))
-        for entity_id in index.bm25(query, "id"):
-            add(entity_id)
-            if len(found) >= MAX_SEARCH_HITS:
-                break
-        if len(found) < MAX_SEARCH_HITS:
-            for entity_id in index.bm25(query, "code"):
+            continue
+        query = _tokenize(keyword)
+        if not query:
+            continue
+        id_hits = index.bm25(query, "id")
+        if id_hits:
+            for entity_id in id_hits:
                 add(entity_id)
                 if len(found) >= MAX_SEARCH_HITS:
                     break
+            continue
+        for entity_id in index.bm25(query, "code"):
+            add(entity_id)
+            if len(found) >= MAX_SEARCH_HITS:
+                break
     detail = detail if isinstance(detail, str) and detail in {"fold", "preview", "full"} else "preview"
     if detail == "preview" and len(found) > 3:
         detail = "fold"
@@ -418,6 +476,8 @@ def _present(graph: dict, node: dict, detail: str) -> dict:
 
 
 def _node_text(graph: dict, node: dict) -> str:
+    if node.get("type") == "file":
+        return str(node.get("text") or "")
     if node.get("type") not in {"class", "function"}:
         return str(node.get("qualified") or node.get("name") or "")
     cached = node.get("text")
@@ -473,15 +533,7 @@ def _apply_ast_relations(ast_files: dict[str, JsFile], nodes: dict, edges: list,
             target_file = _resolve_import(nodes, Path(relative).parent, binding.specifier)
             if not target_file:
                 continue
-            _add_edge(edges, seen_edges, relative, target_file, "import")
-            if binding.imported == "*":
-                if binding.local:
-                    bindings[binding.local] = ("*", target_file)
-                continue
-            entity = _symbol_in_file(nodes, target_file, binding.imported)
-            if binding.local and entity:
-                bindings[binding.local] = ("named", entity)
-                _add_edge(edges, seen_edges, relative, entity, "import")
+            _bind_import(nodes, edges, seen_edges, relative, bindings, target_file, binding.local, binding.imported)
         for extend in facts.extends:
             child = f"{relative}:{extend.child}"
             bound = bindings.get(extend.parent)
@@ -495,41 +547,46 @@ def _apply_ast_relations(ast_files: dict[str, JsFile], nodes: dict, edges: list,
 
 
 def _resolve_ast_call(call, bindings: dict[str, tuple[str, str]], nodes: dict, relative: str) -> str | None:
+    prefer = ("class", "function") if call.is_new else ("function", "class")
     if call.object == "this":
-        return _symbol_in_file(nodes, relative, call.name)
+        return _symbol_in_file(nodes, relative, call.name, prefer)
     if call.object:
         bound = bindings.get(call.object)
         if bound and bound[0] == "*":
-            return _symbol_in_file(nodes, bound[1], call.name)
+            return _symbol_in_file(nodes, bound[1], call.name, prefer)
         if bound and bound[0] == "named":
             entity = nodes.get(bound[1]) or {}
             method = f"{entity.get('path')}:{entity.get('qualified')}.{call.name}"
             if method in nodes:
                 return method
-        return _symbol_in_file(nodes, relative, call.name) or _global_function(nodes, call.name)
+            if call.is_new and entity.get("type") == "class" and entity.get("name") == call.name:
+                return bound[1]
+        return _symbol_in_file(nodes, relative, call.name, prefer) or _global_named(nodes, call.name, prefer)
     bound = bindings.get(call.name)
     if bound and bound[0] == "named":
         return bound[1]
     if bound and bound[0] == "*":
-        return _symbol_in_file(nodes, bound[1], "default")
-    return _symbol_in_file(nodes, relative, call.name) or _global_function(nodes, call.name)
+        return _symbol_in_file(nodes, bound[1], "default", prefer)
+    return _symbol_in_file(nodes, relative, call.name, prefer) or _global_named(nodes, call.name, prefer)
 
 
-def _symbol_in_file(nodes: dict, file: str, name: str) -> str | None:
-    exact_name = []
-    exact_export = []
-    qualified = []
+def _symbol_in_file(nodes: dict, file: str, name: str, prefer: tuple[str, ...] = ("function", "class")) -> str | None:
+    grouped = {kind: {"name": [], "export": [], "qualified": []} for kind in ("function", "class")}
     for node in nodes.values():
-        if node.get("path") != file or node.get("type") not in {"function", "class"}:
+        kind = node.get("type")
+        if node.get("path") != file or kind not in grouped:
             continue
         if node.get("name") == name:
-            exact_name.append(node["id"])
+            grouped[kind]["name"].append(node["id"])
         elif name in (node.get("exports") or []):
-            exact_export.append(node["id"])
+            grouped[kind]["export"].append(node["id"])
         elif node.get("qualified") == name or str(node.get("qualified") or "").endswith("." + name):
-            qualified.append(node["id"])
-    found = exact_name or exact_export or qualified
-    return found[0] if found else None
+            grouped[kind]["qualified"].append(node["id"])
+    for kind in prefer:
+        found = grouped[kind]["name"] or grouped[kind]["export"] or grouped[kind]["qualified"]
+        if found:
+            return found[0]
+    return None
 
 
 def _class_named(nodes: dict, name: str) -> str | None:
@@ -540,20 +597,92 @@ def _class_named(nodes: dict, name: str) -> str | None:
     return matches[0] if matches else None
 
 
-def _global_function(nodes: dict, name: str) -> str | None:
-    matches = [
-        node["id"] for node in nodes.values()
-        if node.get("type") == "function" and node.get("name") == name
-    ]
-    return matches[0] if matches else None
+def _global_named(nodes: dict, name: str, prefer: tuple[str, ...]) -> str | None:
+    for kind in prefer:
+        for node in nodes.values():
+            if node.get("type") == kind and node.get("name") == name:
+                return node["id"]
+    return None
 
 
-def _add_imports(nodes, edges, seen_edges, relative: str, text: str) -> None:
-    source = Path(relative)
-    for match in _IMPORT_RE.finditer(text):
-        target = _resolve_import(nodes, source.parent, match.group(1))
+def _bind_import(nodes, edges, seen_edges, relative: str, bindings: dict, target_file: str, local: str, imported: str) -> None:
+    """Point a file at the imported function or class, or at the file when it cannot."""
+    if imported == "*":
+        _add_edge(edges, seen_edges, relative, target_file, "import")
+        if local:
+            bindings[local] = ("*", target_file)
+        return
+    entity = _symbol_in_file(nodes, target_file, imported)
+    if entity:
+        if local:
+            bindings[local] = ("named", entity)
+        _add_edge(edges, seen_edges, relative, entity, "import")
+        return
+    _add_edge(edges, seen_edges, relative, target_file, "import")
+
+
+def _add_regex_imports(nodes, edges, seen_edges, relative: str, text: str) -> dict:
+    """Parse require and import bindings when the syntax tree is unavailable."""
+    bindings: dict[str, tuple[str, str]] = {}
+    parent = Path(relative).parent
+    for local, specifier, imported in _regex_bindings(text):
+        target = _resolve_import(nodes, parent, specifier)
         if target:
-            _add_edge(edges, seen_edges, relative, target, "import")
+            _bind_import(nodes, edges, seen_edges, relative, bindings, target, local, imported)
+    return bindings
+
+
+def _regex_bindings(text: str) -> list[tuple[str, str, str]]:
+    found: list[tuple[str, str, str]] = []
+    claimed: list[tuple[int, int]] = []
+
+    def claim(match) -> bool:
+        span = match.span()
+        if any(span[0] < end and start < span[1] for start, end in claimed):
+            return False
+        claimed.append(span)
+        return True
+
+    for match in _NAMED_REQUIRE_RE.finditer(text):
+        if claim(match):
+            for imported, local in _split_specifiers(match.group(1)):
+                found.append((local, match.group(2), imported))
+    for match in _NAMESPACE_REQUIRE_RE.finditer(text):
+        if claim(match):
+            found.append((match.group(1), match.group(2), "*"))
+    for match in _NAMED_IMPORT_RE.finditer(text):
+        if claim(match):
+            for imported, local in _split_specifiers(match.group(1)):
+                found.append((local, match.group(2), imported))
+    for match in _NAMESPACE_IMPORT_RE.finditer(text):
+        if claim(match):
+            found.append((match.group(1), match.group(2), "*"))
+    for match in _DEFAULT_IMPORT_RE.finditer(text):
+        if claim(match):
+            found.append((match.group(1), match.group(2), "default"))
+    for pattern in (_SIDE_REQUIRE_RE, _SIDE_IMPORT_RE):
+        for match in pattern.finditer(text):
+            if claim(match):
+                found.append(("", match.group(1), "*"))
+    return found
+
+
+def _split_specifiers(block: str) -> list[tuple[str, str]]:
+    pairs = []
+    for part in block.split(","):
+        piece = part.strip()
+        if not piece or piece.startswith("..."):
+            continue
+        if " as " in piece:
+            imported, local = piece.split(" as ", 1)
+        elif ":" in piece:
+            imported, local = piece.split(":", 1)
+        else:
+            imported = local = piece
+        imported, local = imported.strip(), local.strip()
+        if re.fullmatch(_IDENT, imported) and re.fullmatch(_IDENT, local):
+            pairs.append((imported, local))
+    return pairs
 
 
 def _add_inherits(nodes, edges, seen_edges, relative: str, text: str, name_index: dict[str, list[str]]) -> None:
@@ -565,25 +694,61 @@ def _add_inherits(nodes, edges, seen_edges, relative: str, text: str, name_index
         _add_edge(edges, seen_edges, child, parents[0], "inherit")
 
 
-def _add_invokes(nodes, edges, seen_edges, relative: str, text: str, file_symbols, name_index) -> None:
+def _add_invokes(nodes, edges, seen_edges, relative: str, text: str, file_symbols, bindings) -> None:
     owners = [node_id for node_id, node in nodes.items() if node.get("path") == relative and node["type"] == "function"]
+    calls = [(match.start(), match.group(1), ("class", "function")) for match in _NEW_RE.finditer(text)]
     for match in _CALL_RE.finditer(text):
-        name = match.group(1)
-        if name in _SKIP_CALLS or _is_definition(text, match.start(), file_symbols):
+        if _is_new_call(text, match.start()):
             continue
-        targets = [entity_id for entity_id in name_index.get(name, []) if nodes.get(entity_id, {}).get("type") == "function"]
-        if not targets:
+        calls.append((match.start(), match.group(1), ("function", "class")))
+    for index, name, prefer in calls:
+        if name in _SKIP_CALLS or _is_definition(text, index, file_symbols):
             continue
-        same_file = [entity_id for entity_id in targets if entity_id.startswith(relative + ":")]
-        target = same_file[0] if same_file else targets[0]
+        target = _resolve_call_name(name, bindings, nodes, relative, prefer)
+        if not target:
+            continue
         for owner in owners:
             node = nodes[owner]
             if node.get("start") is None:
                 continue
-            if node["start"] <= match.start() < node.get("end", match.start()):
+            if node["start"] <= index < node.get("end", index):
                 if node.get("name") != name:
                     _add_edge(edges, seen_edges, owner, target, "invoke")
                 break
+
+
+def _is_new_call(text: str, index: int) -> bool:
+    return bool(re.search(r"\bnew\s*$", text[max(0, index - 16):index]))
+
+
+def _resolve_call_name(name: str, bindings: dict, nodes: dict, relative: str, prefer: tuple[str, ...]) -> str | None:
+    bound = bindings.get(name)
+    if bound and bound[0] == "named":
+        return bound[1]
+    if bound and bound[0] == "*":
+        return _symbol_in_file(nodes, bound[1], name, prefer) or _symbol_in_file(nodes, bound[1], "default", prefer)
+    return _symbol_in_file(nodes, relative, name, prefer) or _global_named(nodes, name, prefer)
+
+
+def _file_chunk(text: str, spans: list[tuple[int, int]]) -> str:
+    """Source that sits outside every function and class, so globals stay searchable."""
+    merged: list[list[int]] = []
+    for start, end in sorted(spans):
+        start = max(0, start)
+        end = max(start, min(len(text), end))
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    parts = []
+    cursor = 0
+    for start, end in merged:
+        if start > cursor:
+            parts.append(text[cursor:start])
+        cursor = end
+    if cursor < len(text):
+        parts.append(text[cursor:])
+    return "".join(parts)
 
 
 def _is_definition(text: str, index: int, file_symbols) -> bool:
@@ -626,6 +791,81 @@ def _add_edge(edges, seen, source: str, target: str, kind: str) -> None:
         return
     seen.add(key)
     edges.append({"source": source, "target": target, "type": kind})
+
+
+@dataclass(frozen=True)
+class _RegexSymbol:
+    name: str
+    start: int
+    end: int
+
+
+def _scan_text(relative: str, text: str) -> list[_RegexSymbol]:
+    """Find function and class spans when the syntax tree cannot be built."""
+    found: dict[str, _RegexSymbol] = {}
+
+    def add(name: str, start: int) -> None:
+        if name in found:
+            return
+        found[name] = _RegexSymbol(name, start, _statement_end(text, start))
+
+    for pattern in (_FUNCTION_RE, _CLASS_RE, _CONST_RE, _EXPORT_ASSIGN_RE):
+        for match in pattern.finditer(text):
+            add(match.group("name"), match.start())
+    for match in _METHOD_RE.finditer(text):
+        name = match.group("name")
+        if name not in _SKIP_CALLS:
+            add(name, match.start())
+    return list(found.values())
+
+
+def _statement_end(text: str, start: int) -> int:
+    brace = _find_body_brace(text, start)
+    if brace is None:
+        line_end = text.find("\n", start)
+        return len(text) if line_end == -1 else line_end + 1
+    return _closing_brace(text, brace) + 1
+
+
+def _find_body_brace(text: str, start: int) -> int | None:
+    limit = min(len(text), start + 400)
+    arrow = text.find("=>", start, limit)
+    brace = text.find("{", start, limit if arrow == -1 else len(text))
+    if brace == -1:
+        return None
+    if arrow != -1 and arrow < brace:
+        line_end = text.find("\n", arrow)
+        if line_end != -1 and brace > line_end and text.find("{", arrow, line_end) == -1:
+            return None
+    return brace
+
+
+def _closing_brace(text: str, brace: int) -> int:
+    depth = 0
+    quote = ""
+    index = brace
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == "\\":
+                index += 2
+                continue
+            if char == quote:
+                quote = ""
+            index += 1
+            continue
+        if char in {"'", '"', "`"}:
+            quote = char
+            index += 1
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return len(text) - 1
 
 
 def _source_files(source_dir: Path) -> list[Path]:

@@ -1,0 +1,8 @@
+{
+  "package_name": "knex",
+  "package_version": "2.3.0",
+  "source_dir": "",
+  "vulnerability_id": "",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5"
+}
