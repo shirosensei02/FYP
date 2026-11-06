@@ -35,7 +35,9 @@ def test_patch_validation_pass_persists_attempt_and_result(monkeypatch):
             "package_version": "4.17.15",
             "run_attempt_id": "lodash-fc1",
             "current_patch": {"model_used": "mock-diff-v1"},
-        }
+            "generated_patch_oracle_validation": {"status": "SECURITY_PASS"},
+        },
+        save_to_db=True,
     )
 
     assert result["classification"] == "pass"
@@ -54,7 +56,9 @@ def test_no_regression_is_the_only_comparison_success(monkeypatch):
         {
             "regression_status": "NO_REGRESSION",
             "validation": {"build_succeeded": True, "tests_passed": True},
-        }
+            "generated_patch_oracle_validation": {"status": "SECURITY_PASS"},
+        },
+        save_to_db=True,
     )
 
     assert result["classification"] == "pass"
@@ -62,6 +66,67 @@ def test_no_regression_is_the_only_comparison_success(monkeypatch):
         "Baseline and patched package validation passed; no regression was detected."
     )
     assert calls["result"] == [{"passed": True, "all_attempts_id": "fake_attempt_id"}]
+
+
+def test_exhausted_oracle_budget_makes_compatibility_pass_inconclusive(monkeypatch):
+    calls = _stub_persistence(monkeypatch)
+    result = patch_validation({
+        "regression_status": "NO_REGRESSION",
+        "validation": {"build_succeeded": True, "tests_passed": True},
+        "oracle_validation": {"status": "INVALID"},
+        "oracle_attempt_count": 5,
+        "max_oracle_attempts": 5,
+    })
+    assert result["compatibility_classification"] == "pass"
+    assert result["security_validation"] == "INCONCLUSIVE"
+    assert result["classification"] == "inconclusive"
+    assert "security validation is INCONCLUSIVE" in result["classification_reason"]
+    assert result["retry_feedback"] is None
+    assert calls["result"] == []
+
+
+def test_security_skip_makes_compatibility_pass_unverified(monkeypatch):
+    calls = _stub_persistence(monkeypatch)
+    result = patch_validation({
+        "regression_status": "NO_REGRESSION",
+        "validation": {"build_succeeded": True, "tests_passed": True},
+        "oracle_validation": {"status": "SKIPPED"},
+        "generated_patch_oracle_validation": {"status": "SKIPPED"},
+    })
+    assert result["compatibility_classification"] == "pass"
+    assert result["security_validation"] == "SKIPPED"
+    assert result["classification"] == "inconclusive"
+    assert "vulnerability fix remains unverified" in result["classification_reason"]
+    assert result["retry_feedback"] is None
+    assert calls["result"] == []
+
+
+def test_failed_locked_oracle_skips_package_tests_and_hides_maintainer_result(monkeypatch):
+    _stub_persistence(monkeypatch)
+    result = patch_validation({
+        "package_tests_skipped": True,
+        "patch_applied": True,
+        "generated_patch_oracle_validation": {
+            "status": "SECURITY_FAIL",
+            "reason": "The accepted exploit still succeeds against the generated patch.",
+            "execution": {
+                "status": "EXPLOIT_SUCCEEDED",
+                "operation_completed": True,
+                "exploit_succeeded": True,
+                "evidence": "marker file created",
+                "stdout": "ORACLE_RESULT",
+                "stderr": "",
+            },
+        },
+        "oracle_validation": {"fixed": {"status": "EXPLOIT_BLOCKED", "evidence": "maintainer-secret-pass"}},
+        "validation": {"test_status": "SKIPPED", "consumer_smoke_status": "SKIPPED", "logs": ""},
+    })
+    assert result["classification"] == "fail"
+    assert result["security_validation"] == "FAIL"
+    assert "Package tests were not run." in result["classification_reason"]
+    encoded = str(result["retry_feedback"])
+    assert "marker file created" in encoded
+    assert "maintainer-secret-pass" not in encoded
 
 
 def test_published_package_no_regression_explains_compatibility_scope(monkeypatch):
@@ -79,7 +144,7 @@ def test_published_package_no_regression_explains_compatibility_scope(monkeypatc
         }
     )
 
-    assert result["classification"] == "pass"
+    assert result["classification"] == "inconclusive"
     assert "no compatibility regression" in result["classification_reason"]
     assert "does not independently confirm" in result["classification_reason"]
 
@@ -137,7 +202,10 @@ def test_patched_only_pass_remains_inconclusive(monkeypatch):
 def test_patch_validation_fail_on_build_skips_result_save(monkeypatch):
     calls = _stub_persistence(monkeypatch)
 
-    result = patch_validation({"validation": {"build_succeeded": False, "tests_passed": False}})
+    result = patch_validation(
+        {"validation": {"build_succeeded": False, "tests_passed": False}},
+        save_to_db=True,
+    )
 
     assert result["classification"] == "fail"
     assert result["classification_reason"] == "Docker build failed — patch could not be applied."
@@ -195,7 +263,10 @@ def test_patch_validation_continues_when_attempt_save_fails(monkeypatch):
 
     monkeypatch.setattr(patch_validation_module, "save_patch_result", fake_save_result)
 
-    result = patch_validation({"validation": {"build_succeeded": True, "tests_passed": True}})
+    result = patch_validation({
+        "validation": {"build_succeeded": True, "tests_passed": True},
+        "generated_patch_oracle_validation": {"status": "SECURITY_PASS"},
+    }, save_to_db=True)
 
     assert result["classification"] == "pass"
     assert result["mongo_id"] is None

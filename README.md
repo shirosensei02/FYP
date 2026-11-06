@@ -19,12 +19,19 @@ graph TD
     __start__([START]) --> package_input_node[Package Input]
     package_input_node --> vulnerability_detection_node[Vulnerability Detection]
     vulnerability_detection_node --> og_patch_resolution_node[OG Patch Resolution]
-    og_patch_resolution_node --> patch_generation_node[Patch Generation]
+    og_patch_resolution_node --> vulnerability_localization_node[Vulnerability Localization]
+    vulnerability_localization_node --> oracle_generation_node[Oracle Generation]
+    oracle_generation_node --> oracle_validation_node[Oracle Baseline Validation]
+    oracle_validation_node -->|invalid, attempts remain| oracle_generation_node
+    oracle_validation_node --> patch_generation_node[Patch Generation]
     patch_generation_node --> patch_application_node[Patch Application]
     patch_application_node --> vulnerability_rescan_node[Vulnerability Rescan]
-    vulnerability_rescan_node --> patch_validation_node[Patch Validation]
+    vulnerability_rescan_node --> generated_patch_oracle_validation_node[Generated Patch Oracle Validation]
+    generated_patch_oracle_validation_node --> adversarial_evaluation_node[Adversarial Evaluation]
+    adversarial_evaluation_node --> patch_validation_node[Patch Validation]
     patch_validation_node --> patch_scoring_node[Patch Scoring]
-    patch_scoring_node --> __end__([END])
+    patch_scoring_node --> maintainer_eval_node[Maintainer Evaluation]
+    maintainer_eval_node --> __end__([END])
 ```
 
 ### Stage Summary
@@ -32,11 +39,13 @@ graph TD
 1. **Package Input (`package_input_node`)**: Ingests NPM package source code.
 2. **Vulnerability Detection (`vulnerability_detection_node`)**: Scans for known vulnerabilities, security flaws, or vulnerable dependencies using Syft and Grype.
 3. **OG Patch Resolution (`og_patch_resolution_node`)**: Looks up the GitHub Advisory for the finding and, if a patch commit exists, records that official answer-key patch. Not fed into generation.
-4. **Patch Generation (`patch_generation_node`)**: Leverages LLMs to generate candidate security patches or code fixes.
-5. **Patch Application (`patch_application_node`)**: Applies the generated patches to the target codebase in a sandbox environment.
-6. **Vulnerability Rescan (`vulnerability_rescan_node`)**: Re-scans the patched package for the original findings.
-7. **Patch Validation (`patch_validation_node`)**: Classifies pass/fail from build, tests, and re-scan.
-8. **Patch Scoring (`patch_scoring_node`)**: Compares the generated patch to the GitHub Advisory maintainer patch on location (same / overlapping / different), strategy (same / similar / different), and completeness (full / partial / none). Does not change pass/fail.
+4. **Vulnerability Localization (`vulnerability_localization_node`)**: Selects source context relevant to the advisory.
+5. **Oracle Generation and Baseline Validation**: Generates an external exploit test and accepts it only when it reproduces the vulnerable behavior while the maintainer-fixed baseline blocks it. Invalid tests receive structured feedback for up to five attempts.
+6. **Patch Generation (`patch_generation_node`)**: Leverages LLMs to generate candidate security patches or code fixes.
+7. **Patch Application (`patch_application_node`)**: Applies the generated patches to the target codebase in a sandbox environment.
+8. **Vulnerability Rescan (`vulnerability_rescan_node`)**: Re-scans the patched package for the original findings.
+9. **Generated Patch Oracle Validation**: Runs the accepted oracle against the generated patch and records `SECURITY_PASS`, `SECURITY_FAIL`, `REGRESSION`, or `INCONCLUSIVE`.
+10. **Patch Validation and Evaluation**: Reports compatibility and security validation separately. Exhausting the oracle budget cannot produce an overall pass; a compatibility pass with unresolved security validation is `INCONCLUSIVE`.
 
 ---
 
@@ -142,14 +151,57 @@ a clean consumer project, and imported through its public package entry point.
 Repository-native build and test scripts are recorded as `SKIPPED` because
 published npm artifacts do not reliably contain their source assets or
 project-specific tooling. Every terminal outcome is stored in
-`fyp_patches.all_attempts`; only `NO_REGRESSION` outcomes are additionally
-stored in `fyp_patches.successful_patches`. This validates compatibility, not
-whether the vulnerability itself was fixed.
+`fyp_patches.all_attempts`; only outcomes that pass compatibility validation
+and a security oracle are additionally stored in
+`fyp_patches.successful_patches`. Compatibility passing while security
+validation is skipped or inconclusive is reported as `inconclusive`, never as
+a confirmed security pass.
 
 The Docker validator defaults to `node:22-bookworm-slim`, 2 GB memory, two CPUs
 and ten-minute command/build timeouts. These can be changed with
 `PATCH_SANDBOX_BASE_IMAGE`, `PATCH_SANDBOX_MEMORY`, `PATCH_SANDBOX_CPUS`,
 `PATCH_SANDBOX_TIMEOUT_SECONDS`, and `PATCH_DOCKER_BUILD_TIMEOUT` in `.env`.
+
+### Security regression oracle
+
+When a maintainer diff or fixed version is available, the pipeline asks the
+selected OpenRouter model for a JavaScript exploit oracle. It accepts that
+oracle only when the vulnerable package reports `EXPLOIT_SUCCEEDED` and the
+maintainer-fixed package reports `EXPLOIT_BLOCKED`. A crash, timeout, missing
+result protocol, or operation that never completed is not treated as a secure
+result. Correctable candidate failures are fed back to the writer with bounded
+diagnostics; Docker/build infrastructure failures stop the oracle retry loop and
+are recorded as errors. When available, the published fixed npm artifact is the
+preferred fixed baseline, with the maintainer diff as a fallback.
+
+Oracle execution uses a disposable Docker container with networking disabled,
+a read-only root filesystem, a small writable `/tmp`, dropped capabilities,
+`no-new-privileges`, and CPU, memory, process, and time limits. Configure the
+attempt budget and runner with `MAX_ORACLE_ATTEMPTS`, `ORACLE_SANDBOX_MEMORY`,
+`ORACLE_SANDBOX_CPUS`, and `ORACLE_DOCKER_BUILD_TIMEOUT`. The generated oracle
+declares trusted fixture requirements; for Git-backed APIs the harness installs
+Git and creates a writable temporary repository with a minimal commit before
+running `/consumer/oracle.js`. Generated code cannot supply setup commands.
+
+Set `ORACLE_KEEP_FAILED=true` to retain failed oracle executions' source,
+Dockerfile, fixture declaration, and bounded build/runtime logs under
+`.workspace/oracles`. Successful executions and, by default, all disposable
+artifacts are removed.
+
+The source capability check is a guardrail for obvious model mistakes, not a
+security boundary; generated JavaScript can obfuscate module access. The Docker
+runtime restrictions are the security boundary for oracle execution.
+
+For malicious input, an exception counts as blocked only after fixture setup and
+the benign operation have succeeded. Setup, package-resolution, and benign-call
+exceptions must report `operation_completed=false`, preventing missing
+prerequisites from masquerading as a security fix.
+
+The fixed baseline prefers the published patched npm artifact because that is
+what consumers install. If `--source-dir` points to a checkout or another
+unpublished tree, the vulnerable and fixed baselines may therefore differ in
+packaging shape as well as source version; this limitation is recorded when
+interpreting benchmark results.
 
 ### Generator and evaluator models
 
@@ -197,6 +249,7 @@ explanation of that verdict. An unavailable or invalid evaluator response is rec
 | `--source-dir` | Path to a pre-extracted source directory — skips `npm pack` + extract |
 | `--skip-vuln-detection` | Inject a mock vulnerability instead of running `syft`/`grype`/`npm audit` |
 | `--stop-after-patch` | Skip Docker validation and MongoDB persistence after patch generation |
+| `--max-oracle-attempts` | Maximum oracle generation/correction attempts (default: 5) |
 | `--dump-state` | Print the full pipeline state dict at the end |
 
 ### Usage Examples

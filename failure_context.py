@@ -64,7 +64,27 @@ def clipped(value, limit):
     return value if len(value) <= limit else value[:limit] + '\n[truncated]'
 
 
-def record_failure(state, reason, *, stage=None, candidate=None):
+def locked_oracle_execution(state):
+    """Copy the generated patch's oracle result. The maintainer baseline stays out."""
+    result = state.get('generated_patch_oracle_validation') or {}
+    if result.get('status') not in {'SECURITY_FAIL', 'REGRESSION'}:
+        return None
+    execution = result.get('execution') or {}
+    if not isinstance(execution, dict):
+        execution = {}
+    return {
+        'status': result.get('status'),
+        'reason': result.get('reason') or '',
+        'execution_status': execution.get('status'),
+        'operation_completed': execution.get('operation_completed'),
+        'exploit_succeeded': execution.get('exploit_succeeded'),
+        'evidence': execution.get('evidence') or '',
+        'stdout': execution.get('stdout') or '',
+        'stderr': execution.get('stderr') or '',
+    }
+
+
+def record_failure(state, reason, *, stage=None, candidate=None, writer_visible=True):
     patch = state.get('current_patch') or {}
     validation = state.get('validation') or {}
     stage = stage or validation.get('failure_stage') or ('generation' if state.get('generation_status') == 'failed' else
@@ -78,9 +98,11 @@ def record_failure(state, reason, *, stage=None, candidate=None):
         'attempt_number': state.get('retry_count', 0) + 1,
         'model': patch.get('model_used') or state.get('generation_model_used') or state.get('model_name'),
         'stage': stage, 'classification_reason': reason,
+        'writer_visible': bool(writer_visible),
         'candidate': candidate if candidate is not None else patch.get('diff'),
         'errors': state.get('errors', [])[state.get('attempt_error_start', 0):],
         'logs': validation.get('logs', ''),
+        'oracle_execution': locked_oracle_execution(state),
         'evaluator': {key: (state.get('adversarial_evaluation') or {}).get(key)
                       for key in ('genuine_fix', 'reasoning', 'evidence')},
         'validation': {key: validation.get(key) for key in ('build_succeeded', 'tests_passed', 'install_succeeded')},
@@ -98,7 +120,8 @@ def record_failure(state, reason, *, stage=None, candidate=None):
             with path.open('a', encoding='utf-8') as stream:
                 stream.write(json.dumps(record) + '\n')
             records.append(record)
-        append_context(record)
+        if record.get('writer_visible', True):
+            append_context(record)
     except (OSError, TypeError, ValueError, UnicodeError):
         logger.warning('Could not persist package failure context', exc_info=True)
     return record
@@ -209,6 +232,20 @@ def render(records):
         evidence = '\n'.join(errors) + '\n' + diagnostic_excerpt(record.get('logs'))
         if evidence.strip():
             section += '\n\n### Failure evidence\n\n' + fenced(clipped(evidence.strip(), 2600))
+        oracle = record.get('oracle_execution')
+        if isinstance(oracle, dict):
+            oracle_text = '\n'.join([
+                f"status: {oracle.get('status')}",
+                f"execution: {oracle.get('execution_status')}",
+                f"operation_completed: {oracle.get('operation_completed')}",
+                f"exploit_succeeded: {oracle.get('exploit_succeeded')}",
+                f"evidence: {oracle.get('evidence') or ''}",
+                diagnostic_excerpt('\n'.join([
+                    str(oracle.get('stdout') or ''),
+                    str(oracle.get('stderr') or ''),
+                ]), 1200),
+            ]).strip()
+            section += '\n\n### Locked oracle output\n\n' + fenced(clipped(oracle_text, 1800))
         candidate = record.get('candidate')
         if candidate:
             language = 'json' if isinstance(candidate, (dict, list)) else 'diff'
@@ -234,6 +271,8 @@ def render(records):
 def load_feedback(state):
     """Read editable Markdown directly; never reconstruct prompt memory from JSONL."""
     latest = state.get('retry_feedback')
+    if isinstance(latest, dict) and latest.get('writer_visible') is False:
+        latest = None
     immediate = ('# Latest attempt failure (current run)\n\n' + render([latest])) if latest else ''
     # Reserve space for immediate feedback before loading persistent memory.
     budget = max(0, MAX_FEEDBACK_CHARS - len(immediate) - 250)

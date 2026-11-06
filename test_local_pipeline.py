@@ -42,10 +42,16 @@ from model_catalog import patch_evaluator_models
 from package_input import package_input
 from vulnerability_detection import vulnerability_detection
 from patch_generation import patch_generation
-from patch_application import patch_application
+from patch_application import apply_patch, package_validation
 from patch_validation import patch_validation
 from adversarial_evaluation import adversarial_evaluation
+<<<<<<< HEAD
 from isolated_runners.isolate_locator import localize
+=======
+from vulnerability_localization import vulnerability_localization
+from oracle_generation import oracle_generation
+from oracle_validation import oracle_validation, generated_patch_oracle_validation
+>>>>>>> origin/failing-oracle
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +118,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         "patch_scope": args.patch_scope,
         "retry_count": 0,
         "max_retries": args.max_retries,
+        "max_oracle_attempts": args.max_oracle_attempts,
         "errors": [],
     }
     if args.model_name:
@@ -198,11 +205,44 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  vendor files    : {answer.get('files') or []}")
     print(f"  vendor diff     : {len(answer.get('diff') or '')} chars")
 
+<<<<<<< HEAD
     _sep("NODE 2c - LOCATOR")
     state.update(localize(state))
     located = state.get("debug_locations") or []
     print(f"  locate status   : {state.get('locate_status')}")
     print(f"  located         : {[item.get('function') for item in located]}")
+=======
+    # Localize first so both the oracle writer and patch writer receive the
+    # same vulnerability-focused source context.
+    _sep("NODE 2c - VULNERABILITY LOCALIZATION")
+    result = vulnerability_localization(state)
+    state.update(result)
+    print(f"  status          : {state.get('localization_status')}")
+    print(f"  localized files : {state.get('localized_files') or []}")
+    print(f"  context_files   : {len(state.get('localized_context_files') or [])}")
+    print(f"  reasoning       : {state.get('localized_reasoning') or 'none'}")
+
+    # Generate an external exploit oracle, then accept it only if it
+    # distinguishes the vulnerable package from the maintainer-fixed package.
+    while True:
+        _sep("NODE 2d - SECURITY ORACLE GENERATION")
+        state.update(oracle_generation(state))
+        candidate = state.get("oracle_candidate") or {}
+        print(f"  attempt         : {candidate.get('attempt_number')}/{args.max_oracle_attempts}")
+        print(f"  generation      : {candidate.get('status')}")
+
+        _sep("NODE 2e - SECURITY ORACLE BASELINE VALIDATION")
+        state.update(oracle_validation(state))
+        oracle_result = state.get("oracle_validation") or {}
+        print(f"  status          : {oracle_result.get('status')}")
+        print(f"  vulnerable      : {(oracle_result.get('vulnerable') or {}).get('status')}")
+        print(f"  maintainer fix  : {(oracle_result.get('fixed') or {}).get('status')}")
+        print(f"  reason          : {oracle_result.get('reason')}")
+
+        from graph import route_after_oracle_validation
+        if route_after_oracle_validation(state) != "retry":
+            break
+>>>>>>> origin/failing-oracle
 
     while True:
         # Node 3: patch_generation
@@ -228,29 +268,53 @@ def run_pipeline(args: argparse.Namespace) -> None:
             return
 
         if state.get("current_patch"):
-            # Node 4: patch_application
-            _sep("NODE 4 / 5 - PATCH APPLICATION")
-            result = patch_application(state)
-            state.update(result)
+            _sep("NODE 4 - PATCH APPLY")
+            state.update(apply_patch(state))
+            print(f"  patch_applied : {state.get('patch_applied')}")
             if state.get("errors"):
                 print(f"  [errors during application] {state['errors']}")
 
-            _sep("NODE 4b - VULNERABILITY RESCAN")
-            from vulnerability_rescan import vulnerability_rescan
-            result = vulnerability_rescan(state)
-            state.update(result)
-            remaining = state.get("remaining_vulnerabilities") or []
-            print(f"  re-scan clean : {(state.get('validation') or {}).get('revalidation_scan_clean')}")
-            print(f"  remaining     : {len(remaining)}")
+            if state.get("patch_applied") is True:
+                _sep("NODE 4b - LOCKED ORACLE")
+                state.update(generated_patch_oracle_validation(state))
+                patch_oracle = state.get("generated_patch_oracle_validation") or {}
+                print(f"  status        : {patch_oracle.get('status')}")
+                print(f"  reason        : {patch_oracle.get('reason')}")
 
-            _sep("NODE 4c - ADVERSARIAL EVALUATION")
-            result = adversarial_evaluation(state)
-            state.update(result)
-            evaluation = state.get("adversarial_evaluation") or {}
-            print(f"  status        : {evaluation.get('status')}")
-            print(f"  genuine_fix   : {evaluation.get('genuine_fix')}")
-            if evaluation.get("evaluation_error"):
-                print(f"  error         : {evaluation['evaluation_error']}")
+                from graph import (
+                    increment_retry,
+                    record_locked_oracle_failure,
+                    route_after_generated_oracle,
+                    skip_package_tests,
+                )
+                oracle_route = route_after_generated_oracle(state)
+                if oracle_route == "retry":
+                    state.update(record_locked_oracle_failure(state))
+                    state.update(increment_retry(state))
+                    continue
+                if oracle_route == "terminal":
+                    state.update(skip_package_tests(state))
+                    print("  package tests : skipped")
+                else:
+                    _sep("NODE 4c - PACKAGE VALIDATION")
+                    state.update(package_validation(state))
+                    print(f"  regression    : {state.get('regression_status')}")
+
+                _sep("NODE 4d - VULNERABILITY RESCAN")
+                from vulnerability_rescan import vulnerability_rescan
+                state.update(vulnerability_rescan(state))
+                remaining = state.get("remaining_vulnerabilities") or []
+                print(f"  re-scan clean : {(state.get('validation') or {}).get('revalidation_scan_clean')}")
+                print(f"  remaining     : {len(remaining)}")
+
+                _sep("NODE 4e - ADVERSARIAL EVALUATION")
+                result = adversarial_evaluation(state)
+                state.update(result)
+                evaluation = state.get("adversarial_evaluation") or {}
+                print(f"  status        : {evaluation.get('status')}")
+                print(f"  genuine_fix   : {evaluation.get('genuine_fix')}")
+                if evaluation.get("evaluation_error"):
+                    print(f"  error         : {evaluation['evaluation_error']}")
 
         # Classify and record generation failures as well as sandbox outcomes.
         _sep("NODE 5 / 5 - PATCH VALIDATION")
@@ -289,6 +353,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
     _sep("PIPELINE COMPLETE")
     print(f"  package            : {state.get('package_name')}@{state.get('package_version')}")
     print(f"  classification     : {state.get('classification', 'unknown')}")
+    print(f"  compatibility      : {state.get('compatibility_classification', 'unknown')}")
+    print(f"  security_validation: {state.get('security_validation', 'unknown')}")
     print(f"  classification_why : {state.get('classification_reason', '')}")
     print(f"  sandbox_success    : {state.get('sandbox_apply_success')}")
     print(f"  regression_status  : {state.get('regression_status')}")
@@ -298,6 +364,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  native_tests       : {validation.get('test_status')}")
     print(f"  consumer_smoke     : {validation.get('consumer_smoke_status')}")
     print(f"  answer_key         : {answer.get('status')} ({answer.get('ghsa_id')})")
+    print(f"  oracle_baselines   : {(state.get('oracle_validation') or {}).get('status')}")
+    print(f"  patch_oracle       : {(state.get('generated_patch_oracle_validation') or {}).get('status')}")
     print(f"  location           : {score.get('location')} ({score.get('location_overlap')})")
     print(f"  strategy           : {score.get('strategy')}")
     print(f"  completeness       : {score.get('completeness')}")
@@ -347,6 +415,9 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--list-vulnerabilities", action="store_true", default=_env_bool("LIST_VULNERABILITIES"),
                    help="List detected target-package vulnerabilities and exit before patch generation")
     p.add_argument("--max-retries", type=int, default=int(os.getenv("MAX_RETRIES", "1")))
+    p.add_argument("--max-oracle-attempts", type=int,
+                   default=int(os.getenv("MAX_ORACLE_ATTEMPTS", "5")),
+                   help="Maximum oracle generation/correction attempts (default: 5)")
     p.add_argument("--source-dir", default=os.getenv("SOURCE_DIR"),
                    help="Pre-extracted package source dir (skips npm pack + extract)")
     p.add_argument("--skip-vuln-detection", action="store_true", default=_env_bool("SKIP_VULN_DETECTION"),

@@ -21,6 +21,8 @@ import logging
 from datetime import datetime, timezone
 
 import certifi
+from bson import ObjectId
+from bson.errors import InvalidId
 from dotenv import load_dotenv
 from pymongo import MongoClient, ASCENDING, errors
 
@@ -176,6 +178,45 @@ def save_pipeline_result(state: dict) -> tuple[str | None, str | None]:
     return attempt_doc_id, doc_id
 
 
+def update_patch_score(
+    mongo_id: str,
+    score: dict,
+    *,
+    answer_key: dict | None = None,
+) -> bool:
+    """Attach scoring data to an attempt and its successful-patch mirror.
+
+    ``mongo_id`` identifies the document in ``all_attempts``.  Successful
+    patches store that identifier as ``all_attempts_id``, so both copies stay
+    consistent when scoring runs after the terminal pipeline save.
+    """
+    try:
+        attempt_id = ObjectId(mongo_id)
+    except (InvalidId, TypeError):
+        logger.warning("db - invalid attempt id for patch score: %r", mongo_id)
+        return False
+
+    update_fields = {"patch_score": score}
+    if answer_key is not None:
+        update_fields["answer_key"] = answer_key
+
+    try:
+        db = _get_db()
+        attempt_result = db[_COL_ATTEMPTS].update_one(
+            {"_id": attempt_id},
+            {"$set": update_fields},
+        )
+        successful_result = db[_COL_PASS].update_one(
+            {"all_attempts_id": mongo_id},
+            {"$set": update_fields},
+        )
+    except errors.PyMongoError as exc:
+        logger.error("db - failed to update patch score: %s", exc)
+        return False
+
+    return bool(attempt_result.matched_count or successful_result.matched_count)
+
+
 def _build_doc(state: dict, passed: bool) -> dict:
     patch = state.get("current_patch") or {}
     return {
@@ -197,6 +238,10 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "adversarial_evaluation": state.get("adversarial_evaluation") or {},
         "vulnerabilities": state.get("vulnerabilities") or [],
         "answer_key":      state.get("answer_key") or {},
+        "oracle_attempts": state.get("oracle_attempts") or [],
+        "accepted_oracle": state.get("accepted_oracle") or {},
+        "oracle_validation": state.get("oracle_validation") or {},
+        "generated_patch_oracle_validation": state.get("generated_patch_oracle_validation") or {},
         "retry_count":     state.get("retry_count", 0),
         "errors":          state.get("errors") or [],
         "generation_status": state.get("generation_status"),

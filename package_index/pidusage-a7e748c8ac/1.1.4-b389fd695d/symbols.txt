@@ -1,0 +1,6 @@
+index.js: wrapper, stat [export], unmonitor [export]
+lib/helpers.js: exec
+lib/stats.js: exec
+test/bench.js: setInterval
+test/stresstest.js: formatBytes, stress, interval, setTimeout
+test/test.js: launch, formatBytes, describe, beforeEach, afterEach, it, pusage

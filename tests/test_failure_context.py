@@ -17,6 +17,37 @@ def state(**extra):
                 vulnerabilities=[{'id': 'GHSA-example'}], **extra)
 
 
+def test_locked_oracle_output_reaches_the_writer_without_the_maintainer_result():
+    record = context.record_failure(state(
+        generated_patch_oracle_validation={
+            "status": "REGRESSION",
+            "reason": "The relevant package operation failed.",
+            "execution": {
+                "status": "OPERATION_FAILED",
+                "operation_completed": False,
+                "exploit_succeeded": False,
+                "evidence": "ordinary call threw",
+                "stdout": "ORACLE_RESULT {\"operation_completed\":false}",
+                "stderr": "TypeError: ps is not a function",
+            },
+        },
+        oracle_validation={"fixed": {"evidence": "maintainer-secret-pass"}},
+    ), "ordinary call failed", stage="security_oracle")
+    feedback = context.load_feedback(state(retry_feedback=record))
+    assert "ordinary call threw" in feedback
+    assert "TypeError: ps is not a function" in feedback
+    assert "maintainer-secret-pass" not in feedback
+
+
+def test_missing_oracle_is_journaled_but_not_shown_to_the_writer():
+    record = context.record_failure(state(), "security validation was skipped", writer_visible=False)
+    assert record["writer_visible"] is False
+    journal = (context.package_directory("semver") / "failures.jsonl").read_text()
+    assert "security validation was skipped" in journal
+    assert context.context_paths(state())[0].exists() is False
+    assert context.load_feedback(state(retry_feedback=record)) == ""
+
+
 def test_history_is_persisted_filtered_and_deduplicated():
     failed = state(attempt_record_id='first', current_patch={'diff': 'bad diff'},
                    validation={'logs': 'actual apply error'})

@@ -108,6 +108,11 @@ def _select_vulnerabilities(state: GraphState) -> list[Vulnerability]:
     return [target] if target else []
 
 
+def _focus_terms(vulnerabilities: list[Vulnerability]) -> set[str]:
+    """Backward-compatible public helper for advisory term extraction."""
+    return extract_focus_terms(vulnerabilities)
+
+
 def _source_excerpt(contents: str, focus_terms: set[str]) -> str:
     """Keep exact, bounded source with priority for relevant function bodies.
 
@@ -683,6 +688,78 @@ def _split_payload_cost(result: dict[str, Any] | str | tuple) -> tuple[dict[str,
     return result, 0.0
 
 
+def _generate_with_openai(
+    state: GraphState,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+    repair_feedback: str | None = None,
+) -> dict[str, Any] | str:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return "patch_generation: OPENAI_API_KEY is not set"
+    response = OpenAI(api_key=api_key).chat.completions.create(
+        model=state.get("model_name", DEFAULT_MODELS["openai"]),
+        response_format={"type": "json_object"},
+        messages=_build_messages(state, selected_vulnerabilities, context_files, repair_feedback),
+    )
+    payload = _parse_patch_response(response.choices[0].message.content or "")
+    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
+
+
+def _generate_with_anthropic(
+    state: GraphState,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+    repair_feedback: str | None = None,
+) -> dict[str, Any] | str:
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        return "patch_generation: anthropic package is not installed"
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return "patch_generation: ANTHROPIC_API_KEY is not set"
+    messages = _build_messages(state, selected_vulnerabilities, context_files, repair_feedback)
+    response = Anthropic(api_key=api_key).messages.create(
+        model=state.get("model_name", DEFAULT_MODELS["anthropic"]),
+        max_tokens=4000,
+        system=messages[0]["content"],
+        messages=[{"role": "user", "content": messages[1]["content"]}],
+    )
+    content = "".join(
+        block.text for block in response.content if getattr(block, "type", "") == "text"
+    )
+    payload = _parse_patch_response(content)
+    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
+
+
+def _generate_with_gemini(
+    state: GraphState,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+    repair_feedback: str | None = None,
+) -> dict[str, Any] | str:
+    if genai is None:
+        return "patch_generation: google-genai package is not installed"
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return "patch_generation: GEMINI_API_KEY is not set"
+    messages = _build_messages(state, selected_vulnerabilities, context_files, repair_feedback)
+    response = genai.Client(api_key=api_key).models.generate_content(
+        model=state.get("model_name", DEFAULT_MODELS["gemini"]),
+        contents=messages[1]["content"],
+        config={
+            "system_instruction": messages[0]["content"],
+            "response_mime_type": "application/json",
+        },
+    )
+    content = (getattr(response, "text", None) or "").strip()
+    if not content:
+        return "patch_generation: Gemini returned an empty response"
+    payload = _parse_patch_response(content)
+    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
+
+
 def _generate_patch_payload(
     provider: str,
     state: GraphState,
@@ -693,6 +770,18 @@ def _generate_patch_payload(
     """Generate one patch response, optionally including repair feedback."""
     if provider == "mock":
         return _build_mock_payload(Path(state["source_dir"]), selected_vulnerabilities, context_files), 0.0
+    if provider == "openai":
+        return _split_payload_cost(
+            _generate_with_openai(state, selected_vulnerabilities, context_files, repair_feedback)
+        )
+    if provider == "anthropic":
+        return _split_payload_cost(
+            _generate_with_anthropic(state, selected_vulnerabilities, context_files, repair_feedback)
+        )
+    if provider == "gemini":
+        return _split_payload_cost(
+            _generate_with_gemini(state, selected_vulnerabilities, context_files, repair_feedback)
+        )
     if provider == "openrouter":
         return _split_payload_cost(
             _generate_with_openrouter(state, selected_vulnerabilities, context_files, repair_feedback)
@@ -826,6 +915,8 @@ def patch_generation(state: GraphState) -> dict:
         "sandbox_id": None, "sandbox_apply_success": None, "patch_applied": None,
         "patched_source_dir": None, "remaining_vulnerabilities": [],
         "revalidation_artifacts": {}, "current_patch": None,
+        "regression_status": None, "baseline_validation": None, "patched_validation": None,
+        "package_tests_skipped": None, "security_validation": None,
         "generation_status": None, "generation_error": None,
         "attempt_record_id": str(uuid.uuid4()),
         "attempt_error_start": len(state.get("errors", [])),
@@ -836,6 +927,8 @@ def patch_generation(state: GraphState) -> dict:
         "validation", "adversarial_evaluation", "patch_score", "classification",
         "classification_reason", "sandbox_id", "sandbox_apply_success", "patch_applied",
         "patched_source_dir", "remaining_vulnerabilities", "revalidation_artifacts",
+        "regression_status", "baseline_validation", "patched_validation",
+        "package_tests_skipped", "security_validation",
         "attempt_record_id", "attempt_error_start", "run_attempt_id", "context_file_paths",
     )}
     reset.update(result)
