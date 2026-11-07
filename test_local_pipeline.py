@@ -45,13 +45,10 @@ from patch_generation import patch_generation
 from patch_application import apply_patch, package_validation
 from patch_validation import patch_validation
 from adversarial_evaluation import adversarial_evaluation
-<<<<<<< HEAD
 from isolated_runners.isolate_locator import localize
-=======
 from vulnerability_localization import vulnerability_localization
 from oracle_generation import oracle_generation
 from oracle_validation import oracle_validation, generated_patch_oracle_validation
->>>>>>> origin/failing-oracle
 
 
 # ---------------------------------------------------------------------------
@@ -205,33 +202,32 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  vendor files    : {answer.get('files') or []}")
     print(f"  vendor diff     : {len(answer.get('diff') or '')} chars")
 
-<<<<<<< HEAD
     _sep("NODE 2c - LOCATOR")
     state.update(localize(state))
     located = state.get("debug_locations") or []
     print(f"  locate status   : {state.get('locate_status')}")
     print(f"  located         : {[item.get('function') for item in located]}")
-=======
-    # Localize first so both the oracle writer and patch writer receive the
-    # same vulnerability-focused source context.
-    _sep("NODE 2c - VULNERABILITY LOCALIZATION")
+
+    # Localize so both the oracle writer and patch writer receive the same
+    # vulnerability-focused source context when the locator found nothing.
+    _sep("NODE 2d - VULNERABILITY LOCALIZATION")
     result = vulnerability_localization(state)
     state.update(result)
     print(f"  status          : {state.get('localization_status')}")
     print(f"  localized files : {state.get('localized_files') or []}")
     print(f"  context_files   : {len(state.get('localized_context_files') or [])}")
-    print(f"  reasoning       : {state.get('localized_reasoning') or 'none'}")
+    print(f"  reasoning       : {state.get('localization_reasoning') or 'none'}")
 
     # Generate an external exploit oracle, then accept it only if it
     # distinguishes the vulnerable package from the maintainer-fixed package.
     while True:
-        _sep("NODE 2d - SECURITY ORACLE GENERATION")
+        _sep("NODE 2e - SECURITY ORACLE GENERATION")
         state.update(oracle_generation(state))
         candidate = state.get("oracle_candidate") or {}
         print(f"  attempt         : {candidate.get('attempt_number')}/{args.max_oracle_attempts}")
         print(f"  generation      : {candidate.get('status')}")
 
-        _sep("NODE 2e - SECURITY ORACLE BASELINE VALIDATION")
+        _sep("NODE 2f - SECURITY ORACLE BASELINE VALIDATION")
         state.update(oracle_validation(state))
         oracle_result = state.get("oracle_validation") or {}
         print(f"  status          : {oracle_result.get('status')}")
@@ -242,7 +238,6 @@ def run_pipeline(args: argparse.Namespace) -> None:
         from graph import route_after_oracle_validation
         if route_after_oracle_validation(state) != "retry":
             break
->>>>>>> origin/failing-oracle
 
     while True:
         # Node 3: patch_generation
@@ -408,7 +403,7 @@ def _parse_args() -> argparse.Namespace:
         help="Falls back to MODEL_PROVIDER in .env",
     )
     p.add_argument("--model-name", default=os.getenv("MODEL_NAME"),
-                   help="Falls https://github.com/shirosensei02/FYP/pull/2/conflict?name=test_local_pipeline.py&ancestor_oid=63064658e8e6b77ba2e65a71046f5b725fbcaa52&base_oid=9bee0576733745a9e13d7689856f572f058a8737&head_oid=cdd5fa5747b1ab622df63006e76644a4c190b233back to MODEL_NAME in .env")
+                   help="Falls back to MODEL_NAME in .env")
     p.add_argument("--patch-scope", default=os.getenv("PATCH_SCOPE", "single"), choices=["single", "all"])
     p.add_argument("--vulnerability-id", default=os.getenv("VULNERABILITY_ID"),
                    help="Patch one detected vulnerability by its primary ID or alias")
