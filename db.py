@@ -242,6 +242,7 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "accepted_oracle": state.get("accepted_oracle") or {},
         "oracle_validation": state.get("oracle_validation") or {},
         "generated_patch_oracle_validation": state.get("generated_patch_oracle_validation") or {},
+        "candidate_selection": state.get("candidate_selection") or {},
         "retry_count":     state.get("retry_count", 0),
         "errors":          state.get("errors") or [],
         "generation_status": state.get("generation_status"),

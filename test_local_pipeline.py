@@ -42,6 +42,7 @@ from model_catalog import patch_evaluator_models
 from package_input import package_input
 from vulnerability_detection import vulnerability_detection
 from patch_generation import patch_generation
+from candidate_selection import candidate_selection
 from patch_application import apply_patch, package_validation
 from patch_validation import patch_validation
 from adversarial_evaluation import adversarial_evaluation
@@ -263,6 +264,16 @@ def run_pipeline(args: argparse.Namespace) -> None:
             return
 
         if state.get("current_patch"):
+            state.update(candidate_selection(state))
+            selection = state.get("candidate_selection") or {}
+            if selection:
+                _sep("NODE 3b - CANDIDATE SELECTION")
+                print(f"  candidates      : {selection.get('candidates')} ({selection.get('unique')} distinct)")
+                print(f"  result          : {selection.get('reason')}")
+                for entry in selection.get("entries") or []:
+                    print(f"    sample {entry['index']}: {entry['oracle_status']} "
+                          f"(x{entry['cluster_size']}, {entry['lines_changed']} lines)")
+
             _sep("NODE 4 - PATCH APPLY")
             state.update(apply_patch(state))
             print(f"  patch_applied : {state.get('patch_applied')}")

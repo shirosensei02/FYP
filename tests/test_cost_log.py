@@ -246,3 +246,19 @@ def test_maintainer_eval_appends_its_request(monkeypatch):
     assert request["prompt_tokens"] == 20
     assert request["cost"] == 0.125
     assert request["lines_added"] is None
+
+
+def test_concurrent_sampled_requests_are_all_recorded():
+    from concurrent.futures import ThreadPoolExecutor
+
+    def record(index):
+        cost_log.record_request(
+            _state(), node="patch_generation", call="sample", model="m", response=_Response(1, 1, 0.01)
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(record, range(40)))
+
+    document = _read("pidusage-fc111-1")
+    assert len(document["requests"]) == 40
+    assert round(document["totals"]["cost"], 2) == 0.40

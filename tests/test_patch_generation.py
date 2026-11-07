@@ -575,6 +575,111 @@ def test_structured_edit_still_rejects_paths_that_escape_the_package(tmp_path):
     assert "unsafe edit path" in result
 
 
+def _sampling_package(tmp_path):
+    source_dir = tmp_path / "package"
+    source_dir.mkdir()
+    manifest_path = source_dir / "package.json"
+    manifest_path.write_text('{"name":"demo-package","main":"index.js"}', encoding="utf-8")
+    (source_dir / "index.js").write_text("module.exports = 42;\n", encoding="utf-8")
+    return {
+        "package_name": "demo-package",
+        "package_version": "1.0.0",
+        "source_dir": str(source_dir),
+        "package_manifest_path": str(manifest_path),
+        "model_provider": "openrouter",
+        "vulnerabilities": [{"id": "CVE-TEST-0001"}],
+    }
+
+
+def _edit(value):
+    return {"edits": [{"path": "index.js", "old_text": "module.exports = 42;\n",
+                       "new_text": f"module.exports = {value};\n"}]}
+
+
+def test_sample_count_defaults_overrides_and_clamps(monkeypatch):
+    monkeypatch.delenv("PATCH_SAMPLES", raising=False)
+    assert patch_generation._sample_count({}) == 4
+    assert patch_generation._sample_count({"patch_samples": 2}) == 2
+    assert patch_generation._sample_count({"patch_samples": 99}) == patch_generation.MAX_PATCH_SAMPLES
+    assert patch_generation._sample_count({"patch_samples": 0}) == 1
+    assert patch_generation._sample_count({"patch_samples": "many"}) == 1
+    monkeypatch.setenv("PATCH_SAMPLES", "3")
+    assert patch_generation._sample_count({}) == 3
+
+
+def test_extra_candidates_are_sampled_only_when_an_accepted_oracle_can_choose(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_generator(state, vulnerabilities, context_files, repair_feedback=None, temperature=0):
+        calls.append(temperature)
+        return (_edit(43 if temperature == 0 else 44 + len(calls)), 0.25)
+
+    monkeypatch.setattr(patch_generation, "_generate_with_openrouter", fake_generator)
+    base = _sampling_package(tmp_path)
+
+    without_oracle = patch_generation.patch_generation({**base, "patch_samples": 3})
+    assert calls == [0]
+    assert len(without_oracle["candidate_patches"]) == 1
+
+    calls.clear()
+    with_oracle = patch_generation.patch_generation(
+        {**base, "patch_samples": 3, "accepted_oracle": {"status": "accepted"}}
+    )
+
+    assert sorted(calls) == [0, 1.0, 1.0]
+    candidates = with_oracle["candidate_patches"]
+    assert len(candidates) == 3
+    assert candidates[0]["diff"] == with_oracle["current_patch"]["diff"]
+    assert "+module.exports = 43;" in candidates[0]["diff"]
+    assert len({item["diff"] for item in candidates}) == 3
+    assert with_oracle["run_cost"] == 0.75
+    assert with_oracle["generation_status"] == "generated"
+
+
+def test_unusable_extra_samples_are_dropped_not_repaired(monkeypatch, tmp_path):
+    responses = iter([
+        (_edit(43), 0.1),
+        "patch_generation: model returned an invalid or incomplete patch response",
+        {"action": "tool", "tool": "RetrieveEntity", "arguments": {}},
+        {"edits": [{"path": "index.js", "old_text": "never present", "new_text": "x"}]},
+        (_edit(47), 0.1),
+    ])
+    calls = []
+
+    def fake_generator(state, vulnerabilities, context_files, repair_feedback=None, temperature=0):
+        calls.append(repair_feedback)
+        return next(responses)
+
+    monkeypatch.setattr(patch_generation, "_generate_with_openrouter", fake_generator)
+    monkeypatch.setattr(patch_generation, "SAMPLING_WORKERS", 1)
+
+    result = patch_generation.patch_generation(
+        {**_sampling_package(tmp_path), "patch_samples": 5, "accepted_oracle": {"status": "accepted"}}
+    )
+
+    assert calls == [None] * 5
+    assert [item["diff"].count("+module.exports") for item in result["candidate_patches"]] == [1, 1]
+    assert result["generation_status"] == "generated"
+
+
+def test_sampling_is_skipped_once_the_run_has_spent_its_budget(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_generator(state, vulnerabilities, context_files, repair_feedback=None, temperature=0):
+        calls.append(temperature)
+        return _edit(43), 0.5
+
+    monkeypatch.setattr(patch_generation, "_generate_with_openrouter", fake_generator)
+    monkeypatch.setattr(patch_generation, "SAMPLING_COST_CAP", 1.0)
+
+    patch_generation.patch_generation({
+        **_sampling_package(tmp_path), "patch_samples": 4, "run_cost": 2.0,
+        "accepted_oracle": {"status": "accepted"},
+    })
+
+    assert calls == [0]
+
+
 def test_patch_generation_repairs_a_diff_that_fails_preflight(monkeypatch, tmp_path):
     source_dir = tmp_path / "package"
     source_dir.mkdir()

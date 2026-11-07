@@ -160,6 +160,20 @@ class GeneratedPatchOracleResult(TypedDict, total=False):
     reason: str
     execution: OracleExecutionResult | None
 
+
+class CandidateSelection(TypedDict, total=False):
+    """How one patch was chosen from several samples by running the locked oracle on each."""
+    status: Literal["selected", "skipped", "error"]
+    reason: str
+    candidates: int  # samples that produced a usable patch
+    unique: int  # distinct patches among them
+    chosen_index: int
+    chosen_is_primary: bool  # index 0 is the temperature-0 generation
+    primary_status: str | None  # oracle result for the primary's patch
+    oracle_passes: int  # distinct patches that blocked the exploit
+    entries: list[dict[str, Any]]
+    seconds: float
+
 class GraphState(TypedDict, total=False):
     # config
     model_provider: Literal["mock", "openai", "anthropic", "gemini", "openrouter"]
@@ -223,6 +237,9 @@ class GraphState(TypedDict, total=False):
     debug_locations: list[dict[str, str]]
 
     # 3) patch generation
+    patch_samples: int  # candidates per attempt when an accepted oracle can choose between them
+    candidate_patches: list[dict[str, Any]]
+    candidate_selection: CandidateSelection | None
     context_file_paths: list[str]
     patch_attempts: list[PatchAttempt]
     current_patch: PatchAttempt | None

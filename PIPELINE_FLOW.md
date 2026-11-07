@@ -26,7 +26,8 @@ flowchart TD
     H --> I[8. Patch generation]
     I -->|graph tool call| E
     I -->|generation failed| Q[14. Patch validation]
-    I -->|candidate patch| J[9. Apply patch]
+    I -->|candidate patches| I2[8b. Candidate selection]
+    I2 --> J[9. Apply patch]
     J -->|did not apply| Q
     J --> K[10. Locked oracle on generated patch]
     K -->|exploit still works or ordinary call failed, retries remain| I
@@ -160,6 +161,14 @@ Before any container is built, the pipeline performs the following deterministic
 6. It runs `git apply --check --recount` against a temporary copy of the original source.
 
 If the model returns malformed output, an edit that does not match the source, or a diff that cannot be applied, it receives the validation error and gets one repair attempt. If that also fails, `current_patch` is cleared and the candidate is classified as a generation failure; no Docker sandbox is run.
+
+### 8b. Candidate selection
+
+**Modules:** `patch_generation.py` (sampling), `candidate_selection.py`
+
+When an accepted oracle exists, the writer is asked for `PATCH_SAMPLES` patches per attempt (default 4, maximum 8, set to 1 to turn sampling off). The first is the deterministic temperature-0 generation described above. The rest are requested concurrently at temperature 1 and are not repaired: one that is invalid, asks for a graph tool, or does not match the source is dropped. Extra samples stop once the run has already spent `PATCH_SAMPLING_COST_CAP` USD (default 2.0). Without an accepted oracle nothing can choose between candidates, so only the primary is generated.
+
+Identical patches are grouped. Each distinct patch is applied to a throwaway copy of the vulnerable package and the accepted oracle is run against it, using the same sandbox as stage 10. Candidates are ranked `SECURITY_PASS`, then `INCONCLUSIVE`, `SECURITY_FAIL`, `REGRESSION`, and one that did not apply last. Ties go to the larger group of identical samples, then the smaller diff, then the primary. The chosen patch becomes `current_patch` and continues through stages 9 to 15 unchanged, so the locked oracle and package checks still produce the verdict. The comparison is stored as `candidate_selection`, which `metrics_report.py` uses to show how often sampling found a blocking patch the primary missed. `CANDIDATE_ORACLE_WORKERS` (default 2) limits how many oracle containers run at once.
 
 ### 9. Apply patch
 

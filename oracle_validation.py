@@ -488,6 +488,18 @@ def oracle_validation(state: GraphState) -> dict:
     return update
 
 
+def classify_patch_execution(execution: OracleExecutionResult) -> tuple[str, str]:
+    """Map one oracle run against a patched package to a security status and its reason."""
+    execution_status = execution.get("status")
+    if execution_status == "EXPLOIT_BLOCKED":
+        return "SECURITY_PASS", "Relevant operation completed and the exploit was blocked."
+    if execution_status == "EXPLOIT_SUCCEEDED":
+        return "SECURITY_FAIL", "The accepted exploit still succeeds against the generated patch."
+    if execution_status == "OPERATION_FAILED":
+        return "REGRESSION", "The exploit did not succeed, but the relevant package operation failed."
+    return "INCONCLUSIVE", f"Oracle execution ended as {execution_status}."
+
+
 def generated_patch_oracle_validation(state: GraphState) -> dict:
     oracle = state.get("accepted_oracle")
     patched = Path(str(state.get("patched_source_dir") or ""))
@@ -499,14 +511,6 @@ def generated_patch_oracle_validation(state: GraphState) -> dict:
         result = GeneratedPatchOracleResult(status="INCONCLUSIVE", reason="Patched source directory is unavailable.", execution=None)
     else:
         execution = _run_oracle(patched, oracle, "generated-patch")
-        execution_status = execution.get("status")
-        if execution_status == "EXPLOIT_BLOCKED":
-            status, reason = "SECURITY_PASS", "Relevant operation completed and the exploit was blocked."
-        elif execution_status == "EXPLOIT_SUCCEEDED":
-            status, reason = "SECURITY_FAIL", "The accepted exploit still succeeds against the generated patch."
-        elif execution_status == "OPERATION_FAILED":
-            status, reason = "REGRESSION", "The exploit did not succeed, but the relevant package operation failed."
-        else:
-            status, reason = "INCONCLUSIVE", f"Oracle execution ended as {execution_status}."
+        status, reason = classify_patch_execution(execution)
         result = GeneratedPatchOracleResult(status=status, reason=reason, execution=execution)
     return {"generated_patch_oracle_validation": result}

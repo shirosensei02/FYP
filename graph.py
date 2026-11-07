@@ -3,6 +3,7 @@ from package_input import package_input
 from vulnerability_detection import vulnerability_detection
 from og_patch_resolution import og_patch_resolution
 from patch_generation import patch_generation
+from candidate_selection import candidate_selection
 from patch_application import apply_patch, package_validation
 from vulnerability_rescan import vulnerability_rescan
 from patch_validation import patch_validation, record_locked_oracle_failure, skip_package_tests
@@ -100,6 +101,7 @@ graph.add_node("vulnerability_localization_node", vulnerability_localization)
 graph.add_node("oracle_generation_node", oracle_generation)
 graph.add_node("oracle_validation_node", oracle_validation)
 graph.add_node("patch_generation_node", patch_generation)
+graph.add_node("candidate_selection_node", candidate_selection)
 graph.add_node("apply_patch_node", apply_patch)
 graph.add_node("package_validation_node", package_validation)
 graph.add_node("vulnerability_rescan_node", vulnerability_rescan)
@@ -148,10 +150,11 @@ graph.add_conditional_edges(
     route_after_patch_generation,
     {
         "repo_graph": "repo_graph_node",
-        "application": "apply_patch_node",
+        "application": "candidate_selection_node",
         "validation": "patch_validation_node",
     },
 )
+graph.add_edge("candidate_selection_node", "apply_patch_node")
 graph.add_conditional_edges(
     "apply_patch_node",
     route_after_apply,

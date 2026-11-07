@@ -8,6 +8,7 @@ generator model. ``requests`` lists every model call that attempt made, in order
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Mapping
 from typing import Any
 
@@ -18,6 +19,8 @@ from run_cost import response_usage
 
 logger = logging.getLogger(__name__)
 _STORAGE_ERRORS = (OSError, TypeError, ValueError, UnicodeError, PyMongoError)
+# Sampled candidates are requested concurrently; load-modify-save must not interleave.
+_RECORD_LOCK = threading.Lock()
 
 
 def diff_line_counts(diff: str) -> dict[str, int]:
@@ -52,11 +55,6 @@ def record_request(
         if located is None:
             return
         run_id, attempt_number = located
-        document = _load(run_id, attempt_number)
-        if document is None:
-            document = _blank(state, run_id, attempt_number)
-        if not document.get("model") and node == "patch_generation" and model:
-            document["model"] = model
         usage = response_usage(response) if response is not None else {
             "prompt_tokens": None,
             "completion_tokens": None,
@@ -76,9 +74,15 @@ def record_request(
         }
         if error:
             entry["error"] = error
-        document["requests"].append(entry)
-        _refresh_totals(document)
-        _save(document)
+        with _RECORD_LOCK:
+            document = _load(run_id, attempt_number)
+            if document is None:
+                document = _blank(state, run_id, attempt_number)
+            if not document.get("model") and node == "patch_generation" and model:
+                document["model"] = model
+            document["requests"].append(entry)
+            _refresh_totals(document)
+            _save(document)
     except _STORAGE_ERRORS:
         logger.warning("Could not record model request cost", exc_info=True)
 

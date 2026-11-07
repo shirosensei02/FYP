@@ -183,6 +183,17 @@ declares trusted fixture requirements; for Git-backed APIs the harness installs
 Git and creates a writable temporary repository with a minimal commit before
 running `/consumer/oracle.js`. Generated code cannot supply setup commands.
 
+### Candidate sampling
+
+Once an oracle has been accepted, each patch attempt samples `PATCH_SAMPLES`
+candidates (default 4; set `PATCH_SAMPLES=1` to disable), runs the accepted
+oracle on every distinct one, and keeps the best before the normal locked-oracle
+and package checks. This multiplies patch-generation cost and oracle runs per
+attempt, so `PATCH_SAMPLING_COST_CAP` (default 2.0 USD spent so far in the run)
+stops extra sampling and `CANDIDATE_ORACLE_WORKERS` (default 2) limits parallel
+containers. `python metrics_report.py` shows how often a sampled candidate
+blocked the exploit when the primary did not.
+
 Set `ORACLE_KEEP_FAILED=true` to retain failed oracle executions' source,
 Dockerfile, fixture declaration, and bounded build/runtime logs under
 `.workspace/oracles`. Successful executions and, by default, all disposable

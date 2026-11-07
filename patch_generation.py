@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -50,6 +51,12 @@ MAX_OPENROUTER_CONTEXT_CHARS = 64_000
 OPENROUTER_MAX_TOKENS = 64_000
 MAX_PATCH_GRAPH_FETCHES = 3
 _GRAPH_TOOLS = {"SearchEntity", "TraverseGraph", "RetrieveEntity"}
+# Sampling only runs when an accepted oracle can choose between the candidates.
+DEFAULT_PATCH_SAMPLES = 4
+MAX_PATCH_SAMPLES = 8
+SAMPLE_TEMPERATURE = 1.0  # the locator already uses 1 on both supported models
+SAMPLING_WORKERS = 4
+SAMPLING_COST_CAP = float(os.getenv("PATCH_SAMPLING_COST_CAP", "2.0"))  # USD already spent in the run
 ANCHOR_CONTEXT_BEFORE_CHARS = 1_000
 ANCHOR_CONTEXT_AFTER_CHARS = 5_000
 # Temporarily disabled for debugging: patch_application still attempts to
@@ -608,13 +615,14 @@ def _generate_with_openrouter(
     selected_vulnerabilities: list[Vulnerability],
     context_files: list[dict[str, str]],
     repair_feedback: str | None = None,
+    temperature: float = 0,
 ) -> tuple[dict[str, Any] | str, float]:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         return "patch_generation: OPENROUTER_API_KEY is not set", 0.0
 
     model_name = state.get("model_name", DEFAULT_MODELS["openrouter"])
-    call = "repair" if repair_feedback else "generate"
+    call = "repair" if repair_feedback else ("sample" if temperature else "generate")
     client = OpenAI(
         api_key=api_key,
         base_url=os.getenv("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL),
@@ -644,7 +652,7 @@ def _generate_with_openrouter(
     try:
         response = client.chat.completions.create(
             model=model_name,
-            temperature=0,
+            temperature=temperature,
             max_tokens=OPENROUTER_MAX_TOKENS,
             response_format={"type": "json_object"},
             extra_body={"reasoning": {"enabled": False, "exclude": True}},
@@ -769,8 +777,13 @@ def _generate_patch_payload(
     selected_vulnerabilities: list[Vulnerability],
     context_files: list[dict[str, str]],
     repair_feedback: str | None = None,
+    temperature: float | None = None,
 ) -> tuple[dict[str, Any] | str, float]:
-    """Generate one patch response, optionally including repair feedback."""
+    """Generate one patch response, optionally including repair feedback.
+
+    ``temperature`` is forwarded only when set, so the deterministic primary
+    generation keeps its original call signature.
+    """
     if provider == "mock":
         return _build_mock_payload(Path(state["source_dir"]), selected_vulnerabilities, context_files), 0.0
     if provider == "openai":
@@ -786,8 +799,9 @@ def _generate_patch_payload(
             _generate_with_gemini(state, selected_vulnerabilities, context_files, repair_feedback)
         )
     if provider == "openrouter":
+        extra = {} if temperature is None else {"temperature": temperature}
         return _split_payload_cost(
-            _generate_with_openrouter(state, selected_vulnerabilities, context_files, repair_feedback)
+            _generate_with_openrouter(state, selected_vulnerabilities, context_files, repair_feedback, **extra)
         )
     return f"patch_generation: unsupported model_provider: {provider}", 0.0
 
@@ -857,9 +871,59 @@ def _merge_graph_context(context_files: list[dict[str, str]], state: GraphState)
     return merged
 
 
+def _sample_count(state: GraphState) -> int:
+    """Candidates wanted per attempt, from state or PATCH_SAMPLES; 1 disables sampling."""
+    raw = state.get("patch_samples")
+    if raw is None:
+        raw = os.getenv("PATCH_SAMPLES", DEFAULT_PATCH_SAMPLES)
+    try:
+        return max(1, min(int(raw), MAX_PATCH_SAMPLES))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _sample_extra_candidates(
+    state: GraphState,
+    provider: str,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+    source_path: Path,
+    count: int,
+) -> tuple[list[dict[str, Any]], float]:
+    """Request ``count`` more patches at a higher temperature, concurrently.
+
+    Each extra is a lottery ticket for the oracle to judge, so none is repaired:
+    a response that is invalid, asks for a graph tool, or does not apply is
+    dropped. Returns the usable candidates and the cost of every request.
+    """
+    def request(_: int) -> tuple[dict[str, Any] | str, float]:
+        return _split_payload_cost(_generate_patch_payload(
+            provider, state, selected_vulnerabilities, context_files, temperature=SAMPLE_TEMPERATURE,
+        ))
+
+    with ThreadPoolExecutor(max_workers=min(count, SAMPLING_WORKERS)) as pool:
+        responses = list(pool.map(request, range(count)))
+
+    candidates: list[dict[str, Any]] = []
+    cost = 0.0
+    for payload, request_cost in responses:
+        cost += request_cost
+        if isinstance(payload, str) or payload.get("action") == "tool":
+            continue
+        normalised = _normalize_patch_payload(source_path, payload)
+        if isinstance(normalised, str) or not str(normalised.get("diff") or "").strip():
+            continue
+        candidates.append({
+            "diff": normalised["diff"],
+            "raw_output": normalised,
+            "target_files": normalised.get("target_files"),
+        })
+    return candidates, cost
+
+
 def patch_attempt(
-    state: GraphState, 
-    payload=None, 
+    state: GraphState,
+    payload=None,
     diff=None,
     model_name=None, 
     selected_vulnerabilities=None, 
@@ -920,6 +984,7 @@ def patch_generation(state: GraphState) -> dict:
         "revalidation_artifacts": {}, "current_patch": None,
         "regression_status": None, "baseline_validation": None, "patched_validation": None,
         "package_tests_skipped": None, "security_validation": None,
+        "candidate_patches": [], "candidate_selection": None,
         "generation_status": None, "generation_error": None,
         "attempt_record_id": str(uuid.uuid4()),
         "attempt_error_start": len(state.get("errors", [])),
@@ -932,6 +997,7 @@ def patch_generation(state: GraphState) -> dict:
         "patched_source_dir", "remaining_vulnerabilities", "revalidation_artifacts",
         "regression_status", "baseline_validation", "patched_validation",
         "package_tests_skipped", "security_validation",
+        "candidate_patches", "candidate_selection",
         "attempt_record_id", "attempt_error_start", "run_attempt_id", "context_file_paths",
     )}
     reset.update(result)
@@ -1164,7 +1230,18 @@ def _patch_generation(state: GraphState) -> dict:
                 run_cost=spent,
             )
 
-    return patch_attempt(
+    candidates = [{"diff": diff, "raw_output": payload, "target_files": payload.get("target_files")}]
+    samples = _sample_count(state)
+    # Only an accepted oracle can choose between candidates, so without one a
+    # single deterministic generation is all that is worth paying for.
+    if samples > 1 and provider == "openrouter" and state.get("accepted_oracle") and spent < SAMPLING_COST_CAP:
+        extras, sampling_cost = _sample_extra_candidates(
+            state, provider, selected_vulnerabilities, context_files, source_path, samples - 1,
+        )
+        candidates.extend(extras)
+        spent += sampling_cost
+
+    result = patch_attempt(
         state=state,
         payload=payload,
         diff=diff,
@@ -1174,3 +1251,5 @@ def _patch_generation(state: GraphState) -> dict:
         provider=provider,
         run_cost=spent,
     )
+    result["candidate_patches"] = candidates
+    return result

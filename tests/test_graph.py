@@ -68,7 +68,8 @@ def test_locator_oracle_and_generation_meet():
     assert ("oracle_validation_node", "patch_generation_node") in edges
     assert ("patch_generation_node", "repo_graph_node") in edges
     assert ("repo_graph_node", "patch_generation_node") in edges
-    assert ("patch_generation_node", "apply_patch_node") in edges
+    assert ("patch_generation_node", "candidate_selection_node") in edges
+    assert ("candidate_selection_node", "apply_patch_node") in edges
     assert ("apply_patch_node", "generated_patch_oracle_validation_node") in edges
 
 
