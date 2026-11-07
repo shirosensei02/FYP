@@ -300,6 +300,8 @@ After scoring, a passing attempt ends the workflow. A failed compatibility attem
 
 Every failed classification, including an exhausted final attempt, produces structured retry feedback. Generation receives the failed candidate, failure stage, classification reason, attempt-local errors, and bounded validation logs. Patch application captures command diagnostics. Each generation clears previous sandbox, scan, evaluator, and validation results and starts from the original source. Generation failures receive attempt numbers even when no candidate exists.
 
+When the attempt sampled several candidates (stage 8b), the feedback also has an "Other samples from this attempt" section. It says how many samples there were and how many were distinct, and lists up to three of the patches that were not chosen with their selection result (`SECURITY_FAIL`, `REGRESSION`, `APPLY_FAILED`, `INCONCLUSIVE`), the files they changed, and a short diff excerpt each. If every sample was identical it says so. This lets the next round avoid repeating approaches that were already tried and failed. Only the chosen patch's full failure details (oracle output, sink trace) are included.
+
 `failure_context.py` stores package history under `failure_context/<safe-package-name>-<name-hash>/`:
 
 - `failures.jsonl` retains the full structured failure archive, including internal generation repair failures. The archive is not read to construct prompts.

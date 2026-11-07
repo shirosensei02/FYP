@@ -115,6 +115,118 @@ def test_sink_trace_parser_skips_malformed_lines_and_keeps_the_latest_events():
     assert all(event["frames"] for event in events)
 
 
+def _patch(name, new):
+    return {"diff": f"--- a/lib/{name}.js\n+++ b/lib/{name}.js\n@@ -1 +1 @@\n-old\n+{new}\n",
+            "target_files": [f"lib/{name}.js"]}
+
+
+def _entry(index, status, reason, cluster_size=1):
+    return {"index": index, "cluster_size": cluster_size, "lines_changed": 2,
+            "oracle_status": status, "reason": reason}
+
+
+def _selection_state(**extra):
+    # Four samples: the primary, two identical ones, and one that did not apply.
+    patches = [_patch("a", "x"), _patch("b", "z"), _patch("b", "z"), _patch("c", "w")]
+    selection = {
+        "status": "selected", "candidates": 4, "unique": 3, "chosen_index": 0,
+        "chosen_is_primary": True, "primary_status": "SECURITY_FAIL", "oracle_passes": 0,
+        "entries": [
+            _entry(0, "SECURITY_FAIL", "The accepted exploit still succeeds against the generated patch."),
+            _entry(1, "REGRESSION", "The exploit did not succeed, but the relevant package operation failed.", 2),
+            _entry(3, "APPLY_FAILED", "The candidate did not apply cleanly."),
+        ],
+    }
+    return state(candidate_patches=patches, candidate_selection=selection,
+                 current_patch={"diff": patches[0]["diff"]}, **extra)
+
+
+def test_retry_feedback_lists_the_other_samples_of_the_failed_attempt():
+    record = context.record_failure(_selection_state(), "exploit still works", stage="security_oracle")
+    feedback = context.load_feedback(state(retry_feedback=record))
+
+    assert "Other samples from this attempt" in feedback
+    assert "4 samples gave 3 distinct patches" in feedback
+    assert "The patch above (primary) was chosen" in feedback
+    assert "- sample 1: REGRESSION, produced 2 times." in feedback
+    assert "Changed 2 lines in lib/b.js." in feedback
+    single = context.render_candidates({
+        "status": "selected", "samples": 2, "distinct": 2, "chosen_index": 1, "chosen_status": "SECURITY_FAIL",
+        "items": [{"index": 0, "cluster_size": 1, "oracle_status": "SECURITY_FAIL", "reason": "r",
+                   "lines_changed": 1, "target_files": ["lib/a.js"], "diff": ""}],
+    })
+    assert "Changed 1 line in lib/a.js." in single
+    assert "- sample 3: APPLY_FAILED." in feedback
+    assert "+z" in feedback
+    assert "- primary:" not in feedback
+
+
+def test_identical_samples_are_reported_as_one_patch():
+    only = state(candidate_selection={"status": "skipped", "candidates": 4, "unique": 1},
+                 candidate_patches=[_patch("a", "x")] * 4, current_patch={"diff": _patch("a", "x")["diff"]})
+
+    record = context.record_failure(only, "exploit still works", stage="security_oracle")
+
+    assert "All 4 samples produced the same patch." in context.load_feedback(state(retry_feedback=record))
+
+
+def test_no_sampling_means_no_samples_section():
+    record = context.record_failure(state(current_patch={"diff": "d"}), "failed", stage="security_oracle")
+
+    assert record["candidates"] is None
+    assert "Other samples" not in context.load_feedback(state(retry_feedback=record))
+
+
+def test_the_samples_section_is_bounded():
+    patches = [_patch(f"f{n}", "q" * 5_000) for n in range(7)]
+    selection = {
+        "status": "selected", "candidates": 7, "unique": 7, "chosen_index": 0,
+        "entries": [_entry(n, "SECURITY_FAIL", "still succeeds") for n in range(7)],
+    }
+    record = context.record_failure(
+        state(candidate_patches=patches, candidate_selection=selection, current_patch=patches[0]),
+        "exploit still works", stage="security_oracle",
+    )
+
+    items = record["candidates"]["items"]
+    assert [item["index"] for item in items] == [1, 2, 3]
+    assert record["candidates"]["omitted"] == 3
+    assert all(len(item["diff"]) <= context.CANDIDATE_DIFF_CHARS + 20 for item in items)
+    assert "[3 more distinct patches omitted.]" in context.load_feedback(state(retry_feedback=record))
+
+
+def test_a_selection_entry_without_a_stored_patch_does_not_break_feedback():
+    broken = _selection_state()
+    broken["candidate_patches"] = broken["candidate_patches"][:2]
+    record = context.record_failure(broken, "exploit still works", stage="security_oracle")
+
+    feedback = context.load_feedback(state(retry_feedback=record))
+
+    assert "- sample 3: APPLY_FAILED." in feedback
+    assert "unknown files" in feedback
+
+
+def test_a_failed_locked_oracle_hands_the_other_samples_to_the_next_attempt():
+    from patch_validation import record_locked_oracle_failure
+
+    failed = _selection_state(
+        generated_patch_oracle_validation={
+            "status": "SECURITY_FAIL", "reason": "The accepted exploit still succeeds against the generated patch.",
+            "execution": {"status": "EXPLOIT_SUCCEEDED", "evidence": "marker file created"},
+        },
+        accepted_oracle={"status": "accepted", "explanation": "shell metacharacter in pid"},
+    )
+
+    update = record_locked_oracle_failure(failed)
+    retry = {**state(), **update}
+    prompt = generation._build_openrouter_prompt(retry, retry["vulnerabilities"], [])
+
+    assert update["retry_feedback"]["candidates"]["items"][0]["index"] == 1
+    assert "Other samples from this attempt" in prompt
+    assert "sample 1: REGRESSION" in prompt
+    assert "marker file created" in prompt
+
+
 def test_missing_oracle_is_journaled_but_not_shown_to_the_writer():
     record = context.record_failure(state(), "security validation was skipped", writer_visible=False)
     assert record["writer_visible"] is False

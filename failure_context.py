@@ -126,6 +126,69 @@ def render_sink_trace(events):
     return '\n'.join(lines)
 
 
+MAX_OTHER_CANDIDATES = 3
+CANDIDATE_DIFF_CHARS = 700
+
+
+def candidate_summary(state):
+    """What the attempt's other samples did, so a retry does not repeat them.
+
+    Built from candidate_selection, which only exists when an accepted oracle
+    let the pipeline compare several patches. The chosen patch is left out
+    because the record already carries it as the failed candidate.
+    """
+    selection = state.get('candidate_selection') or {}
+    status = selection.get('status')
+    if status not in {'selected', 'skipped'}:
+        return None
+    summary = {'status': status, 'samples': selection.get('candidates'),
+               'distinct': selection.get('unique'), 'items': [], 'omitted': 0}
+    if status == 'skipped':
+        return summary
+    chosen = selection.get('chosen_index')
+    patches = state.get('candidate_patches') or []
+    entries = [entry for entry in selection.get('entries') or [] if isinstance(entry, dict)]
+    summary['chosen_index'] = chosen
+    summary['chosen_status'] = next(
+        (entry.get('oracle_status') for entry in entries if entry.get('index') == chosen), None)
+    others = [entry for entry in entries if entry.get('index') != chosen]
+    summary['omitted'] = max(0, len(others) - MAX_OTHER_CANDIDATES)
+    for entry in others[:MAX_OTHER_CANDIDATES]:
+        index = entry.get('index')
+        patch = patches[index] if isinstance(index, int) and 0 <= index < len(patches) else {}
+        patch = patch if isinstance(patch, dict) else {}
+        files = patch.get('target_files')
+        summary['items'].append({
+            'index': index, 'cluster_size': entry.get('cluster_size'),
+            'oracle_status': entry.get('oracle_status'), 'reason': entry.get('reason') or '',
+            'lines_changed': entry.get('lines_changed'),
+            'target_files': [str(path) for path in files] if isinstance(files, list) else [],
+            'diff': clipped(patch.get('diff'), CANDIDATE_DIFF_CHARS),
+        })
+    return summary
+
+
+def render_candidates(summary):
+    if summary.get('status') == 'skipped':
+        return f"All {summary.get('samples')} samples produced the same patch."
+    label = lambda index: 'primary' if index == 0 else f'sample {index}'
+    lines = [f"{summary.get('samples')} samples gave {summary.get('distinct')} distinct patches. "
+             f"The patch above ({label(summary.get('chosen_index'))}) was chosen; "
+             f"its result during selection was {summary.get('chosen_status')}. The others:"]
+    for item in summary.get('items') or []:
+        repeats = f", produced {item['cluster_size']} times" if (item.get('cluster_size') or 1) > 1 else ''
+        files = ', '.join(item.get('target_files') or []) or 'unknown files'
+        changed = item.get('lines_changed')
+        plural = '' if changed == 1 else 's'
+        lines.append(f"- {label(item.get('index'))}: {item.get('oracle_status')}{repeats}. "
+                     f"{item.get('reason')} Changed {changed} line{plural} in {files}.")
+        if item.get('diff'):
+            lines.extend('    ' + line for line in str(item['diff']).splitlines())
+    if summary.get('omitted'):
+        lines.append(f"[{summary['omitted']} more distinct patches omitted.]")
+    return '\n'.join(lines)
+
+
 def record_failure(state, reason, *, stage=None, candidate=None, writer_visible=True):
     patch = state.get('current_patch') or {}
     validation = state.get('validation') or {}
@@ -145,6 +208,7 @@ def record_failure(state, reason, *, stage=None, candidate=None, writer_visible=
         'errors': state.get('errors', [])[state.get('attempt_error_start', 0):],
         'logs': validation.get('logs', ''),
         'oracle_execution': locked_oracle_execution(state),
+        'candidates': candidate_summary(state),
         'evaluator': {key: (state.get('adversarial_evaluation') or {}).get(key)
                       for key in ('genuine_fix', 'reasoning', 'evidence')},
         'validation': {key: validation.get(key) for key in ('build_succeeded', 'tests_passed', 'install_succeeded')},
@@ -302,6 +366,10 @@ def render(records):
             section += '\n\n### Failed candidate\n\n' + fenced(clipped(text, 3000), language)
         else:
             section += '\n\nNo candidate patch was generated.'
+        candidates = record.get('candidates')
+        if isinstance(candidates, dict):
+            section += '\n\n### Other samples from this attempt\n\n' + fenced(
+                clipped(render_candidates(candidates), 3200))
         evaluator = record.get('evaluator') or {}
         if isinstance(evaluator, dict) and evaluator.get('genuine_fix'):
             section += ('\n\n### Evaluator opinion (unverified)\n\n'
