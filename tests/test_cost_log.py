@@ -223,6 +223,7 @@ def test_maintainer_eval_appends_its_request(monkeypatch):
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setattr("maintainer_eval.OpenAI", _Client)
+    monkeypatch.setattr("maintainer_eval.save_pipeline_result", lambda state: (None, None))
 
     diff = "--- a/a.js\n+++ b/a.js\n@@ -1 +1 @@\n-old\n+new\n"
     result = maintainer_eval(

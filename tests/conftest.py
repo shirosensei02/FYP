@@ -40,6 +40,18 @@ class MemoryCostCollection:
 
 
 @pytest.fixture(autouse=True)
+def never_touch_real_mongodb(monkeypatch):
+    """A test that reaches db._get_db unpatched would insert fake runs into the shared cluster."""
+    import db
+    from pymongo.errors import ServerSelectionTimeoutError
+
+    def refuse():
+        raise ServerSelectionTimeoutError("tests must not use the real MongoDB")
+
+    monkeypatch.setattr(db, "_get_db", refuse)
+
+
+@pytest.fixture(autouse=True)
 def isolate_cost_logs(monkeypatch):
     import cost_log
     collection = MemoryCostCollection()
