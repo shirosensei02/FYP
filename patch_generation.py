@@ -3,6 +3,7 @@ import difflib
 import json
 import logging
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -425,7 +426,9 @@ def _materialize_structured_edits(source_dir: Path, payload: dict[str, Any]) -> 
     originals: dict[Path, str] = {}
     modified: dict[Path, str] = {}
     for edit in edits:
-        relative = Path(edit["path"])
+        # Models echo context paths verbatim, so a spelling such as
+        # "test/../lib/stats.js" is normalised before the safety checks.
+        relative = Path(posixpath.normpath(edit["path"].replace("\\", "/")))
         if relative.is_absolute() or ".." in relative.parts or relative.parts[0] == "node_modules":
             return f"unsafe edit path: {edit['path']!r}"
         if relative.name in {"package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"} or any(

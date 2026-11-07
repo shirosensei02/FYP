@@ -539,6 +539,42 @@ def test_structured_edit_requires_exactly_one_source_match(tmp_path):
     assert "exactly once" in result
 
 
+def test_structured_edit_normalises_a_parent_segment_in_a_context_path(tmp_path):
+    source_dir = tmp_path / "package"
+    (source_dir / "lib").mkdir(parents=True)
+    (source_dir / "test").mkdir()
+    (source_dir / "lib" / "stats.js").write_text("var cmd = 'ps -p ' + pid\n", encoding="utf-8")
+
+    result = patch_generation._materialize_structured_edits(
+        source_dir,
+        {
+            "edits": [{
+                "path": "test/../lib/stats.js",
+                "old_text": "var cmd = 'ps -p ' + pid\n",
+                "new_text": "var cmd = 'ps -p ' + parseInt(pid, 10)\n",
+            }]
+        },
+    )
+
+    assert isinstance(result, dict), result
+    assert result["target_files"] == ["lib/stats.js"]
+    assert "--- a/lib/stats.js" in result["diff"]
+
+
+def test_structured_edit_still_rejects_paths_that_escape_the_package(tmp_path):
+    source_dir = tmp_path / "package"
+    source_dir.mkdir()
+    (tmp_path / "outside.js").write_text("module.exports = 1\n", encoding="utf-8")
+
+    result = patch_generation._materialize_structured_edits(
+        source_dir,
+        {"edits": [{"path": "../outside.js", "old_text": "module.exports = 1\n", "new_text": "x\n"}]},
+    )
+
+    assert isinstance(result, str)
+    assert "unsafe edit path" in result
+
+
 def test_patch_generation_repairs_a_diff_that_fails_preflight(monkeypatch, tmp_path):
     source_dir = tmp_path / "package"
     source_dir.mkdir()
