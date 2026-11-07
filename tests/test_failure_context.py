@@ -39,6 +39,82 @@ def test_locked_oracle_output_reaches_the_writer_without_the_maintainer_result()
     assert "maintainer-secret-pass" not in feedback
 
 
+SINK_LINE = (
+    'SINK_TRACE {"sink":"child_process.exec","argument":"ps -o pcpu,rss -p 1; touch /tmp/pwn",'
+    '"frames":["Object.ps (pidusage/lib/stats.js:104:5)","Object.<anonymous> (pidusage/index.js:9:3)"]}'
+)
+
+
+def _security_fail_state(**extra):
+    return state(
+        generated_patch_oracle_validation={
+            "status": "SECURITY_FAIL",
+            "reason": "The accepted exploit still succeeds against the generated patch.",
+            "execution": {
+                "status": "EXPLOIT_SUCCEEDED",
+                "operation_completed": True,
+                "exploit_succeeded": True,
+                "evidence": "marker file created",
+                "stdout": "ORACLE_RESULT {}",
+                "stderr": "warning: something\n\n" + SINK_LINE + "\n",
+            },
+        },
+        accepted_oracle={
+            "status": "accepted",
+            "explanation": "Passes a pid string containing a shell metacharacter to the ps method.",
+            "source": "const SECRET_ORACLE_SOURCE = require('pidusage');",
+        },
+        **extra,
+    )
+
+
+def test_security_fail_feedback_names_the_sink_and_describes_the_exploit():
+    record = context.record_failure(_security_fail_state(), "exploit still works", stage="security_oracle")
+    feedback = context.load_feedback(state(retry_feedback=record))
+
+    assert "exploit description: Passes a pid string containing a shell metacharacter" in feedback
+    assert "sink calls reached through the package" in feedback
+    assert "child_process.exec(" in feedback
+    assert "Object.ps (pidusage/lib/stats.js:104:5)" in feedback
+    assert "marker file created" in feedback
+
+
+def test_oracle_source_and_raw_trace_lines_stay_out_of_the_feedback():
+    record = context.record_failure(_security_fail_state(), "exploit still works", stage="security_oracle")
+    feedback = context.load_feedback(state(retry_feedback=record))
+
+    assert "SECRET_ORACLE_SOURCE" not in feedback
+    assert "SINK_TRACE {" not in feedback
+    assert "warning: something" in feedback
+
+
+def test_security_fail_without_a_trace_still_reports_the_evidence():
+    plain = _security_fail_state()
+    plain["generated_patch_oracle_validation"]["execution"]["stderr"] = ""
+    plain["accepted_oracle"] = {}
+
+    record = context.record_failure(plain, "exploit still works", stage="security_oracle")
+    feedback = context.load_feedback(state(retry_feedback=record))
+
+    assert "marker file created" in feedback
+    assert "sink calls reached" not in feedback
+    assert "exploit description" not in feedback
+
+
+def test_sink_trace_parser_skips_malformed_lines_and_keeps_the_latest_events():
+    lines = ["SINK_TRACE not-json", 'SINK_TRACE {"sink":"fs.open"}', 'SINK_TRACE {"sink":"x","frames":[]}']
+    lines += [
+        'SINK_TRACE ' + json.dumps({"sink": f"fs.open{n}", "argument": "a", "frames": [f"f{n} (p/x.js:1:1)"]})
+        for n in range(10)
+    ]
+
+    events = context.parse_sink_trace("\n".join(lines))
+
+    assert len(events) == context.MAX_SINK_EVENTS
+    assert events[-1]["sink"] == "fs.open9"
+    assert all(event["frames"] for event in events)
+
+
 def test_missing_oracle_is_journaled_but_not_shown_to_the_writer():
     record = context.record_failure(state(), "security validation was skipped", writer_visible=False)
     assert record["writer_visible"] is False

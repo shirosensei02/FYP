@@ -64,14 +64,44 @@ def clipped(value, limit):
     return value if len(value) <= limit else value[:limit] + '\n[truncated]'
 
 
+SINK_TRACE_LINE = re.compile(r'^SINK_TRACE (\{.*\})\s*$', re.MULTILINE)
+MAX_SINK_EVENTS = 6
+
+
+def parse_sink_trace(text):
+    """Sink calls recorded by oracle_sink_trace.js, oldest first. Malformed lines are skipped."""
+    events = []
+    for line in SINK_TRACE_LINE.findall(str(text or '')):
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(item, dict):
+            continue
+        frames = item.get('frames')
+        if isinstance(item.get('sink'), str) and isinstance(frames, list) and frames:
+            events.append({'sink': item['sink'], 'argument': str(item.get('argument') or ''),
+                           'frames': [str(frame) for frame in frames]})
+    return events[-MAX_SINK_EVENTS:]
+
+
+def strip_sink_trace(text):
+    return SINK_TRACE_LINE.sub('', str(text or '')).strip()
+
+
 def locked_oracle_execution(state):
-    """Copy the generated patch's oracle result. The maintainer baseline stays out."""
+    """Copy the generated patch's oracle result. The maintainer baseline stays out.
+
+    The accepted oracle's explanation describes the exploit in prose. The oracle
+    source stays out, and so does everything read from the maintainer baseline.
+    """
     result = state.get('generated_patch_oracle_validation') or {}
     if result.get('status') not in {'SECURITY_FAIL', 'REGRESSION'}:
         return None
     execution = result.get('execution') or {}
     if not isinstance(execution, dict):
         execution = {}
+    stderr = str(execution.get('stderr') or '')
     return {
         'status': result.get('status'),
         'reason': result.get('reason') or '',
@@ -79,9 +109,21 @@ def locked_oracle_execution(state):
         'operation_completed': execution.get('operation_completed'),
         'exploit_succeeded': execution.get('exploit_succeeded'),
         'evidence': execution.get('evidence') or '',
+        'explanation': clipped((state.get('accepted_oracle') or {}).get('explanation'), 600),
+        'sink_trace': parse_sink_trace(stderr),
         'stdout': execution.get('stdout') or '',
-        'stderr': execution.get('stderr') or '',
+        'stderr': strip_sink_trace(stderr),
     }
+
+
+def render_sink_trace(events):
+    """One line per sink call: the sink, its argument, then the package frames that reached it."""
+    lines = []
+    for number, event in enumerate(events, start=1):
+        argument = event.get('argument') or ''
+        lines.append(f"  {number}. {event.get('sink')}({json.dumps(argument)}) <- "
+                     + ' <- '.join(event.get('frames') or []))
+    return '\n'.join(lines)
 
 
 def record_failure(state, reason, *, stage=None, candidate=None, writer_visible=True):
@@ -234,18 +276,25 @@ def render(records):
             section += '\n\n### Failure evidence\n\n' + fenced(clipped(evidence.strip(), 2600))
         oracle = record.get('oracle_execution')
         if isinstance(oracle, dict):
-            oracle_text = '\n'.join([
+            oracle_lines = [
                 f"status: {oracle.get('status')}",
                 f"execution: {oracle.get('execution_status')}",
                 f"operation_completed: {oracle.get('operation_completed')}",
                 f"exploit_succeeded: {oracle.get('exploit_succeeded')}",
                 f"evidence: {oracle.get('evidence') or ''}",
-                diagnostic_excerpt('\n'.join([
-                    str(oracle.get('stdout') or ''),
-                    str(oracle.get('stderr') or ''),
-                ]), 1200),
-            ]).strip()
-            section += '\n\n### Locked oracle output\n\n' + fenced(clipped(oracle_text, 1800))
+            ]
+            if oracle.get('explanation'):
+                oracle_lines.append(f"exploit description: {oracle['explanation']}")
+            sink_events = oracle.get('sink_trace') or []
+            if sink_events:
+                oracle_lines.append(
+                    'sink calls reached through the package (oldest first; the exploit is the last):')
+                oracle_lines.append(render_sink_trace(sink_events))
+            oracle_lines.append(diagnostic_excerpt('\n'.join([
+                str(oracle.get('stdout') or ''),
+                strip_sink_trace(oracle.get('stderr')),
+            ]), 1200))
+            section += '\n\n### Locked oracle output\n\n' + fenced(clipped('\n'.join(oracle_lines).strip(), 3200))
         candidate = record.get('candidate')
         if candidate:
             language = 'json' if isinstance(candidate, (dict, list)) else 'diff'

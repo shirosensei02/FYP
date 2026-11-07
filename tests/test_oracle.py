@@ -108,6 +108,44 @@ def test_writable_tmp_fixture_selects_a_writable_working_directory():
     assert "cd /tmp/oracle-workspace" in entrypoint
 
 
+def test_sink_tracer_is_preloaded_only_when_requested():
+    for requirements in ([], ["requires_git_repository"], ["requires_writable_tmp"]):
+        _, plain = validation._oracle_environment({"requirements": requirements})
+        _, traced = validation._oracle_environment({"requirements": requirements}, trace=True)
+        assert "--require" not in plain
+        assert "exec node /consumer/oracle.js" in plain
+        assert "exec node --require /consumer/oracle-sink-trace.js /consumer/oracle.js" in traced
+    dockerfile, _ = validation._oracle_environment({"requirements": []})
+    assert "COPY oracle-sink-trace.js /consumer/oracle-sink-trace.js" in dockerfile
+
+
+def test_only_the_generated_patch_run_is_traced(monkeypatch, tmp_path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "package.json").write_text('{"name":"demo","version":"1.0.0"}')
+    monkeypatch.setattr(validation, "ORACLE_WORKSPACE_ROOT", tmp_path / "oracle-work")
+    validation.ORACLE_WORKSPACE_ROOT.mkdir()
+    built = {}
+
+    def fake_run(command, **kwargs):
+        if command[:2] == ["docker", "build"]:
+            context = Path(kwargs["cwd"])
+            built["entrypoint"] = (context / "oracle-entrypoint.sh").read_text()
+            built["trace_file"] = (context / "oracle-sink-trace.js").read_text()
+        if command[:2] == ["docker", "run"]:
+            stdout = 'ORACLE_RESULT {"operation_completed":true,"exploit_succeeded":true,"evidence":"hit"}\n'
+            return subprocess.CompletedProcess(command, 0, stdout, "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(validation.subprocess, "run", fake_run)
+
+    for label, expect_trace in (("vulnerable", False), ("maintainer-fixed", False), ("generated-patch", True)):
+        built.clear()
+        validation._run_oracle(package, {"source": SAFE_SOURCE}, label)
+        assert ("--require /consumer/oracle-sink-trace.js" in built["entrypoint"]) is expect_trace, label
+        assert "SINK_TRACE" in built["trace_file"]
+
+
 def test_oracle_generation_skips_without_a_fixed_baseline(tmp_path):
     result = generation.oracle_generation({
         "model_provider": "openrouter",

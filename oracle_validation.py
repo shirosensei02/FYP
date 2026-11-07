@@ -28,6 +28,7 @@ ORACLE_BUILD_TIMEOUT = int(os.getenv("ORACLE_DOCKER_BUILD_TIMEOUT", "600"))
 ORACLE_MEMORY = os.getenv("ORACLE_SANDBOX_MEMORY", "512m")
 ORACLE_CPUS = os.getenv("ORACLE_SANDBOX_CPUS", "1")
 MAX_CAPTURE_CHARS = 40_000
+SINK_TRACE_SOURCE = Path(__file__).resolve().parent / "oracle_sink_trace.js"
 _RESULT_RE = re.compile(r"^ORACLE_RESULT\s+(.+)$", re.MULTILINE)
 
 _PS_INSTALL = r"""RUN if command -v apk >/dev/null 2>&1; then \
@@ -51,6 +52,7 @@ _DOCKERFILE = textwrap.dedent(
         printf '%s\n' '{{"name":"oracle-consumer","version":"1.0.0","private":true}}' > package.json && \
         npm install --ignore-scripts --omit=dev --no-audit /tmp/package-artifact/package.tgz
     COPY oracle.js /consumer/oracle.js
+    COPY oracle-sink-trace.js /consumer/oracle-sink-trace.js
     COPY oracle-entrypoint.sh /consumer/oracle-entrypoint.sh
     WORKDIR /consumer
     CMD ["sh", "/consumer/oracle-entrypoint.sh"]
@@ -141,8 +143,12 @@ def _env_true(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _oracle_environment(oracle: dict[str, Any]) -> tuple[str, str]:
-    """Render only harness-owned setup selected from declared fixture names."""
+def _oracle_environment(oracle: dict[str, Any], trace: bool = False) -> tuple[str, str]:
+    """Render only harness-owned setup selected from declared fixture names.
+
+    ``trace`` preloads the sink tracer. It is requested only for the locked run
+    against a generated patch, so baseline validation behaves exactly as before.
+    """
     requirements = set(oracle.get("requirements") or [])
     fixture_install = _GIT_INSTALL if "requires_git_repository" in requirements else ""
     entrypoint = _GIT_ENTRYPOINT if "requires_git_repository" in requirements else _BASIC_ENTRYPOINT
@@ -153,6 +159,11 @@ def _oracle_environment(oracle: dict[str, Any]) -> tuple[str, str]:
     if "requires_fixture_files" in requirements:
         entrypoint = entrypoint.replace(
             "set -eu\n", "set -eu\nmkdir -p /tmp/oracle-fixtures\n", 1
+        )
+    if trace:
+        entrypoint = entrypoint.replace(
+            "exec node /consumer/oracle.js",
+            "exec node --require /consumer/oracle-sink-trace.js /consumer/oracle.js",
         )
     return _DOCKERFILE.format(
         base_image=BASE_IMAGE,
@@ -202,7 +213,8 @@ def _run_oracle(source_dir: Path, oracle: dict[str, Any], label: str) -> OracleE
     try:
         _copy_package(source_dir, context / "package")
         (context / "oracle.js").write_text(str(oracle.get("source") or ""), encoding="utf-8")
-        dockerfile, entrypoint = _oracle_environment(oracle)
+        shutil.copyfile(SINK_TRACE_SOURCE, context / "oracle-sink-trace.js")
+        dockerfile, entrypoint = _oracle_environment(oracle, trace=label == "generated-patch")
         (context / "Dockerfile").write_text(dockerfile, encoding="utf-8")
         # Docker runs this file with Linux ``sh`` even when the pipeline host
         # is Windows.  Force LF so CRLF translation cannot turn ``set -eu``
