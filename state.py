@@ -160,6 +160,16 @@ class GeneratedPatchOracleResult(TypedDict, total=False):
     reason: str
     execution: OracleExecutionResult | None
 
+class FinalEvaluation(TypedDict):
+    category: Literal["supported_fix", "needs_verification", "security_failure", "functional_failure", "inconclusive"]
+    oracle_status: str
+    oracle_applicable: bool
+    adversarial_verdict: str
+    adversarial_reported_verdict: str | None
+    compatibility_status: str
+    reason: str
+
+
 class GraphState(TypedDict, total=False):
     # config
     model_provider: Literal["mock", "openai", "anthropic", "gemini", "openrouter"]
@@ -254,6 +264,7 @@ class GraphState(TypedDict, total=False):
 
     # 7) classification
     classification: Literal["pass", "fail", "inconclusive"] | None
+    final_evaluation: FinalEvaluation | None
     classification_reason: str | None
     compatibility_classification: Literal["pass", "fail"] | None
     security_validation: Literal["PASS", "FAIL", "INCONCLUSIVE", "SKIPPED"] | None

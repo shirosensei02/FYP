@@ -910,6 +910,7 @@ def patch_generation(state: GraphState) -> dict:
     attempt_state = dict(state)
     attempt_state.update({
         "run_attempt_id": state.get("run_attempt_id") or _build_run_attempt_id(state),
+        "final_evaluation": None,
         "validation": None, "adversarial_evaluation": {}, "patch_score": {},
         "classification": None, "classification_reason": None,
         "sandbox_id": None, "sandbox_apply_success": None, "patch_applied": None,
@@ -924,7 +925,7 @@ def patch_generation(state: GraphState) -> dict:
     })
     result = _patch_generation(attempt_state)
     reset = {key: attempt_state[key] for key in (
-        "validation", "adversarial_evaluation", "patch_score", "classification",
+        "final_evaluation", "validation", "adversarial_evaluation", "patch_score", "classification",
         "classification_reason", "sandbox_id", "sandbox_apply_success", "patch_applied",
         "patched_source_dir", "remaining_vulnerabilities", "revalidation_artifacts",
         "regression_status", "baseline_validation", "patched_validation",
