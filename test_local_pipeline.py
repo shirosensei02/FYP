@@ -1,7 +1,6 @@
 """
 test_local_pipeline.py
-======================
-Local end-to-end test for the FYP patch pipeline.
+===============Local end-to-end test for the FYP patch pipeline.
 
 Runs all five nodes in sequence:
   package_input -> vulnerability_detection -> patch_generation
@@ -45,13 +44,10 @@ from patch_generation import patch_generation
 from patch_application import apply_patch, package_validation
 from patch_validation import patch_validation
 from adversarial_evaluation import adversarial_evaluation
-<<<<<<< HEAD
 from isolated_runners.isolate_locator import localize
-=======
 from vulnerability_localization import vulnerability_localization
 from oracle_generation import oracle_generation
 from oracle_validation import oracle_validation, generated_patch_oracle_validation
->>>>>>> origin/failing-oracle
 
 
 # ---------------------------------------------------------------------------
@@ -205,13 +201,11 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"  vendor files    : {answer.get('files') or []}")
     print(f"  vendor diff     : {len(answer.get('diff') or '')} chars")
 
-<<<<<<< HEAD
     _sep("NODE 2c - LOCATOR")
     state.update(localize(state))
     located = state.get("debug_locations") or []
     print(f"  locate status   : {state.get('locate_status')}")
     print(f"  located         : {[item.get('function') for item in located]}")
-=======
     # Localize first so both the oracle writer and patch writer receive the
     # same vulnerability-focused source context.
     _sep("NODE 2c - VULNERABILITY LOCALIZATION")
@@ -242,13 +236,20 @@ def run_pipeline(args: argparse.Namespace) -> None:
         from graph import route_after_oracle_validation
         if route_after_oracle_validation(state) != "retry":
             break
->>>>>>> origin/failing-oracle
 
     while True:
         # Node 3: patch_generation
         _sep(f"NODE 3 / 5 - PATCH GENERATION  (provider={args.model_provider})")
         result = patch_generation(state)
         state.update(result)
+        # A context fetch is part of generation, not a failed patch attempt.
+        # Match the compiled graph before considering --stop-after-patch.
+        from graph import route_after_patch_generation
+        if route_after_patch_generation(state) == "repo_graph":
+            from repo_graph import repo_graph_node
+            _sep("PATCH WRITER - REPO GRAPH TOOL")
+            state.update(repo_graph_node(state))
+            continue
 
         if not state.get("errors"):
             patch = state.get("current_patch") or {}
@@ -337,6 +338,16 @@ def run_pipeline(args: argparse.Namespace) -> None:
         if route_after_classification(state) != "retry":
             break
         state.update(increment_retry(state))
+
+    _sep("FINAL EVALUATION")
+    from final_evaluation import final_evaluation
+    state.update(final_evaluation(state))
+    final = state["final_evaluation"]
+    print(f"  category        : {final['category']}")
+    print(f"  oracle          : {final['oracle_status']}")
+    print(f"  evaluator       : {final['adversarial_verdict']}")
+    print(f"  compatibility   : {final['compatibility_status']}")
+    print(f"  reason          : {final['reason']}")
 
     _sep("NODE 6 - MAINTAINER EVAL")
     from maintainer_eval import maintainer_eval

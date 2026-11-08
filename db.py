@@ -236,6 +236,7 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "patched_validation": state.get("patched_validation") or {},
         "regression_status": state.get("regression_status"),
         "adversarial_evaluation": state.get("adversarial_evaluation") or {},
+        "final_evaluation": state.get("final_evaluation") or {},
         "vulnerabilities": state.get("vulnerabilities") or [],
         "answer_key":      state.get("answer_key") or {},
         "oracle_attempts": state.get("oracle_attempts") or [],

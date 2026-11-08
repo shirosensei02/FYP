@@ -12,10 +12,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
 import urllib.error
 import urllib.request
 from typing import Any
 from urllib.parse import quote
+
+import certifi
 
 from state import AnswerKey, GraphState, Vulnerability
 
@@ -61,7 +64,7 @@ def _github_headers() -> dict[str, str]:
         "Accept": "application/vnd.github+json",
         "User-Agent": "fyp-patch-pipeline",
     }
-    token = os.getenv("GITHUB_TOKEN")
+    token = (os.getenv("GITHUB_TOKEN") or "").strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
@@ -70,7 +73,10 @@ def _github_headers() -> dict[str, str]:
 def _github_get(url: str) -> tuple[Any | None, str | None]:
     request = urllib.request.Request(url, headers=_github_headers())
     try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(
+            request, timeout=REQUEST_TIMEOUT_SECONDS,
+            context=ssl.create_default_context(cafile=certifi.where()),
+        ) as response:
             return json.loads(response.read().decode("utf-8")), None
     except urllib.error.HTTPError as exc:
         return None, f"GitHub API {exc.code} for {url}"
@@ -182,7 +188,10 @@ def _fetch_osv_advisory(vuln_id: str) -> dict[str, Any] | None:
         headers={"Accept": "application/json", "User-Agent": "fyp-patch-pipeline"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(
+            request, timeout=REQUEST_TIMEOUT_SECONDS,
+            context=ssl.create_default_context(cafile=certifi.where()),
+        ) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
         return None

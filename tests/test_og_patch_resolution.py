@@ -213,3 +213,64 @@ def test_og_patch_resolution_accepts_string_first_patched_version(monkeypatch):
     )
     assert result["answer_key"]["first_patched_version"] == "4.17.19"
     assert result["answer_key"]["status"] == "version_only"
+
+
+def test_github_request_uses_verified_ca_bundle_and_token(monkeypatch):
+    import ssl
+    import og_patch_resolution as module
+    monkeypatch.setenv('GITHUB_TOKEN', '  test-token  ')
+    seen = []
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self):
+            return b'{"ghsa_id":"GHSA-example"}'
+
+    def urlopen(request, *, timeout, context):
+        seen.append(request)
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname is True
+        assert len(context.get_ca_certs()) > 0
+        assert timeout == module.REQUEST_TIMEOUT_SECONDS
+        assert request.get_header('Authorization') == 'Bearer test-token'
+        return Response()
+
+    monkeypatch.setattr(module.urllib.request, 'urlopen', urlopen)
+    payload, error = module._github_get('https://api.github.com/advisories/GHSA-example')
+    assert payload['ghsa_id'] == 'GHSA-example'
+    assert error is None
+    assert len(seen) == 1
+
+
+def test_blank_or_missing_token_is_not_sent(monkeypatch):
+    import og_patch_resolution as module
+    monkeypatch.delenv('GITHUB_TOKEN', raising=False)
+    assert 'Authorization' not in module._github_headers()
+    monkeypatch.setenv('GITHUB_TOKEN', '  ')
+    assert 'Authorization' not in module._github_headers()
+
+
+def test_osv_fallback_uses_verified_tls_without_github_token(monkeypatch):
+    import ssl
+    import og_patch_resolution as module
+    monkeypatch.setenv('GITHUB_TOKEN', 'test-token')
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self):
+            return b'{"id":"GHSA-example","affected":[],"references":[]}'
+
+    def urlopen(request, *, timeout, context):
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname
+        assert request.get_header('Authorization') is None
+        return Response()
+
+    monkeypatch.setattr(module.urllib.request, 'urlopen', urlopen)
+    assert module._fetch_osv_advisory('GHSA-example') is not None

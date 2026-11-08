@@ -14,6 +14,7 @@ from locator import locator_node, route_after_locator
 from oracle_generation import oracle_generation
 from oracle_validation import oracle_validation, generated_patch_oracle_validation
 from vulnerability_localization import vulnerability_localization
+from final_evaluation import final_evaluation
 from state import GraphState
 
 
@@ -109,6 +110,7 @@ graph.add_node("generated_patch_oracle_validation_node", generated_patch_oracle_
 graph.add_node("record_locked_oracle_failure_node", record_locked_oracle_failure)
 graph.add_node("skip_package_tests_node", skip_package_tests)
 graph.add_node("patch_scoring_node", patch_scoring)
+graph.add_node("final_evaluation_node", final_evaluation)
 graph.add_node("maintainer_eval_node", maintainer_eval)
 graph.add_node("increment_retry", increment_retry)
 
@@ -180,10 +182,11 @@ graph.add_conditional_edges(
     route_after_classification,
     {
         "retry": "increment_retry",
-        "eval": "maintainer_eval_node",
+        "eval": "final_evaluation_node",
     },
 )
 graph.add_edge("increment_retry", "patch_generation_node")
+graph.add_edge("final_evaluation_node", "maintainer_eval_node")
 graph.add_edge("maintainer_eval_node", END)
 
 graph = graph.compile()
