@@ -128,7 +128,7 @@ Once started, access the server resources:
 - 🚀 **API Base URL**: `http://127.0.0.1:2024`
 - 📚 **Interactive API Docs**: `http://127.0.0.1:2024/docs`
 
-### 💬 Chat demo (Agent Chat UI)
+### 💬 Chat interface (Agent Chat UI)
 
 `langgraph dev` also serves a `pipeline-chat` graph (`chat_graph.py`). It wraps the pipeline from `graph.py`
 (copied automatically, so it always matches) with a chat front end: it reads targets from a chat
@@ -153,7 +153,7 @@ Agent Chat UI; your browser talks to your local server directly, so no data goes
 
 - *Browser blocks localhost* (Safari, Brave, or no permission prompt): run `langgraph dev --tunnel`
   and use the printed `https://…trycloudflare.com` URL as the deployment URL.
-- *No internet for the hosted site*: `bash demo/start_chat_ui.sh` clones the same app (pinned
+- *No internet for the hosted site*: `bash scripts/start_chat_ui.sh` clones the same app (pinned
   commit), points it at the `pipeline-chat` graph, and serves it on http://localhost:3000.
 
 ---

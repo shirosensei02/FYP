@@ -2,14 +2,14 @@
 # Run LangChain's Agent Chat UI against the local LangGraph server (`langgraph dev`).
 #
 # Usage (from the repo root, with `langgraph dev` already running in another terminal):
-#   bash demo/start_chat_ui.sh
+#   bash scripts/start_chat_ui.sh
 # Then open http://localhost:3000 and send e.g. `jszip@3.7.1 GHSA-36fh-84j7-cv5h codex`.
 set -euo pipefail
 
 UI_REPO="https://github.com/langchain-ai/agent-chat-ui.git"
-UI_COMMIT="2624b821a4542e115a7e8eb8917e4cfb42397ce6"  # pinned so the demo does not change underneath us
+UI_COMMIT="2624b821a4542e115a7e8eb8917e4cfb42397ce6"  # pinned so the UI does not change underneath us
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-UI_DIR="$ROOT/demo/agent-chat-ui"
+UI_DIR="$ROOT/chat_ui"
 
 if [ ! -d "$UI_DIR/.git" ]; then
   git clone --quiet "$UI_REPO" "$UI_DIR"

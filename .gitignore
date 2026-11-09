@@ -24,5 +24,5 @@ Thumbs.db
 package_index/
 repo_index/
 
-# Demo UI checkout (cloned by demo/start_chat_ui.sh)
-demo/agent-chat-ui/
+# Agent Chat UI checkout (cloned by scripts/start_chat_ui.sh)
+chat_ui/
