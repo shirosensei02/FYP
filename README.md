@@ -130,8 +130,10 @@ Once started, access the server resources:
 
 ### 💬 Chat demo (Agent Chat UI)
 
-`langgraph dev` also serves a `demo` graph (`demo_graph.py`): the same pipeline, but it takes a chat
-message and posts a short summary after each step. Chat with it through LangChain's hosted
+`langgraph dev` also serves a `demo` graph (`demo_graph.py`). It wraps the pipeline from `graph.py`
+(copied automatically, so it always matches) with a chat front end: it reads targets from a chat
+message, runs them one after another in fresh pipeline states, posts a short summary after each step,
+and ends with a comparison table. Chat with it through LangChain's hosted
 Agent Chat UI; your browser talks to your local server directly, so no data goes through Vercel.
 
 1. Start the local server: `langgraph dev --no-browser` (serves `http://localhost:2024`).
@@ -142,6 +144,9 @@ Agent Chat UI; your browser talks to your local server directly, so no data goes
 3. If Chrome asks to allow access to your local network, click **Allow** (it remembers the choice).
 4. Send `package@version [advisory ID] [model]`, for example `jszip@3.7.1 GHSA-36fh-84j7-cv5h codex`
    (models: `codex`, `sonnet`, or any OpenRouter model ID; without a model, `MODEL_NAME` from `.env`).
+   Several targets (up to 5) can go in one message, separated by commas or new lines:
+   `jszip@3.7.1 GHSA-36fh-84j7-cv5h codex, tar-fs@3.0.8 GHSA-8cj5-5rvv-wf4v sonnet`.
+   Each new message starts a new batch; `MAX_RETRIES` in `.env` sets the writer retries (default 1).
 
 **Fallbacks**
 
