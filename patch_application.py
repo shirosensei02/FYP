@@ -668,135 +668,150 @@ def _validate_workspace(
 # Public LangGraph node
 # ===========================================================================
 
-def patch_application(state: GraphState) -> dict:
-    """Validate the original package, then compare it with the patched package."""
-    errors: list[str] = list(state.get("errors", []))
-    baseline_dir: Path | None = None
-    patched_dir: Path | None = None
+def _skipped_validation(stage: str, logs: str) -> ValidationResult:
+    return ValidationResult(
+        validation_mode="published_package",
+        docker_status="SKIPPED" if stage == "generation" else "FAIL",
+        installation_status="SKIPPED",
+        build_status="SKIPPED",
+        test_status="SKIPPED",
+        consumer_smoke_status="SKIPPED",
+        consumer_smoke_succeeded=False,
+        docker_image_built=False,
+        failure_stage=stage,
+        install_succeeded=False,
+        build_succeeded=None,
+        tests_passed=None,
+        revalidation_scan_clean=False,
+        logs=logs,
+    )
 
-    # ── Unpack inputs ──────────────────────────────────────────────────────
+
+def apply_patch(state: GraphState) -> dict:
+    """Write the generated patch into a workspace. Package tests run later."""
+    errors: list[str] = list(state.get("errors", []))
     package_name: str = state.get("package_name", "unknown-package")
     package_version: str = state.get("package_version", "0.0.0")
     current_patch = state.get("current_patch")
-    generation_status = state.get("generation_status")
 
     print("\n" + "=" * 60, flush=True)
-    print(f"  PATCH APPLICATION NODE", flush=True)
+    print("  PATCH APPLY", flush=True)
     print(f"  Package : {package_name}@{package_version}", flush=True)
     print(f"  Attempt : {(current_patch or {}).get('attempt_number', 1)}", flush=True)
     print("=" * 60, flush=True)
 
-    if generation_status == "failed":
+    if state.get("generation_status") == "failed" or not current_patch:
         msg = "patch_application: generation failed; skipping sandbox."
         logger.warning(msg)
         errors.append(msg)
-        failed_validation = ValidationResult(
-            validation_mode="published_package",
-            docker_status="SKIPPED",
-            installation_status="SKIPPED",
-            build_status="SKIPPED",
-            test_status="SKIPPED",
-            consumer_smoke_status="SKIPPED",
-            consumer_smoke_succeeded=False,
-            docker_image_built=False,
-            failure_stage="generation",
-            install_succeeded=False,
-            build_succeeded=None,
-            tests_passed=None,
-            revalidation_scan_clean=False,
-            logs=msg,
-        )
+        failed = _skipped_validation("generation", msg)
         return {
             "patch_applied": False,
             "sandbox_id": None,
             "sandbox_apply_success": False,
+            "patched_source_dir": None,
             "baseline_validation": None,
-            "patched_validation": failed_validation,
-            "validation": failed_validation,
+            "patched_validation": failed,
+            "validation": failed,
             "regression_status": "INCONCLUSIVE",
+            "package_tests_skipped": False,
             "errors": errors,
         }
 
-    # ── Unique identifiers for this sandbox run ────────────────────────────
+    safe_name = re.sub(r"[^a-z0-9]+", "-", package_name.lower()).strip("-") or "pkg"
+    patched_dir: Path | None = None
+    applied = False
+    try:
+        PATCH_WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
+        patched_dir = Path(tempfile.mkdtemp(prefix=f"patch_{safe_name}_", dir=PATCH_WORKSPACE_ROOT))
+        print(f"\n    Patched workspace : {patched_dir}", flush=True)
+        _seed_workspace_from_source(state.get("source_dir"), patched_dir)
+        applied = _write_patched_package(patched_dir, package_name, package_version, current_patch)
+        if not applied:
+            errors.append("patch failed to apply cleanly; patched validation skipped")
+    except Exception as exc:
+        msg = f"patch_application error: {type(exc).__name__}: {exc}"
+        logger.exception(msg)
+        errors.append(msg)
+        applied = False
+
+    if not applied:
+        failed = _skipped_validation("application", "Patched source was not written.")
+        return {
+            "patch_applied": False,
+            "sandbox_id": None,
+            "sandbox_apply_success": False,
+            "patched_source_dir": str(patched_dir) if patched_dir and patched_dir.exists() else None,
+            "baseline_validation": None,
+            "patched_validation": failed,
+            "validation": failed,
+            "regression_status": "INCONCLUSIVE",
+            "package_tests_skipped": False,
+            "errors": errors,
+        }
+
+    return {
+        "patch_applied": True,
+        "sandbox_id": None,
+        "sandbox_apply_success": None,
+        "patched_source_dir": str(patched_dir),
+        "baseline_validation": None,
+        "patched_validation": None,
+        "validation": None,
+        "regression_status": None,
+        "package_tests_skipped": False,
+        "errors": errors,
+    }
+
+
+def package_validation(state: GraphState) -> dict:
+    """Run the consumer check on the vulnerable package and the applied patch."""
+    errors: list[str] = list(state.get("errors", []))
+    package_name: str = state.get("package_name", "unknown-package")
+    patched_value = state.get("patched_source_dir")
+    patched_dir = Path(patched_value) if patched_value else None
+    if state.get("patch_applied") is not True or patched_dir is None or not patched_dir.is_dir():
+        failed = _skipped_validation("application", "Patched source was not written.")
+        errors.append("package validation skipped because the patch did not apply")
+        return {
+            "sandbox_apply_success": False,
+            "validation": failed,
+            "patched_validation": failed,
+            "regression_status": "INCONCLUSIVE",
+            "package_tests_skipped": False,
+            "errors": errors,
+        }
+
     run_id = uuid.uuid4().hex[:8]
     safe_name = re.sub(r"[^a-z0-9]+", "-", package_name.lower()).strip("-") or "pkg"
+    baseline_dir: Path | None = None
     baseline_validation: ValidationResult | None = None
     patched_validation: ValidationResult | None = None
-    patch_applied_ok = False
-
     try:
-        # ── A: write files ─────────────────────────────────────────────────
         PATCH_WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
-        baseline_dir = Path(
-            tempfile.mkdtemp(prefix=f"baseline_{safe_name}_", dir=PATCH_WORKSPACE_ROOT)
-        )
-        patched_dir = Path(
-            tempfile.mkdtemp(prefix=f"patch_{safe_name}_", dir=PATCH_WORKSPACE_ROOT)
-        )
+        baseline_dir = Path(tempfile.mkdtemp(prefix=f"baseline_{safe_name}_", dir=PATCH_WORKSPACE_ROOT))
         print(f"\n    Baseline workspace: {baseline_dir}", flush=True)
-        print(f"    Patched workspace : {patched_dir}", flush=True)
-
         _seed_workspace_from_source(state.get("source_dir"), baseline_dir)
-        shutil.copytree(baseline_dir, patched_dir, dirs_exist_ok=True)
-
         _step("BASELINE - Validating untouched vulnerable package")
         baseline_validation = _validate_workspace(
             baseline_dir,
             f"patch-sandbox/{safe_name}:{run_id}-baseline",
             f"baseline-{safe_name}-{run_id}",
         )
-
-        patch_applied_ok = _write_patched_package(
-            patched_dir,
-            package_name,
-            package_version,
-            current_patch,
-        )
-
-        if not patch_applied_ok:
-            errors.append("patch failed to apply cleanly; patched validation skipped")
-            raise RuntimeError("Patch did not apply to the source")
-
-        # Run the identical validator after applying the generated patch.
         _step("PATCHED - Validating generated patch")
         patched_validation = _validate_workspace(
             patched_dir,
             f"patch-sandbox/{safe_name}:{run_id}-patched",
             f"patch-{safe_name}-{run_id}",
         )
-
-        # ── B: write Dockerfile ────────────────────────────────────────────
-
-        # ── C: docker build ────────────────────────────────────────────────
-
-        # ── E: package tests or load smoke test ────────────────────────────
-
     except Exception as exc:
         msg = f"patch_application error: {type(exc).__name__}: {exc}"
         logger.exception(msg)
         errors.append(msg)
     if patched_validation is None:
-        patched_validation = ValidationResult(
-            validation_mode="published_package",
-            docker_status="FAIL",
-            installation_status="SKIPPED",
-            build_status="SKIPPED",
-            test_status="SKIPPED",
-            consumer_smoke_status="SKIPPED",
-            consumer_smoke_succeeded=False,
-            docker_image_built=False,
-            failure_stage="application" if not patch_applied_ok else "setup",
-            install_succeeded=False,
-            build_succeeded=None,
-            tests_passed=None,
-            revalidation_scan_clean=False,
-            logs="Patched validation did not complete.",
-        )
+        patched_validation = _skipped_validation("setup", "Patched validation did not complete.")
 
-    # ── Summarise ──────────────────────────────────────────────────────────
     regression_status = _classify_regression(baseline_validation, patched_validation)
-    apply_success = regression_status == "NO_REGRESSION"
-
     _step("Validation comparison summary")
     print(
         f"    Baseline consumer validation : {'PASS' if _validation_succeeded(baseline_validation) else 'FAIL'}",
@@ -807,20 +822,29 @@ def patch_application(state: GraphState) -> dict:
         flush=True,
     )
     print(f"    Regression status   : {regression_status}", flush=True)
-    if patched_dir and patched_dir.exists():
-        print(f"    Patched source kept : {patched_dir}", flush=True)
-
     if baseline_dir:
         shutil.rmtree(baseline_dir, ignore_errors=True)
 
     return {
-        "patch_applied": patch_applied_ok,
         "sandbox_id": None,
-        "sandbox_apply_success": apply_success,
-        "patched_source_dir": str(patched_dir) if patched_dir and patched_dir.exists() else None,
+        "sandbox_apply_success": regression_status == "NO_REGRESSION",
         "baseline_validation": baseline_validation,
         "patched_validation": patched_validation,
         "validation": patched_validation,
         "regression_status": regression_status,
+        "package_tests_skipped": False,
         "errors": errors,
     }
+
+
+def patch_application(state: GraphState) -> dict:
+    """Apply a patch and immediately run package validation.
+
+    The graph runs these as separate nodes so the locked oracle can gate the
+    package tests. This wrapper remains for callers that want both steps.
+    """
+    applied = apply_patch(state)
+    if not applied.get("patch_applied"):
+        return applied
+    tested = package_validation({**state, **applied})
+    return {**applied, **tested}

@@ -32,7 +32,7 @@ def _result(
     *,
     provider: str,
     model: str,
-    test_suite_pass: Literal["pass", "fail"],
+    test_suite_pass: Literal["pass", "fail", "skipped"],
     genuine_fix: Literal["true", "false", "uncertain"],
     reasoning: str,
     evidence: list[str] | None = None,
@@ -97,6 +97,8 @@ def _sanitize_untrusted_evaluation_input(value: Any) -> Any:
 def _evaluation_input(state: GraphState) -> dict[str, Any]:
     validation = state.get("validation") or {}
     baseline = state.get("baseline_validation") or {}
+    oracle_baseline = state.get("oracle_validation") or {}
+    oracle_patch = state.get("generated_patch_oracle_validation") or {}
     logs = str(validation.get("logs", ""))
     payload = {
         "package": {"name": state.get("package_name"), "version": state.get("package_version")},
@@ -114,10 +116,18 @@ def _evaluation_input(state: GraphState) -> dict[str, Any]:
             "install_succeeded": bool(validation.get("install_succeeded")),
             "build_succeeded": validation.get("build_succeeded"),
             "tests_passed": validation.get("tests_passed"),
+            "package_tests_skipped": bool(state.get("package_tests_skipped")),
             "revalidation_scan_clean": validation.get("revalidation_scan_clean"),
             "logs": logs[-MAX_LOG_CHARS:],
         },
         "remaining_vulnerabilities": state.get("remaining_vulnerabilities") or [],
+        "security_oracle": {
+            "baseline_status": oracle_baseline.get("status"),
+            "vulnerable_status": (oracle_baseline.get("vulnerable") or {}).get("status"),
+            "maintainer_fixed_status": (oracle_baseline.get("fixed") or {}).get("status"),
+            "generated_patch_status": oracle_patch.get("status"),
+            "generated_patch_reason": oracle_patch.get("reason"),
+        },
     }
     return _sanitize_untrusted_evaluation_input(payload)
 
@@ -130,12 +140,15 @@ def adversarial_evaluation(state: GraphState) -> dict[str, Any]:
     and does not alter the pipeline's existing validation classification.
     """
     validation = state.get("validation") or {}
-    deterministic_pass = (
-        validation.get("consumer_smoke_status") == "PASS"
-        if validation.get("validation_mode") == "published_package"
-        else bool(validation.get("tests_passed"))
-    )
-    test_suite_pass: Literal["pass", "fail"] = "pass" if deterministic_pass else "fail"
+    if state.get("package_tests_skipped"):
+        test_suite_pass: Literal["pass", "fail", "skipped"] = "skipped"
+    else:
+        deterministic_pass = (
+            validation.get("consumer_smoke_status") == "PASS"
+            if validation.get("validation_mode") == "published_package"
+            else bool(validation.get("tests_passed"))
+        )
+        test_suite_pass = "pass" if deterministic_pass else "fail"
     generator_model = (state.get("current_patch") or {}).get("model_used") or state.get("generation_model_used")
     provider = state.get("evaluator_provider") or os.getenv("EVALUATOR_PROVIDER", DEFAULT_EVALUATOR_PROVIDER)
     requested_model = state.get("evaluator_model") or os.getenv("EVALUATOR_MODEL", DEFAULT_EVALUATOR_MODEL)
@@ -174,7 +187,8 @@ def adversarial_evaluation(state: GraphState) -> dict[str, Any]:
         "that is absent from the supplied material. In reasoning, give a brief 1-3 sentence explanation "
         "for the true, false, or uncertain verdict and tie it to the supplied evidence. Return JSON only: "
         '{"genuine_fix":"true|false|uncertain","reasoning":"...","evidence":["..."]}. '
-        "Use uncertain when the evidence cannot establish a genuine fix. Revalidation scanner results "
+        "Use uncertain when the evidence cannot establish a genuine fix. A test_suite_pass of skipped "
+        "means the package tests were not run; do not treat that as a test failure. Revalidation scanner results "
         "are version-based: `revalidation_scan_clean` and `remaining_vulnerabilities` cannot prove a "
         "source-code patch failed or succeeded, so do not use them as verdict evidence. The characters "
         "`⟦` and `⟧` in supplied source are transport-safe stand-ins for ordinary `[` and `]`; interpret "

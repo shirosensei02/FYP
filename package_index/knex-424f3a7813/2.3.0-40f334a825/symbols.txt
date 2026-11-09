@@ -1,0 +1,139 @@
+bin/cli.js: openKnexfile, initKnex, invoke
+bin/utils/cli-config-utils.js: parseConfigObj, mkConfigObj, resolveEnvironmentConfig, exit, success, checkLocalModule, checkConfigurationOptions, getMigrationExtension, getSeedExtension, getStubPath, findUpModulePath, findUpConfig
+bin/utils/migrationsLister.js: listMigrations
+lib/builder-interface-augmenter.js: augmentWithBuilderInterface
+lib/client.js: Client, updatePoolConnectionSettingsFromProvider, constructor, formatter, queryBuilder, queryCompiler, schemaBuilder, schemaCompiler, tableBuilder, viewBuilder, tableCompiler, viewCompiler, columnBuilder, columnCompiler, runner, transaction, raw, ref, query, stream, prepBindings, positionBindings, postProcessResponse, wrapIdentifier, customWrapIdentifier, wrapIdentifierImpl, initializeDriver, poolDefaults, getPoolSettings, initializePool, validateConnection, acquireConnection, releaseConnection, destroy, database, toString, assertCanCancelQuery, cancelQuery, alias, parameter, parameterize, values, processPassedConnection, toPathForJson, escapeString
+lib/dialects/better-sqlite3/index.js: Client_BetterSQLite3, _driver, acquireRawConnection, destroyRawConnection, _query, _formatBindings
+lib/dialects/cockroachdb/crdb-columncompiler.js: ColumnCompiler_CRDB, uuid
+lib/dialects/cockroachdb/crdb-querybuilder.js: upsert
+lib/dialects/cockroachdb/crdb-querycompiler.js: QueryCompiler_CRDB, truncate, upsert, _upsert, _groupOrder, whereJsonPath, _jsonExtract, _onJsonPathEquals
+lib/dialects/cockroachdb/crdb-tablecompiler.js: TableCompiler_CRDB, constructor, addColumns, dropUnique
+lib/dialects/cockroachdb/crdb-viewcompiler.js: ViewCompiler_CRDB, renameColumn, defaultTo
+lib/dialects/cockroachdb/index.js: Client_CockroachDB, transaction, queryCompiler, columnCompiler, tableCompiler, viewCompiler, queryBuilder, _parseVersion, cancelQuery, _wrappedCancelQueryCall, toArrayPathFromJsonPath
+lib/dialects/index.js: getDialectByNameOrAlias [export]
+lib/dialects/mssql/index.js: Client_MSSQL, constructor, _generateConnection, _driver, formatter, transaction, queryCompiler, schemaCompiler, tableCompiler, viewCompiler, queryBuilder, columnCompiler, wrapIdentifierImpl, acquireRawConnection, validateConnection, destroyRawConnection, positionBindings, _chomp, _enqueueRequest, _makeRequest, _stream, _assignBindings, _scaleForBinding, _typeForBinding, _query, _setReqInput, processResponse
+lib/dialects/mssql/mssql-formatter.js: MSSQL_Formatter, columnizeWithPrefix, escapingStringDelimiters
+lib/dialects/mssql/query/mssql-querycompiler.js: QueryCompiler_MSSQL, constructor, with, select, insert, insertWithTriggers, _buildInsertData, standardInsert, update, updateWithTriggers, _formatGroupsItemValue, standardUpdate, del, deleteWithTriggers, standardDelete, columns, _returning, _buildTempTable, _buildReturningSelect, truncate, forUpdate, forShare, columnInfo, output, top, limit, offset, whereLike, whereILike, jsonExtract, jsonSet, jsonInsert, jsonRemove, whereJsonPath, whereJsonSupersetOf, whereJsonSubsetOf, _getExtracts, onJsonPathEquals
+lib/dialects/mssql/schema/mssql-columncompiler.js: ColumnCompiler_MSSQL, constructor, double, floating, integer, tinyint, varchar, timestamp, bit, binary, first, after, defaultTo, comment, checkLength, checkRegex, increments, bigincrements
+lib/dialects/mssql/schema/mssql-compiler.js: prefixedTableName, SchemaCompiler_MSSQL, constructor, dropTableIfExists, dropViewIfExists, renameTable, renameView, hasTable, hasColumn
+lib/dialects/mssql/schema/mssql-tablecompiler.js: TableCompiler_MSSQL, constructor, createQuery, comment, addColumns, alterColumns, dropColumn, changeType, renameColumn, dropFKRefs, createFKRefs, index, primary, unique, dropIndex, dropForeign, dropPrimary, dropUnique
+lib/dialects/mssql/schema/mssql-viewcompiler.js: ViewCompiler_MSSQL, constructor, createQuery, renameColumn, createOrReplace
+lib/dialects/mssql/transaction.js: nameToIsolationLevelEnum, Transaction_MSSQL, savepoint, commit, release, rollback, rollbackTo
+lib/dialects/mysql/index.js: Client_MySQL, _driver, queryCompiler, schemaCompiler, tableCompiler, viewCompiler, viewBuilder, columnCompiler, transaction, wrapIdentifierImpl, acquireRawConnection, destroyRawConnection, validateConnection, _stream, _query, processResponse, cancelQuery, _wrappedCancelQueryCall
+lib/dialects/mysql/query/mysql-querycompiler.js: QueryCompiler_MySQL, constructor, insert, _merge, update, forUpdate, forShare, skipLocked, noWait, columnInfo, output, limit, whereLike, whereILike, jsonExtract, jsonSet, jsonInsert, jsonRemove, whereJsonObject, whereJsonPath, whereJsonSupersetOf, whereJsonSubsetOf, onJsonPathEquals
+lib/dialects/mysql/schema/mysql-columncompiler.js: ColumnCompiler_MySQL, constructor, double, integer, tinyint, text, mediumtext, longtext, enu, datetime, timestamp, time, bit, binary, json, jsonb, defaultTo, unsigned, comment, first, after, collate, checkRegex, increments, bigincrements
+lib/dialects/mysql/schema/mysql-compiler.js: SchemaCompiler_MySQL, constructor, renameTable, renameView, hasTable, hasColumn, output
+lib/dialects/mysql/schema/mysql-tablecompiler.js: TableCompiler_MySQL, constructor, createQuery, comment, changeType, renameColumn, output, primaryKeys, getFKRefs, dropFKRefs, createFKRefs, index, primary, unique, dropIndex, dropForeign, dropPrimary, dropUnique
+lib/dialects/mysql/schema/mysql-viewbuilder.js: ViewBuilder_MySQL, constructor, checkOption, localCheckOption, cascadedCheckOption
+lib/dialects/mysql/schema/mysql-viewcompiler.js: ViewCompiler_MySQL, constructor, createOrReplace
+lib/dialects/mysql/transaction.js: Transaction_MySQL, query
+lib/dialects/mysql2/index.js: Client_MySQL2, transaction, _driver, validateConnection
+lib/dialects/mysql2/transaction.js: Transaction_MySQL2, query
+lib/dialects/oracle/index.js: Client_Oracle, schemaCompiler, columnBuilder, columnCompiler, tableCompiler, database, positionBindings, _stream, alias, parameter
+lib/dialects/oracle/query/oracle-querycompiler.js: QueryCompiler_Oracle, constructor, insert, update, truncate, forUpdate, forShare, columnInfo, output, select, aggregate, _addReturningToSqlAndConvert, _surroundQueryWithLimitAndOffset
+lib/dialects/oracle/schema/internal/incrementUtils.js: createAutoIncrementTriggerAndSequence
+lib/dialects/oracle/schema/oracle-columnbuilder.js: ColumnBuilder_Oracle, constructor, checkIn
+lib/dialects/oracle/schema/oracle-columncompiler.js: ColumnCompiler_Oracle, constructor, increments, bigincrements, floating, double, decimal, integer, enu, datetime, timestamp, bool, varchar, comment, checkIn
+lib/dialects/oracle/schema/oracle-compiler.js: SchemaCompiler_Oracle, constructor, renameTable, hasTable, output, hasColumn, dropSequenceIfExists, _dropRelatedSequenceIfExists, dropTable, dropTableIfExists, dropViewIfExists, dropObject, refreshMaterializedView, dropMaterializedView, dropMaterializedViewIfExists
+lib/dialects/oracle/schema/oracle-tablecompiler.js: TableCompiler_Oracle, constructor, addColumns, renameColumn, compileAdd, createQuery, comment, dropColumn, _indexCommand, primary, dropPrimary, index, dropIndex, unique, dropUnique, dropForeign
+lib/dialects/oracle/utils.js: generateCombinedName, wrapSqlWithCatch, ReturningHelper, isConnectionError
+lib/dialects/oracledb/index.js: resolveConnectString, Client_Oracledb, updateOutBinds, constructor, _driver, queryCompiler, tableCompiler, columnCompiler, viewBuilder, viewCompiler, formatter, transaction, prepBindings, parameter, acquireRawConnection, destroyRawConnection, _query, processResponse, processPassedConnection
+lib/dialects/oracledb/query/oracledb-querycompiler.js: Oracledb_Compiler, insert, each, with, _addReturningToSqlAndConvert, _prepOutbindings, _groupOrder, update, _jsonPathWrap, jsonExtract, jsonSet, jsonInsert, jsonRemove, whereJsonPath, whereJsonSupersetOf, whereJsonSubsetOf, onJsonPathEquals
+lib/dialects/oracledb/schema/oracledb-columncompiler.js: ColumnCompiler_Oracledb, constructor, datetime, timestamp, checkRegex, json, jsonb
+lib/dialects/oracledb/schema/oracledb-tablecompiler.js: TableCompiler_Oracledb, constructor, _setNullableState
+lib/dialects/oracledb/schema/oracledb-viewbuilder.js: ViewBuilder_Oracledb, constructor, checkOption
+lib/dialects/oracledb/schema/oracledb-viewcompiler.js: ViewCompiler_Oracledb, constructor, createOrReplace, createMaterializedView
+lib/dialects/oracledb/transaction.js: begin, commit, release, rollback, savepoint, acquireConnection
+lib/dialects/oracledb/utils.js: BlobHelper, readStream, monkeyPatchConnection, lobProcessing, fetchRowsFromRS, closeResultSet
+lib/dialects/pgnative/index.js: Client_PgNative, constructor, _driver, _stream, cancelQuery, _wrappedCancelQueryCall
+lib/dialects/postgres/execution/pg-transaction.js: Transaction_PG, begin
+lib/dialects/postgres/index.js: arrayString, Client_PG, constructor, transaction, queryBuilder, queryCompiler, columnCompiler, schemaCompiler, tableCompiler, viewCompiler, viewBuilder, _driver, wrapIdentifierImpl, _acquireOnlyConnection, acquireRawConnection, destroyRawConnection, checkVersion, _parseVersion, positionBindings, setSchemaSearchPath, _stream, _query, processResponse, cancelQuery, _wrappedCancelQueryCall, toPathForJson, escapeArray, escapeString, escapeObject
+lib/dialects/postgres/query/pg-querybuilder.js: using, withMaterialized, withNotMaterialized
+lib/dialects/postgres/query/pg-querycompiler.js: QueryCompiler_PG, constructor, truncate, insert, update, using, del, aggregate, _returning, _ignore, _merge, _tableNames, _lockingClause, _groupOrder, forUpdate, forShare, forNoKeyUpdate, forKeyShare, skipLocked, noWait, columnInfo, _buildColumnInfoQuery, output, distinctOn, jsonExtract, jsonSet, jsonInsert, jsonRemove, whereJsonPath, whereJsonSupersetOf, whereJsonSubsetOf, onJsonPathEquals
+lib/dialects/postgres/schema/pg-columncompiler.js: jsonColumn, ColumnCompiler_PG, constructor, bit, enu, decimal, json, jsonb, checkRegex, datetime, timestamp, comment, increments, bigincrements, uuid
+lib/dialects/postgres/schema/pg-compiler.js: SchemaCompiler_PG, constructor, hasTable, output, hasColumn, qualifiedTableName, renameTable, createSchema, createSchemaIfNotExists, dropSchema, dropSchemaIfExists, dropExtension, dropExtensionIfExists, createExtension, createExtensionIfNotExists, renameView, refreshMaterializedView, dropMaterializedView, dropMaterializedViewIfExists
+lib/dialects/postgres/schema/pg-tablecompiler.js: TableCompiler_PG, constructor, renameColumn, _setNullableState, compileAdd, createQuery, primaryKeys, addColumns, _addColumn, comment, primary, unique, index, dropPrimary, dropIndex, dropUnique, dropForeign
+lib/dialects/postgres/schema/pg-viewbuilder.js: ViewBuilder_PG, constructor, checkOption, localCheckOption, cascadedCheckOption
+lib/dialects/postgres/schema/pg-viewcompiler.js: ViewCompiler_PG, constructor, renameColumn, defaultTo, createOrReplace, createMaterializedView
+lib/dialects/redshift/index.js: Client_Redshift, transaction, queryCompiler, columnBuilder, columnCompiler, tableCompiler, schemaCompiler, viewCompiler, _driver, processResponse, toPathForJson
+lib/dialects/redshift/query/redshift-querycompiler.js: QueryCompiler_Redshift, truncate, insert, update, del, _slightReturn, forUpdate, forShare, forNoKeyUpdate, forKeyShare, columnInfo, jsonExtract, jsonSet, jsonInsert, jsonRemove, whereJsonPath, whereJsonSupersetOf, whereJsonSubsetOf, onJsonPathEquals
+lib/dialects/redshift/schema/redshift-columnbuilder.js: ColumnBuilder_Redshift, constructor, primary, index
+lib/dialects/redshift/schema/redshift-columncompiler.js: ColumnCompiler_Redshift, constructor, bit, datetime, timestamp, comment
+lib/dialects/redshift/schema/redshift-compiler.js: SchemaCompiler_Redshift, constructor
+lib/dialects/redshift/schema/redshift-tablecompiler.js: TableCompiler_Redshift, constructor, index, dropIndex, createQuery, primary, addColumns
+lib/dialects/redshift/schema/redshift-viewcompiler.js: ViewCompiler_Redshift, constructor
+lib/dialects/redshift/transaction.js: begin, savepoint, release, rollbackTo
+lib/dialects/sqlite3/execution/sqlite-transaction.js: Transaction_Sqlite, begin
+lib/dialects/sqlite3/index.js: Client_SQLite3, constructor, _driver, schemaCompiler, transaction, queryCompiler, queryBuilder, viewCompiler, columnCompiler, tableCompiler, ddl, wrapIdentifierImpl, acquireRawConnection, destroyRawConnection, _query, _stream, processResponse, poolDefaults, formatter, values
+lib/dialects/sqlite3/query/sqlite-querybuilder.js: withMaterialized, withNotMaterialized
+lib/dialects/sqlite3/query/sqlite-querycompiler.js: QueryCompiler_SQLite3, constructor, insert, update, _ignore, _merge, _returning, truncate, output, columnInfo, limit, jsonExtract, jsonSet, jsonInsert, jsonRemove, whereJsonPath, whereJsonSupersetOf, whereJsonSubsetOf, onJsonPathEquals
+lib/dialects/sqlite3/schema/ddl.js: SQLite3_DDL, constructor, tableName, getTableSql, isForeignCheckEnabled, setForeignCheck, renameTable, dropOriginal, copyData, alterColumn, dropColumn, dropForeign, dropPrimary, primary, foreign, setNullable, alter, generateAlterCommands
+lib/dialects/sqlite3/schema/internal/compiler.js: compileCreateTable, compileCreateIndex, createTable, temporary, rowid, columnDefinitionList, columnDefinition, typeName, columnConstraintList, primaryColumnConstraint, autoincrement, notnullColumnConstraint, nullColumnConstraint, uniqueColumnConstraint, checkColumnConstraint, defaultColumnConstraint, collateColumnConstraint, referencesColumnConstraint, asColumnConstraint, tableConstraintList, tableConstraint, primaryTableConstraint, uniqueTableConstraint, conflictClause, checkTableConstraint, foreignTableConstraint, foreignKeyClause, columnNameListOptional, columnNameList, deleteUpdateMatchList, deleteReference, updateReference, matchReference, deferrable, constraintName, createIndex, unique, exists, schema, index, table, where, indexedColumnList, indexedColumn, indexedColumnExpression, collation, order, indexedExpression, expression, identifier
+lib/dialects/sqlite3/schema/internal/parser-combinator.js: s, a, m, o, l, n, t, e, f
+lib/dialects/sqlite3/schema/internal/parser.js: parseCreateTable, parseCreateIndex, createTable, temporary, rowid, columnDefinitionList, columnDefinition, typeName, columnConstraintList, columnConstraint, primaryColumnConstraint, autoincrement, notnullColumnConstraint, nullColumnConstraint, uniqueColumnConstraint, checkColumnConstraint, defaultColumnConstraint, collateColumnConstraint, referencesColumnConstraint, asColumnConstraint, tableConstraintList, tableConstraint, primaryTableConstraint, uniqueTableConstraint, conflictClause, checkTableConstraint, foreignTableConstraint, foreignKeyClause, columnNameListOptional, columnNameList, deleteReference, updateReference, matchReference, deferrable, constraintName, createIndex, unique, exists, schema, index, table, where, indexedColumnList, indexedColumn, indexedColumnExpression, collation, order, indexedExpression, expression, identifier, onAction, literalValue, signedNumber
+lib/dialects/sqlite3/schema/internal/sqlite-ddl-operations.js: copyData, dropOriginal, renameTable, getTableSql, isForeignCheckEnabled, setForeignCheck, executeForeignCheck
+lib/dialects/sqlite3/schema/internal/tokenizer.js: tokenize
+lib/dialects/sqlite3/schema/internal/utils.js: isEqualId, includesId
+lib/dialects/sqlite3/schema/sqlite-columncompiler.js: ColumnCompiler_SQLite3, constructor, enu, _pushAlterCheckQuery, checkRegex
+lib/dialects/sqlite3/schema/sqlite-compiler.js: SchemaCompiler_SQLite3, constructor, hasTable, hasColumn, output, renameTable, generateDdlCommands
+lib/dialects/sqlite3/schema/sqlite-tablecompiler.js: TableCompiler_SQLite3, constructor, createQuery, addColumns, statementsProducer, dropUnique, dropForeign, output, dropPrimary, dropIndex, unique, index, primary, foreign, primaryKeys, foreignKeys, createTableBlock, renameColumn, _setNullableState, dropColumn
+lib/dialects/sqlite3/schema/sqlite-viewcompiler.js: ViewCompiler_SQLite3, constructor, createOrReplace
+lib/execution/batch-insert.js: batchInsert, runInTransaction, returning, transacting
+lib/execution/internal/ensure-connection-callback.js: ensureConnectionCallback, ensureConnectionStreamCallback
+lib/execution/internal/query-executioner.js: formatQuery, enrichQueryObject, executeQuery, debugQuery
+lib/execution/runner.js: Runner, constructor, run, stream, pipe, query, queryArray, ensureConnection
+lib/execution/transaction.js: DEFAULT_CONFIG, makeTransactor, makeTxClient, completedError, Transaction, isCompleted, begin, savepoint, commit, release, setIsolationLevel, rollback, rollbackTo, query, debug, _evaluateContainer, acquireConnection, then, asCallback
+lib/formatter/formatterUtils.js: compileCallback, wrapAsIdentifier, formatDefault
+lib/formatter/rawFormatter.js: replaceRawArrBindings, replaceKeyBindings
+lib/formatter/wrappingFormatter.js: columnize, wrap, unwrapRaw, operator, wrapString, parseObject, outputQuery, rawOrFn, direction
+lib/formatter.js: Formatter, constructor, columnize, wrap
+lib/knex-builder/FunctionHelper.js: FunctionHelper, constructor, now, uuidToBin, binToUuid
+lib/knex-builder/internal/config-resolver.js: resolveConfig
+lib/knex-builder/internal/parse-connection.js: tryParse, connectionObject
+lib/knex-builder/Knex.js: knex
+lib/knex-builder/make-knex.js: makeKnex, knex, initContext, _copyEventListeners, redefineProperties, _addInternalListener, createQueryBuilder, shallowCloneFunction, knexFnWrapper, get, set, queryBuilder, raw, batchInsert, transaction, _transaction, transactionProvider, initialize, destroy, ref, disableProcessing, enableProcessing, withUserParams
+lib/logger.js: resolveIsEnabledColors, Logger, constructor, _log, debug, warn, error, deprecate
+lib/migrations/common/MigrationsLoader.js: AbstractMigrationsLoader, constructor, getFile
+lib/migrations/migrate/migrate-stub.js: noSuchMethod
+lib/migrations/migrate/migration-list-resolver.js: listAll, listCompleted, listAllAndCompleted
+lib/migrations/migrate/MigrationGenerator.js: MigrationGenerator, constructor, make, _ensureFolder, _getStubPath, _getNewMigrationName, _getNewMigrationPath, _writeNewMigration, _absoluteConfigDirs
+lib/migrations/migrate/migrator-configuration-merger.js: getMergedConfig
+lib/migrations/migrate/Migrator.js: validateMigrationList, getMissingMigrations, getNewMigrations, checkPromise, LockError, Migrator, getLockTable, constructor, latest, up, rollback, down, status, currentVersion, list, forceFreeMigrationsLock, make, _disableProcessing, _lockMigrations, _getLock, _freeLock, _runBatch, _validateMigrationStructure, _getLastBatch, _latestBatchNumber, _useTransaction, _waterfallBatch, _transaction
+lib/migrations/migrate/sources/fs-migrations.js: filterMigrations, FsMigrations, getMigrations, getMigrationName, getMigration
+lib/migrations/migrate/table-creator.js: ensureTable, _createMigrationTable, _createMigrationLockTable, _insertLockRowIfNeeded, getSchemaBuilder
+lib/migrations/migrate/table-resolver.js: getTableName, getTable, getLockTableName, getLockTableNameWithSchema
+lib/migrations/seed/seed-stub.js: noSuchMethod
+lib/migrations/seed/seeder-configuration-merger.js: getMergedConfig
+lib/migrations/seed/Seeder.js: Seeder, constructor, run, make, _ensureFolder, _runSeeds, _validateSeedStructure, _getStubPath, _getNewStubFileName, _getNewStubFilePath, _writeNewSeed, _listAll, _waterfallBatch, resolveConfig
+lib/migrations/seed/sources/fs-seeds.js: FsSeeds, filterByLoadExtensions, _getConfigDirectories, getSeeds, getSeed
+lib/migrations/util/fs.js: existsSync, createTemp, ensureDirectoryExists, getFilepathsInFolder
+lib/migrations/util/template.js: jsSourceTemplate, jsFileTemplate
+lib/migrations/util/timestamp.js: yyyymmddhhmmss
+lib/query/analytic.js: Analytic, constructor, partitionBy, orderBy
+lib/query/joinclause.js: getClauseFromArguments, JoinClause, constructor, on, orOn, onJsonPathEquals, orOnJsonPathEquals, using, onVal, andOnVal, orOnVal, onBetween, onNotBetween, orOnBetween, orOnNotBetween, onIn, onNotIn, orOnIn, orOnNotIn, onNull, orOnNull, onNotNull, orOnNotNull, onExists, orOnExists, onNotExists, orOnNotExists, type, _bool, _not
+lib/query/querybuilder.js: Builder, OnConflictBuilder, constructor, toString, toSQL, clone, timeout, isValidStatementArg, _validateWithArgs, with, withMaterialized, withNotMaterialized, withWrapped, withRecursive, withRecursiveWrapped, columns, as, hintComment, withSchema, table, distinct, distinctOn, join, using, innerJoin, leftJoin, leftOuterJoin, rightJoin, rightOuterJoin, outerJoin, fullOuterJoin, crossJoin, joinRaw, where, whereColumn, orWhere, orWhereColumn, whereNot, whereNotColumn, orWhereNot, orWhereNotColumn, _objectWhere, whereRaw, orWhereRaw, whereWrapped, whereExists, orWhereExists, whereNotExists, orWhereNotExists, whereIn, orWhereIn, whereNotIn, orWhereNotIn, whereNull, orWhereNull, whereNotNull, orWhereNotNull, whereBetween, whereNotBetween, orWhereBetween, orWhereNotBetween, _whereLike, whereLike, orWhereLike, whereILike, orWhereILike, groupBy, groupByRaw, orderBy, _orderByArray, orderByRaw, _union, union, unionAll, intersect, having, orHaving, havingWrapped, havingNull, orHavingNull, havingNotNull, orHavingNotNull, havingExists, orHavingExists, havingNotExists, orHavingNotExists, havingBetween, orHavingBetween, havingNotBetween, orHavingNotBetween, havingIn, orHavingIn, havingNotIn, orHavingNotIn, havingRaw, orHavingRaw, _setSkipBinding, offset, limit, count, min, max, sum, avg, countDistinct, sumDistinct, avgDistinct, increment, decrement, clearCounters, first, connection, pluck, clearSelect, clearWhere, clearGroup, clearOrder, clearHaving, clear, insert, update, returning, onConflict, delete, truncate, columnInfo, forUpdate, forShare, forNoKeyUpdate, forKeyShare, skipLocked, noWait, fromJS, fromRaw, modify, upsert, _json, jsonExtract, jsonSet, jsonInsert, jsonRemove, _isJsonObject, _whereJsonWrappedValue, whereJsonObject, orWhereJsonObject, whereNotJsonObject, orWhereNotJsonObject, whereJsonPath, orWhereJsonPath, whereJsonSupersetOf, whereJsonNotSupersetOf, orWhereJsonSupersetOf, orWhereJsonNotSupersetOf, whereJsonSubsetOf, whereJsonNotSubsetOf, orWhereJsonSubsetOf, orWhereJsonNotSubsetOf, whereJsonHasNone, _analytic, rank, denseRank, rowNumber, _counter, _bool, _not, _joinType, _analyticMethod, _aggregate, _clearGrouping, _isSelectQuery, _hasLockMode, ignore, merge, then
+lib/query/querycompiler.js: QueryCompiler, wrap, addAlias, aggregateArray, aggregateString, constructor, toSQL, select, pluck, insert, _onConflictClause, _buildInsertValues, _insertBody, update, _hintComments, columns, _aggregate, aggregate, aggregateRaw, _joinTable, join, onBetween, onNull, onExists, onIn, multiOnIn, where, group, order, having, havingRaw, havingWrapped, havingBasic, havingNull, havingExists, havingBetween, havingIn, multiHavingIn, union, onlyUnions, _getValueOrParameterFromAttribute, onlyJson, limit, offset, del, truncate, lock, waitMode, skipLocked, noWait, distinctOn, onWrapped, onBasic, onVal, onRaw, onUsing, _valueClause, _columnClause, whereIn, whereLike, whereILike, whereNull, whereBasic, whereExists, whereWrapped, whereBetween, whereRaw, _jsonWrapValue, _jsonValueClause, whereJsonObject, json, analytic, map, with, withWrapped, _not, _prepInsert, _prepUpdate, _formatGroupsItemValue, _basicGroupOrder, _groupOrder, _groupOrderNulls, _groupsOrders, _jsonPathWrap, _jsonExtract, _jsonSet, _whereJsonPath, _onJsonPathEquals
+lib/raw.js: Raw, constructor, set, timeout, wrap, toString, toSQL
+lib/ref.js: Ref, constructor, withSchema, as, toSQL
+lib/schema/builder.js: SchemaBuilder, constructor, withSchema, toString, toSQL, generateDdlCommands
+lib/schema/columnbuilder.js: notNullable, ColumnBuilder, constructor, references
+lib/schema/columncompiler.js: ColumnCompiler, constructor, _addCheckModifiers, defaults, toSQL, compileColumn, getColumnName, getColumnType, getModifiers, varchar, floating, decimal, specifictype, nullable, notNullable, defaultTo, increments, bigincrements, _pushAlterCheckQuery, _checkConstraintName, _check, checkPositive, checkNegative, _checkIn, checkIn, checkNotIn, checkBetween, checkLength
+lib/schema/compiler.js: build, buildTable, buildView, prefixedTableName, throwOnlyPGError, SchemaCompiler, constructor, createSchema, createSchemaIfNotExists, dropSchema, dropSchemaIfExists, dropTable, dropTableIfExists, dropView, dropViewIfExists, dropMaterializedView, dropMaterializedViewIfExists, renameView, refreshMaterializedView, _dropView, raw, toSQL, generateDdlCommands
+lib/schema/internal/helpers.js: pushQuery, pushAdditional, unshiftQuery
+lib/schema/tablebuilder.js: TableBuilder, constructor, setSchema, toSQL, timestamps, comment, foreign, references, on, inTable, withKeyName, onUpdate, onDelete, _columnBuilder, check, each, renameColumn, dropTimestamps, setNullable, dropChecks, dropNullable
+lib/schema/tablecompiler.js: TableCompiler, constructor, toSQL, create, createIfNot, createLike, createLikeIfNot, alter, foreign, getColumnTypes, columnQueries, addColumns, alterColumns, getColumns, tableName, tableNameLike, alterTable, alterTableForCreate, dropIndex, dropUnique, dropForeign, dropColumn, _setNullableState, setNullable, dropNullable, dropChecks, check, _addChecks, _indexCommand, _getPrimaryKeys, _canBeAddPrimaryKey, _getIncrementsColumnNames
+lib/schema/viewbuilder.js: ViewBuilder, constructor, setSchema, columns, as, checkOption, localCheckOption, cascadedCheckOption, toSQL, column
+lib/schema/viewcompiler.js: ViewCompiler, constructor, toSQL, create, createOrReplace, createMaterializedView, createQuery, renameView, refreshMaterializedView, alter, alterView, renameColumn, defaultTo, viewName
+lib/util/finally-mixin.js: finallyMixin, finally
+lib/util/helpers.js: normalizeArr, containsUndefined, getUndefinedIndices, addQueryContext, resolveClientNameWithAliases, toNumber
+lib/util/is.js: isString, isNumber, isBoolean, isUndefined, isObject, isFunction
+lib/util/nanoid.js: nanoid, nanonum
+lib/util/string.js: wrapEscape, makeEscape, escapeFn, escapeObject, arrayToList, bufferToString, escapeString, dateToString, zeroPad, convertTimezone
+lib/util/timeout.js: timeout [export], wrappedResolve, wrappedReject, KnexTimeoutError [export], constructor
+scripts/build.js: exec
+scripts/clean.js: main, doesDirectoryExist
+scripts/stress-test/knex-stress-test.js: setQueryCounters, killConnectionsPg, killConnectionsMyslq, killConnectionsMssql, main, loopQueries, recreateProxy, recreateProxies, queries
+scripts/stress-test/mysql2-random-hanging-every-now-and-then.js: stdMysqlQuery, mysql2Query, setMysqlQueryCounters, recreateProxy, main, loopQueries
+scripts/stress-test/mysql2-sudden-exit-without-error.js: recreateProxy, insanelyParanoidQuery, main
+scripts/stress-test/reconnect-test-mysql-based-drivers.js: stdMysqlQuery, mysqlQuery, mysql2Query, setMysqlQueryCounters, main, recreateProxy, recreateProxies, loopQueries
+scripts/update_gitignore_for_tsc_output.js: main

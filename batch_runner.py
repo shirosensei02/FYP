@@ -36,6 +36,70 @@ def parse_package(spec: str) -> Package:
     return name, version
 
 
+def _clip(text: str, limit: int = 240) -> str:
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
+
+def _execution_log(execution: Any, label: str) -> list[str]:
+    """Return the captured Docker output for one oracle sandbox."""
+    if not isinstance(execution, dict):
+        return []
+    stdout = str(execution.get("stdout") or "").strip()
+    stderr = str(execution.get("stderr") or "").strip()
+    evidence = str(execution.get("evidence") or "").strip()
+    body = "\n".join(part for part in (stderr, stdout) if part)
+    if not body:
+        body = evidence
+    if not body:
+        return []
+    return [f"{label} log:", *body.splitlines()]
+
+
+def oracle_failure_summaries(state: Mapping[str, Any]) -> list[str]:
+    """Compact fail reasons from oracle authoring and the locked-oracle check."""
+    lines: list[str] = []
+    for attempt in state.get("oracle_attempts") or []:
+        if not isinstance(attempt, dict):
+            continue
+        generation = attempt.get("generation") if isinstance(attempt.get("generation"), dict) else {}
+        validation = attempt.get("validation") if isinstance(attempt.get("validation"), dict) else {}
+        generation_status = generation.get("status")
+        validation_status = validation.get("status")
+        if generation_status in {"generated", "accepted"} and validation_status == "VALID":
+            continue
+        if generation_status is None and validation_status is None:
+            continue
+        vulnerable = validation.get("vulnerable") if isinstance(validation.get("vulnerable"), dict) else {}
+        fixed = validation.get("fixed") if isinstance(validation.get("fixed"), dict) else {}
+        sides = ""
+        if vulnerable.get("status") or fixed.get("status"):
+            sides = (
+                f" vulnerable={vulnerable.get('status') or 'not-run'}"
+                f" fixed={fixed.get('status') or 'not-run'}"
+            )
+        status = validation_status or generation_status or "unknown"
+        detail = validation.get("reason") or generation.get("explanation") or ""
+        separator = " — " if detail else ""
+        lines.append(_clip(
+            f"oracle attempt {attempt.get('attempt_number', '?')}: {status}{sides}{separator}{detail}"
+        ))
+        lines.extend(_execution_log(vulnerable, "vulnerable"))
+        lines.extend(_execution_log(fixed, "maintainer"))
+
+    patch_oracle = state.get("generated_patch_oracle_validation")
+    if isinstance(patch_oracle, dict) and patch_oracle.get("status") in {
+        "SECURITY_FAIL", "REGRESSION", "INCONCLUSIVE",
+    }:
+        detail = patch_oracle.get("reason") or ""
+        separator = " — " if detail else ""
+        lines.append(_clip(f"patch oracle: {patch_oracle.get('status')}{separator}{detail}"))
+        lines.extend(_execution_log(patch_oracle.get("execution"), "patch oracle"))
+    return lines
+
+
 def should_start_run(spent: float, completed: int, cost_cap: float) -> bool:
     """Return whether another fresh sample fits under the cap.
 
@@ -208,6 +272,7 @@ def run_batch(
             error = f"{type(exc).__name__}: {exc}"
         cost = float(final.get("run_cost") or 0)
         spent += cost
+        oracle_failures = oracle_failure_summaries(final)
         completed.append(
             {
                 "package_name": package_name,
@@ -216,6 +281,7 @@ def run_batch(
                 "run_index": run_index,
                 "classification": final.get("classification"),
                 "classification_reason": final.get("classification_reason"),
+                "oracle_failures": oracle_failures,
                 "retry_count": final.get("retry_count", 0),
                 "run_cost": cost,
                 "spent": spent,
@@ -271,6 +337,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"retries={run['retry_count']} "
             f"cost={run['run_cost']:.6f} spent={run['spent']:.6f}"
         )
+        for failure in run.get("oracle_failures") or []:
+            print(f"  {failure}")
         if run["error"]:
             print(f"  error: {run['error']}")
     print(

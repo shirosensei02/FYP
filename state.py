@@ -105,11 +105,70 @@ class AdversarialEvaluation(TypedDict, total=False):
     status: Literal["evaluated", "uncertain"]
     evaluator_provider: str
     evaluator_model: str
-    test_suite_pass: Literal["pass", "fail"]
+    test_suite_pass: Literal["pass", "fail", "skipped"]
     genuine_fix: Literal["true", "false", "uncertain"]
     reasoning: str
     evidence: list[str]
     evaluation_error: str | None
+
+
+class OracleSpec(TypedDict, total=False):
+    """Generated external security regression test."""
+    status: Literal["generated", "accepted", "invalid", "rejected", "skipped", "failed"]
+    attempt_number: int
+    language: Literal["javascript"]
+    source: str
+    explanation: str
+    requirements: list[Literal[
+        "requires_git_repository",
+        "requires_writable_tmp",
+        "requires_fixture_files",
+    ]]
+    timeout_seconds: int
+    model_used: str | None
+
+
+class OracleExecutionResult(TypedDict, total=False):
+    status: Literal[
+        "EXPLOIT_SUCCEEDED",
+        "EXPLOIT_BLOCKED",
+        "INFRA_ERROR",
+        "OPERATION_FAILED",
+        "TIMEOUT",
+        "INCONCLUSIVE",
+    ]
+    failure_kind: Literal["infrastructure", "operation", "protocol", "resource"] | None
+    operation_completed: bool
+    exploit_succeeded: bool | None
+    evidence: str
+    exit_code: int | None
+    stdout: str
+    stderr: str
+    timed_out: bool
+
+
+class OracleValidationResult(TypedDict, total=False):
+    status: Literal["VALID", "INVALID", "SKIPPED", "ERROR"]
+    reason: str
+    vulnerable: OracleExecutionResult | None
+    fixed: OracleExecutionResult | None
+    guidance: list[str]
+
+
+class GeneratedPatchOracleResult(TypedDict, total=False):
+    status: Literal["SECURITY_PASS", "SECURITY_FAIL", "REGRESSION", "INCONCLUSIVE", "SKIPPED"]
+    reason: str
+    execution: OracleExecutionResult | None
+
+class FinalEvaluation(TypedDict):
+    category: Literal["supported_fix", "needs_verification", "security_failure", "functional_failure", "inconclusive"]
+    oracle_status: str
+    oracle_applicable: bool
+    adversarial_verdict: str
+    adversarial_reported_verdict: str | None
+    compatibility_status: str
+    reason: str
+
 
 class GraphState(TypedDict, total=False):
     # config
@@ -135,11 +194,43 @@ class GraphState(TypedDict, total=False):
     # 2b) official / vendor patch (answer key) — not consumed by patch_generation
     answer_key: AnswerKey
 
+    # 2d) generated security regression oracle and baseline evidence
+    oracle_candidate: OracleSpec | None
+    accepted_oracle: OracleSpec | None
+    oracle_attempts: list[dict[str, Any]]
+    oracle_attempt_count: int
+    max_oracle_attempts: int
+    oracle_feedback: dict[str, Any] | None
+    oracle_validation: OracleValidationResult | None
+
     # 2c) vulnerability localization
     localized_files: list[str]
     localized_context_files: list[dict[str, str]]
     localization_status: Literal["localized", "skipped", "failed"] | None
     localization_reasoning: str | None
+
+    # 2d) package graph and locator. debug_locations is the handoff to patch generation.
+    repo_graph_ready: bool
+    repo_graph_summary: str
+    graph_request: dict[str, Any] | None
+    graph_result: dict[str, Any] | None
+    graph_return: str | None
+    locate_status: Literal["running", "ranked", "cannot_locate", "capped"] | None
+    locate_sample: int
+    locate_rounds: int
+    locate_samples: list[list[dict[str, Any]]]
+    locate_trace: list[dict[str, Any]]
+    located_entities: list[dict[str, Any]]
+    generation_graph_fetches: int
+    symbol_catalog: str
+    debug_status: Literal["running", "located", "cannot_locate", "capped"] | None
+    debug_rounds: int
+    debug_body_loads: int
+    debug_in_prompt: list[dict[str, str]]
+    debug_retrieved: list[dict[str, str]]
+    debug_actions: list[dict[str, Any]]
+    debug_request: dict[str, Any] | None
+    debug_locations: list[dict[str, str]]
 
     # 3) patch generation
     context_file_paths: list[str]
@@ -172,8 +263,11 @@ class GraphState(TypedDict, total=False):
     ] | None
 
     # 7) classification
-    classification: Literal["pass", "fail"] | None
+    classification: Literal["pass", "fail", "inconclusive"] | None
+    final_evaluation: FinalEvaluation | None
     classification_reason: str | None
+    compatibility_classification: Literal["pass", "fail"] | None
+    security_validation: Literal["PASS", "FAIL", "INCONCLUSIVE", "SKIPPED"] | None
 
     # 8) generated patch vs official answer key
     patch_score: PatchScore
@@ -182,6 +276,7 @@ class GraphState(TypedDict, total=False):
     maintainer_eval: MaintainerEvalResult | None
 
     adversarial_evaluation: AdversarialEvaluation
+    generated_patch_oracle_validation: GeneratedPatchOracleResult | None
     mongo_id: str | None
 
     # control flow / bookkeeping
@@ -189,6 +284,8 @@ class GraphState(TypedDict, total=False):
     attempt_record_id: str
     attempt_error_start: int
     patch_applied: bool | None
+    # Package tests are skipped when the locked oracle still fails.
+    package_tests_skipped: bool | None
     retry_count: int
     max_retries: int
     # USD spent by model calls in this run, including retries.

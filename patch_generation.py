@@ -47,6 +47,8 @@ MAX_SOURCE_CONTEXT_CHARS = 64_000
 MAX_DEPENDENCY_CONTEXT_FILES = 16
 MAX_OPENROUTER_CONTEXT_CHARS = 64_000
 OPENROUTER_MAX_TOKENS = 64_000
+MAX_PATCH_GRAPH_FETCHES = 3
+_GRAPH_TOOLS = {"SearchEntity", "TraverseGraph", "RetrieveEntity"}
 ANCHOR_CONTEXT_BEFORE_CHARS = 1_000
 ANCHOR_CONTEXT_AFTER_CHARS = 5_000
 # Temporarily disabled for debugging: patch_application still attempts to
@@ -104,6 +106,11 @@ def _select_vulnerabilities(state: GraphState) -> list[Vulnerability]:
 
     target = _pick_target_vulnerability(vulnerabilities)
     return [target] if target else []
+
+
+def _focus_terms(vulnerabilities: list[Vulnerability]) -> set[str]:
+    """Backward-compatible public helper for advisory term extraction."""
+    return extract_focus_terms(vulnerabilities)
 
 
 def _source_excerpt(contents: str, focus_terms: set[str]) -> str:
@@ -296,8 +303,12 @@ def _build_messages(
         "You generate minimal security patches for npm packages. "
         "Return valid JSON only. Return exact text replacements, not a unified diff. "
         "Only change files that are necessary for the fix. Use only exact source lines supplied "
-        "in the repository context; never invent surrounding code or apply a remembered upstream patch."
-        "DO NOT try to infer what package and version this is from, just look at the context file and generate lines correctly"
+        "in the repository context; never invent surrounding code or apply a remembered upstream patch. "
+        "DO NOT try to infer what package and version this is from, just look at the context file and generate lines correctly. "
+        "If you need a caller, callee, or definition that is not in the supplied source, return "
+        '{"action":"tool","tool":"SearchEntity"|"TraverseGraph"|"RetrieveEntity","arguments":{...}} '
+        "instead of edits. SearchEntity takes keywords and detail. TraverseGraph takes start_ids, "
+        "direction, hops, entity_types, and relation_types. RetrieveEntity takes entity_ids."
     )
     user_payload = {
         "patch_scope": state.get("patch_scope", "single"),
@@ -316,6 +327,8 @@ def _build_messages(
         user_payload["previous_failure_context"] = history
     if repair_feedback:
         user_payload["repair_feedback"] = repair_feedback
+    if state.get("graph_result"):
+        user_payload["graph_result"] = state.get("graph_result")
     return [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": json.dumps(user_payload)},
@@ -357,6 +370,8 @@ def _build_openrouter_prompt(
             "this exact error:\n"
             f"{repair_feedback}\n"
         )
+    if state.get("graph_result"):
+        prompt += "\n\nGraph tool result:\n" + json.dumps(state.get("graph_result"), ensure_ascii=False)[:12_000]
     logger.info("OpenRouter rendered prompt:\n%s", prompt)
     return prompt
 
@@ -366,6 +381,9 @@ def _parse_patch_response(content: str) -> dict[str, Any] | None:
         payload = json.loads(content)
     except json.JSONDecodeError:
         payload = None
+    if isinstance(payload, dict) and payload.get("action") == "tool" and payload.get("tool") in _GRAPH_TOOLS:
+        arguments = payload.get("arguments") if isinstance(payload.get("arguments"), dict) else {}
+        return {"action": "tool", "tool": payload["tool"], "arguments": arguments}
     if isinstance(payload, dict):
         if _is_complete_structured_edit_payload(payload):
             return payload
@@ -603,7 +621,10 @@ def _generate_with_openrouter(
         "You are a patch emitter, not an analyst. Return one JSON object and nothing else. "
         'Its only required field is "edits": a non-empty list of objects with `path`, `old_text`, '
         "and `new_text`. `old_text` must be copied exactly from the supplied source. Do not include "
-        "an explanation, summary, Markdown fence, rationale, or unified diff."
+        "an explanation, summary, Markdown fence, rationale, or unified diff. "
+        "If you need a caller, callee, or definition that is not in the supplied source, return "
+        '{"action":"tool","tool":"SearchEntity"|"TraverseGraph"|"RetrieveEntity","arguments":{...}} '
+        "instead of edits."
     )
     messages = [
         {"role": "system", "content": system_message},
@@ -667,6 +688,78 @@ def _split_payload_cost(result: dict[str, Any] | str | tuple) -> tuple[dict[str,
     return result, 0.0
 
 
+def _generate_with_openai(
+    state: GraphState,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+    repair_feedback: str | None = None,
+) -> dict[str, Any] | str:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return "patch_generation: OPENAI_API_KEY is not set"
+    response = OpenAI(api_key=api_key).chat.completions.create(
+        model=state.get("model_name", DEFAULT_MODELS["openai"]),
+        response_format={"type": "json_object"},
+        messages=_build_messages(state, selected_vulnerabilities, context_files, repair_feedback),
+    )
+    payload = _parse_patch_response(response.choices[0].message.content or "")
+    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
+
+
+def _generate_with_anthropic(
+    state: GraphState,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+    repair_feedback: str | None = None,
+) -> dict[str, Any] | str:
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        return "patch_generation: anthropic package is not installed"
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return "patch_generation: ANTHROPIC_API_KEY is not set"
+    messages = _build_messages(state, selected_vulnerabilities, context_files, repair_feedback)
+    response = Anthropic(api_key=api_key).messages.create(
+        model=state.get("model_name", DEFAULT_MODELS["anthropic"]),
+        max_tokens=4000,
+        system=messages[0]["content"],
+        messages=[{"role": "user", "content": messages[1]["content"]}],
+    )
+    content = "".join(
+        block.text for block in response.content if getattr(block, "type", "") == "text"
+    )
+    payload = _parse_patch_response(content)
+    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
+
+
+def _generate_with_gemini(
+    state: GraphState,
+    selected_vulnerabilities: list[Vulnerability],
+    context_files: list[dict[str, str]],
+    repair_feedback: str | None = None,
+) -> dict[str, Any] | str:
+    if genai is None:
+        return "patch_generation: google-genai package is not installed"
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return "patch_generation: GEMINI_API_KEY is not set"
+    messages = _build_messages(state, selected_vulnerabilities, context_files, repair_feedback)
+    response = genai.Client(api_key=api_key).models.generate_content(
+        model=state.get("model_name", DEFAULT_MODELS["gemini"]),
+        contents=messages[1]["content"],
+        config={
+            "system_instruction": messages[0]["content"],
+            "response_mime_type": "application/json",
+        },
+    )
+    content = (getattr(response, "text", None) or "").strip()
+    if not content:
+        return "patch_generation: Gemini returned an empty response"
+    payload = _parse_patch_response(content)
+    return payload if payload is not None else "patch_generation: model returned an invalid patch response"
+
+
 def _generate_patch_payload(
     provider: str,
     state: GraphState,
@@ -677,6 +770,18 @@ def _generate_patch_payload(
     """Generate one patch response, optionally including repair feedback."""
     if provider == "mock":
         return _build_mock_payload(Path(state["source_dir"]), selected_vulnerabilities, context_files), 0.0
+    if provider == "openai":
+        return _split_payload_cost(
+            _generate_with_openai(state, selected_vulnerabilities, context_files, repair_feedback)
+        )
+    if provider == "anthropic":
+        return _split_payload_cost(
+            _generate_with_anthropic(state, selected_vulnerabilities, context_files, repair_feedback)
+        )
+    if provider == "gemini":
+        return _split_payload_cost(
+            _generate_with_gemini(state, selected_vulnerabilities, context_files, repair_feedback)
+        )
     if provider == "openrouter":
         return _split_payload_cost(
             _generate_with_openrouter(state, selected_vulnerabilities, context_files, repair_feedback)
@@ -715,6 +820,40 @@ def _structured_edit_feedback(error: str, attempted_files: list[str] | None = No
         f"Validation result: {error[:600]}"
     )
     
+def _graph_request_from_payload(state: GraphState, payload) -> dict[str, Any] | str | None:
+    """Return a repo-graph request, a limit error, or nothing when the payload is a patch."""
+    if not isinstance(payload, dict) or payload.get("action") != "tool" or payload.get("tool") not in _GRAPH_TOOLS:
+        return None
+    if int(state.get("generation_graph_fetches") or 0) >= MAX_PATCH_GRAPH_FETCHES:
+        return "patch_generation: model returned an invalid tool request after the graph fetch limit"
+    arguments = payload.get("arguments") if isinstance(payload.get("arguments"), dict) else {}
+    return {"caller": "patch_generation", "tool": payload["tool"], "arguments": arguments}
+
+
+def _merge_graph_context(context_files: list[dict[str, str]], state: GraphState) -> list[dict[str, str]]:
+    """Add code fetched by the previous graph tool to the generation context."""
+    merged = [dict(item) for item in context_files or [] if isinstance(item, dict)]
+    result = state.get("graph_result")
+    if not isinstance(result, dict):
+        return merged
+    seen = {item.get("path") for item in merged}
+    for entity in result.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        code = str(entity.get("code") or entity.get("snippet") or "")
+        path = str(entity.get("path") or "")
+        if not code or not path:
+            continue
+        if path in seen:
+            for item in merged:
+                if item.get("path") == path and code not in str(item.get("content") or ""):
+                    item["content"] = str(item.get("content") or "") + f"\n\n// {entity.get('id')}\n{code}"
+            continue
+        seen.add(path)
+        merged.append({"path": path, "content": code})
+    return merged
+
+
 def patch_attempt(
     state: GraphState, 
     payload=None, 
@@ -771,11 +910,14 @@ def patch_generation(state: GraphState) -> dict:
     attempt_state = dict(state)
     attempt_state.update({
         "run_attempt_id": state.get("run_attempt_id") or _build_run_attempt_id(state),
+        "final_evaluation": None,
         "validation": None, "adversarial_evaluation": {}, "patch_score": {},
         "classification": None, "classification_reason": None,
         "sandbox_id": None, "sandbox_apply_success": None, "patch_applied": None,
         "patched_source_dir": None, "remaining_vulnerabilities": [],
         "revalidation_artifacts": {}, "current_patch": None,
+        "regression_status": None, "baseline_validation": None, "patched_validation": None,
+        "package_tests_skipped": None, "security_validation": None,
         "generation_status": None, "generation_error": None,
         "attempt_record_id": str(uuid.uuid4()),
         "attempt_error_start": len(state.get("errors", [])),
@@ -783,9 +925,11 @@ def patch_generation(state: GraphState) -> dict:
     })
     result = _patch_generation(attempt_state)
     reset = {key: attempt_state[key] for key in (
-        "validation", "adversarial_evaluation", "patch_score", "classification",
+        "final_evaluation", "validation", "adversarial_evaluation", "patch_score", "classification",
         "classification_reason", "sandbox_id", "sandbox_apply_success", "patch_applied",
         "patched_source_dir", "remaining_vulnerabilities", "revalidation_artifacts",
+        "regression_status", "baseline_validation", "patched_validation",
+        "package_tests_skipped", "security_validation",
         "attempt_record_id", "attempt_error_start", "run_attempt_id", "context_file_paths",
     )}
     reset.update(result)
@@ -819,8 +963,15 @@ def _patch_generation(state: GraphState) -> dict:
             selected_vulnerabilities=selected_vulnerabilities)
     model_name = state.get("model_name", default_model)
 
-    # use vulnerability localization node for context files
-    context_files = state.get("localized_context_files")
+    # Debugger locations are the source slice when the loop found a function.
+    located = [
+        item for item in (state.get("debug_locations") or [])
+        if isinstance(item, dict) and item.get("path") and item.get("body")
+    ]
+    if located:
+        context_files = [{"path": item["path"], "content": item["body"]} for item in located]
+    else:
+        context_files = state.get("localized_context_files")
     if not context_files:
         # localization skipped/failed -> keyword-ranked fallback
         logger.info(
@@ -833,6 +984,7 @@ def _patch_generation(state: GraphState) -> dict:
             extract_focus_terms(selected_vulnerabilities),
         )
     
+    context_files = _merge_graph_context(context_files, state)
     context_file_paths = [f["path"] for f in context_files]
     # Persist file paths fed to the model so downstream nodes can store them.
     state["context_file_paths"] = context_file_paths
@@ -842,6 +994,19 @@ def _patch_generation(state: GraphState) -> dict:
         _generate_patch_payload(provider, state, selected_vulnerabilities, context_files)
     )
     spent += call_cost
+    tool_request = _graph_request_from_payload(state, payload)
+    if tool_request is not None:
+        if isinstance(tool_request, str):
+            payload = tool_request
+        else:
+            return {
+                "graph_request": tool_request,
+                "generation_graph_fetches": int(state.get("generation_graph_fetches") or 0) + 1,
+                "generation_status": None,
+                "generation_error": None,
+                "current_patch": None,
+                "run_cost": spent,
+            }
 
     if isinstance(payload, str):
         if not _is_invalid_patch_response(payload):

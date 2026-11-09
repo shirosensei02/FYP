@@ -147,6 +147,33 @@ def test_validate_workspace_stops_after_install_failure(monkeypatch, tmp_path):
     assert result["tests_passed"] is None
 
 
+def test_apply_patch_writes_files_without_running_package_tests(monkeypatch, tmp_path):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "package.json").write_text('{"name":"demo"}', encoding="utf-8")
+    (source_dir / "index.js").write_text("module.exports = 1\n", encoding="utf-8")
+    monkeypatch.setattr(patch_application_module, "PATCH_WORKSPACE_ROOT", tmp_path / "runs")
+    monkeypatch.setattr(
+        patch_application_module,
+        "_validate_workspace",
+        lambda *args: (_ for _ in ()).throw(AssertionError("package tests must wait for the oracle")),
+    )
+
+    from patch_application import apply_patch
+    result = apply_patch({
+        "package_name": "demo",
+        "package_version": "1.0.0",
+        "source_dir": str(source_dir),
+        "current_patch": {"diff": json.dumps({"index.js": "module.exports = 2\n"})},
+        "errors": [],
+    })
+
+    assert result["patch_applied"] is True
+    assert result["validation"] is None
+    written = Path(result["patched_source_dir"]) / "index.js"
+    assert written.read_text(encoding="utf-8") == "module.exports = 2\n"
+
+
 def test_patch_application_compares_baseline_and_patched(monkeypatch, tmp_path):
     source_dir = tmp_path / "source"
     source_dir.mkdir()

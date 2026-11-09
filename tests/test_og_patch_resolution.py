@@ -1,4 +1,98 @@
-from og_patch_resolution import og_patch_resolution
+from og_patch_resolution import advisory_bug_statement, og_patch_resolution
+
+PIDUSAGE_DESCRIPTION = """### Overview
+Affected versions of pidusage pass unsanitized input to `child_process.exec()`, resulting in arbitrary code execution in the `ps` method.
+
+This package is vulnerable to this PoC on Darwin, SunOS, FreeBSD, and AIX.
+
+Windows and Linux are not vulnerable.
+
+### Proof of Concept
+```js
+var pid = require('pidusage');
+```
+
+### Remediation
+Update to version 1.1.5 or later.
+"""
+
+PIDUSAGE_SUMMARY = (
+    "Affected versions of pidusage pass unsanitized input to child_process.exec(), "
+    "resulting in arbitrary code execution in the ps method.\n"
+    "\n"
+    "This package is vulnerable to this PoC on Darwin, SunOS, FreeBSD, and AIX.\n"
+    "\n"
+    "Windows and Linux are not vulnerable."
+)
+
+
+def test_advisory_bug_statement_keeps_the_overview():
+    text = advisory_bug_statement(
+        {
+            "summary": "PIDUsage Enables OS Command Injection",
+            "description": PIDUSAGE_DESCRIPTION,
+        }
+    )
+    assert text == PIDUSAGE_SUMMARY
+
+
+def test_og_patch_resolution_uses_overview_as_summary(monkeypatch):
+    def fake_github_get(url):
+        return {
+            "ghsa_id": "GHSA-h2p3-h48h-9jj7",
+            "cve_id": "CVE-2017-1000220",
+            "summary": "PIDUsage Enables OS Command Injection",
+            "description": PIDUSAGE_DESCRIPTION,
+            "references": ["https://github.com/advisories/GHSA-h2p3-h48h-9jj7"],
+            "vulnerabilities": [
+                {
+                    "package": {"ecosystem": "npm", "name": "pidusage"},
+                    "first_patched_version": "1.1.5",
+                }
+            ],
+        }, None
+
+    monkeypatch.setattr("og_patch_resolution._github_get", fake_github_get)
+    result = og_patch_resolution(
+        {
+            "package_name": "pidusage",
+            "current_vulnerabilities": [{"id": "GHSA-h2p3-h48h-9jj7"}],
+        }
+    )
+    assert result["answer_key"]["summary"] == PIDUSAGE_SUMMARY
+    assert result["answer_key"]["status"] == "version_only"
+
+
+def test_og_patch_resolution_uses_osv_when_github_fails(monkeypatch):
+    monkeypatch.setattr(
+        "og_patch_resolution._github_get",
+        lambda url: (None, f"GitHub API 403 for {url}"),
+    )
+    monkeypatch.setattr(
+        "og_patch_resolution._fetch_osv_advisory",
+        lambda vuln_id: {
+            "ghsa_id": "GHSA-h2p3-h48h-9jj7",
+            "cve_id": "CVE-2017-1000220",
+            "summary": "PIDUsage Enables OS Command Injection",
+            "description": PIDUSAGE_DESCRIPTION,
+            "references": [],
+            "vulnerabilities": [
+                {
+                    "package": {"ecosystem": "npm", "name": "pidusage"},
+                    "first_patched_version": "1.1.5",
+                }
+            ],
+        },
+    )
+    result = og_patch_resolution(
+        {
+            "package_name": "pidusage",
+            "current_vulnerabilities": [{"id": "GHSA-h2p3-h48h-9jj7"}],
+        }
+    )
+    assert result["answer_key"]["status"] == "version_only"
+    assert result["answer_key"]["summary"] == PIDUSAGE_SUMMARY
+    assert result["answer_key"]["first_patched_version"] == "1.1.5"
 
 
 def test_og_patch_resolution_unavailable_without_ids():
@@ -119,3 +213,64 @@ def test_og_patch_resolution_accepts_string_first_patched_version(monkeypatch):
     )
     assert result["answer_key"]["first_patched_version"] == "4.17.19"
     assert result["answer_key"]["status"] == "version_only"
+
+
+def test_github_request_uses_verified_ca_bundle_and_token(monkeypatch):
+    import ssl
+    import og_patch_resolution as module
+    monkeypatch.setenv('GITHUB_TOKEN', '  test-token  ')
+    seen = []
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self):
+            return b'{"ghsa_id":"GHSA-example"}'
+
+    def urlopen(request, *, timeout, context):
+        seen.append(request)
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname is True
+        assert len(context.get_ca_certs()) > 0
+        assert timeout == module.REQUEST_TIMEOUT_SECONDS
+        assert request.get_header('Authorization') == 'Bearer test-token'
+        return Response()
+
+    monkeypatch.setattr(module.urllib.request, 'urlopen', urlopen)
+    payload, error = module._github_get('https://api.github.com/advisories/GHSA-example')
+    assert payload['ghsa_id'] == 'GHSA-example'
+    assert error is None
+    assert len(seen) == 1
+
+
+def test_blank_or_missing_token_is_not_sent(monkeypatch):
+    import og_patch_resolution as module
+    monkeypatch.delenv('GITHUB_TOKEN', raising=False)
+    assert 'Authorization' not in module._github_headers()
+    monkeypatch.setenv('GITHUB_TOKEN', '  ')
+    assert 'Authorization' not in module._github_headers()
+
+
+def test_osv_fallback_uses_verified_tls_without_github_token(monkeypatch):
+    import ssl
+    import og_patch_resolution as module
+    monkeypatch.setenv('GITHUB_TOKEN', 'test-token')
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self):
+            return b'{"id":"GHSA-example","affected":[],"references":[]}'
+
+    def urlopen(request, *, timeout, context):
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname
+        assert request.get_header('Authorization') is None
+        return Response()
+
+    monkeypatch.setattr(module.urllib.request, 'urlopen', urlopen)
+    assert module._fetch_osv_advisory('GHSA-example') is not None
