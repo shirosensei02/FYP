@@ -1,8 +1,8 @@
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 
-import demo_graph
-from demo_graph import _parse_request, _parse_targets, _select_vulnerability, demo_input
+import chat_graph
+from chat_graph import _parse_request, _parse_targets, _select_vulnerability, chat_input
 
 
 def test_parse_request_reads_package_advisory_and_model():
@@ -37,8 +37,8 @@ def test_parse_targets_splits_segments_and_shares_models(monkeypatch):
     assert [t["model_name"] for t in _parse_targets("jszip@3.7.1")] == ["openai/gpt-5.3-codex"]
 
 
-def test_demo_input_reads_only_the_newest_message():
-    result = demo_input(
+def test_chat_input_reads_only_the_newest_message():
+    result = chat_input(
         {
             "messages": [
                 HumanMessage(content="jszip@3.7.1 codex"),
@@ -54,20 +54,20 @@ def test_demo_input_reads_only_the_newest_message():
     assert result["results"] == [] and result["run"] == {} and result["target_index"] == 0
 
 
-def test_demo_input_explains_usage_when_message_has_no_package():
-    result = demo_input({"messages": [HumanMessage(content="patch something")]})
+def test_chat_input_explains_usage_when_message_has_no_package():
+    result = chat_input({"messages": [HumanMessage(content="patch something")]})
 
     assert result["input_error"]
     assert "jszip@3.7.1" in result["messages"][0].content
-    assert demo_graph.route_after_input(result) == "end"
+    assert chat_graph.route_after_input(result) == "end"
 
 
-def test_demo_input_caps_the_number_of_targets():
-    text = ", ".join(f"pkg{i}@1.0.{i}" for i in range(demo_graph.MAX_TARGETS + 2))
+def test_chat_input_caps_the_number_of_targets():
+    text = ", ".join(f"pkg{i}@1.0.{i}" for i in range(chat_graph.MAX_TARGETS + 2))
 
-    result = demo_input({"messages": [HumanMessage(content=text)]})
+    result = chat_input({"messages": [HumanMessage(content=text)]})
 
-    assert len(result["targets"]) == demo_graph.MAX_TARGETS
+    assert len(result["targets"]) == chat_graph.MAX_TARGETS
     assert "Only the first" in result["messages"][0].content
 
 
@@ -79,16 +79,16 @@ def test_select_vulnerability_pins_by_id_or_alias():
     assert _select_vulnerability({}, {"current_vulnerabilities": found})["current_vulnerabilities"] == found
 
 
-def test_demo_graph_has_exactly_the_pipeline_steps_plus_chat_steps():
+def test_chat_graph_has_exactly_the_pipeline_steps_plus_chat_steps():
     import graph as main_graph
 
     main_nodes = set(main_graph.graph.get_graph().nodes) - {"__start__", "__end__"}
-    demo_nodes = set(demo_graph.graph.get_graph().nodes) - {"__start__", "__end__"}
-    assert demo_nodes == main_nodes | {"demo_input", "start_target", "finish_target", "batch_summary"}
+    chat_nodes = set(chat_graph.graph.get_graph().nodes) - {"__start__", "__end__"}
+    assert chat_nodes == main_nodes | {"chat_input", "start_target", "finish_target", "batch_summary"}
 
 
 def test_sandbox_summary_reports_stage_statuses_and_regression():
-    summary = demo_graph._summary(
+    summary = chat_graph._summary(
         "package_validation_node",
         {
             "validation": {"docker_status": "PASS", "installation_status": "PASS", "build_status": "SKIPPED",
@@ -102,16 +102,16 @@ def test_sandbox_summary_reports_stage_statuses_and_regression():
 
 
 def test_tool_loop_steps_stay_quiet():
-    assert demo_graph._summary("repo_graph_node", {}) is None
-    assert demo_graph._summary("locator_node", {"locate_status": "running"}) is None
-    assert demo_graph._summary("patch_generation_node", {"graph_request": {"tool": "x"}}) is None
-    assert "Locator ranked" in demo_graph._summary(
+    assert chat_graph._summary("repo_graph_node", {}) is None
+    assert chat_graph._summary("locator_node", {"locate_status": "running"}) is None
+    assert chat_graph._summary("patch_generation_node", {"graph_request": {"tool": "x"}}) is None
+    assert "Locator ranked" in chat_graph._summary(
         "locator_node", {"locate_status": "ranked", "debug_locations": [{"path": "lib/load.js", "function": "load"}]}
     )
 
 
 def _fake_pipeline(seen_states):
-    """A three-step stand-in for graph.py with the same node names the demo relies on."""
+    """A three-step stand-in for graph.py with the same node names the chat graph relies on."""
 
     def package_input_node(state):
         seen_states.append(dict(state))
@@ -137,9 +137,9 @@ def _fake_pipeline(seen_states):
 def test_several_targets_run_one_after_another_with_fresh_state(monkeypatch):
     monkeypatch.setenv("MODEL_NAME", "openai/gpt-5.3-codex")
     seen = []
-    demo = demo_graph.build_demo_graph(_fake_pipeline(seen))
+    chat = chat_graph.build_chat_graph(_fake_pipeline(seen))
 
-    final = demo.invoke({"messages": [HumanMessage(content="jszip@3.7.1 GHSA-bbbb-bbbb-bbbb codex, tar-fs@3.0.8 GHSA-zzzz-zzzz-zzzz sonnet")]})
+    final = chat.invoke({"messages": [HumanMessage(content="jszip@3.7.1 GHSA-bbbb-bbbb-bbbb codex, tar-fs@3.0.8 GHSA-zzzz-zzzz-zzzz sonnet")]})
 
     assert [s["package_name"] for s in seen] == ["jszip", "tar-fs"]
     assert "source_dir" not in seen[1] and "classification" not in seen[1]  # nothing leaked from jszip
@@ -155,4 +155,4 @@ def test_every_pipeline_step_has_a_named_summary():
     import graph as main_graph
 
     steps = set(main_graph.graph.get_graph().nodes) - {"__start__", "__end__"}
-    assert steps - set(demo_graph.STEP_TITLES) <= {"repo_graph_node"}  # quiet tool-loop step
+    assert steps - set(chat_graph.STEP_TITLES) <= {"repo_graph_node"}  # quiet tool-loop step

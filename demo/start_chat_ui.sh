@@ -16,10 +16,10 @@ if [ ! -d "$UI_DIR/.git" ]; then
   git -C "$UI_DIR" checkout --quiet "$UI_COMMIT"
 fi
 
-# Skip the setup form: point the UI at the local server and the `demo` graph.
+# Skip the setup form: point the UI at the local server and the `pipeline-chat` graph.
 cat > "$UI_DIR/.env" <<ENV
 NEXT_PUBLIC_API_URL=http://localhost:2024
-NEXT_PUBLIC_ASSISTANT_ID=demo
+NEXT_PUBLIC_ASSISTANT_ID=pipeline-chat
 NEXT_PUBLIC_AUTH_SCHEME=
 ENV
 

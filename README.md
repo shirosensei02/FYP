@@ -130,16 +130,17 @@ Once started, access the server resources:
 
 ### 💬 Chat demo (Agent Chat UI)
 
-`langgraph dev` also serves a `demo` graph (`demo_graph.py`). It wraps the pipeline from `graph.py`
+`langgraph dev` also serves a `pipeline-chat` graph (`chat_graph.py`). It wraps the pipeline from `graph.py`
 (copied automatically, so it always matches) with a chat front end: it reads targets from a chat
 message, runs them one after another in fresh pipeline states, posts a short summary after each step,
 and ends with a comparison table. Chat with it through LangChain's hosted
 Agent Chat UI; your browser talks to your local server directly, so no data goes through Vercel.
 
 1. Start the local server: `langgraph dev --no-browser` (serves `http://localhost:2024`).
-2. Open https://agentchat.vercel.app in **Chrome** and enter:
+2. Open https://agentchat.vercel.app/?apiUrl=http%3A%2F%2Flocalhost%3A2024&assistantId=pipeline-chat
+   in **Chrome** (the link pre-fills the settings), or open https://agentchat.vercel.app and enter:
    - **Deployment URL**: `http://localhost:2024`
-   - **Assistant/Graph ID**: `demo`
+   - **Assistant/Graph ID**: `pipeline-chat`
    - **LangSmith API Key**: leave blank
 3. If Chrome asks to allow access to your local network, click **Allow** (it remembers the choice).
 4. Send `package@version [advisory ID] [model]`, for example `jszip@3.7.1 GHSA-36fh-84j7-cv5h codex`
@@ -153,7 +154,7 @@ Agent Chat UI; your browser talks to your local server directly, so no data goes
 - *Browser blocks localhost* (Safari, Brave, or no permission prompt): run `langgraph dev --tunnel`
   and use the printed `https://…trycloudflare.com` URL as the deployment URL.
 - *No internet for the hosted site*: `bash demo/start_chat_ui.sh` clones the same app (pinned
-  commit), points it at the `demo` graph, and serves it on http://localhost:3000.
+  commit), points it at the `pipeline-chat` graph, and serves it on http://localhost:3000.
 
 ---
 

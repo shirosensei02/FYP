@@ -2,7 +2,7 @@
   "dependencies": ["."],
   "graphs": {
     "graph": "./graph.py:graph",
-    "demo": "./demo_graph.py:graph"
+    "pipeline-chat": "./chat_graph.py:graph"
   },
   "env": ".env"
 } 

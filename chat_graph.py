@@ -1,11 +1,11 @@
 """
-demo_graph.py
+chat_graph.py
 =============
-LangGraph graph for the chat demo (registered as ``demo`` in langgraph.json).
+Chat front end for the patch pipeline (registered as ``pipeline-chat`` in langgraph.json).
 
 The pipeline itself is not redefined here: every node, edge and routing rule is
-copied from the compiled graph in graph.py when this module loads, so the demo
-always runs the current pipeline. On top of it the demo adds:
+copied from the compiled graph in graph.py when this module loads, so the chat
+always runs the current pipeline. On top of it the chat layer adds:
 
 * reading one or more targets from a chat message, e.g.
   ``jszip@3.7.1 GHSA-36fh-84j7-cv5h codex, tar-fs@3.0.8 GHSA-8cj5-5rvv-wf4v sonnet``;
@@ -51,7 +51,7 @@ USAGE = (
 )
 
 
-class DemoState(TypedDict, total=False):
+class ChatState(TypedDict, total=False):
     messages: Annotated[list[AnyMessage], add_messages]
     targets: list[dict[str, Any]]
     target_index: int
@@ -105,7 +105,7 @@ def _parse_targets(text: str) -> list[dict[str, Any]]:
     return targets
 
 
-def demo_input(state: DemoState) -> dict:
+def chat_input(state: ChatState) -> dict:
     """Read the newest chat message; every message starts a new batch."""
     human = [m for m in state.get("messages") or [] if getattr(m, "type", None) == "human"]
     targets = _parse_targets(_message_text(human[-1])) if human else []
@@ -133,7 +133,7 @@ def demo_input(state: DemoState) -> dict:
     }
 
 
-def route_after_input(state: DemoState) -> str:
+def route_after_input(state: ChatState) -> str:
     return "end" if state.get("input_error") else "start"
 
 
@@ -141,11 +141,11 @@ def route_after_input(state: DemoState) -> str:
 # Per-target lifecycle
 # ---------------------------------------------------------------------------
 
-def _current_target(state: DemoState) -> dict[str, Any]:
+def _current_target(state: ChatState) -> dict[str, Any]:
     return state["targets"][state.get("target_index") or 0]
 
 
-def _label(state: DemoState) -> str:
+def _label(state: ChatState) -> str:
     targets = state.get("targets") or []
     if len(targets) <= 1:
         return ""
@@ -153,7 +153,7 @@ def _label(state: DemoState) -> str:
     return f"**[{index + 1}/{len(targets)} {targets[index]['package_name']}]** "
 
 
-def start_target(state: DemoState) -> dict:
+def start_target(state: ChatState) -> dict:
     """Give the next target a fresh pipeline state, exactly like batch_runner does."""
     target = _current_target(state)
     run = _fresh_state(
@@ -180,12 +180,12 @@ def _select_vulnerability(target: dict[str, Any], result: dict) -> dict:
     return {**result, "current_vulnerabilities": [match] if match else []}
 
 
-def route_after_detection(state: DemoState) -> str:
+def route_after_detection(state: ChatState) -> str:
     run = state.get("run") or {}
     return "continue" if run.get("source_dir") and run.get("current_vulnerabilities") else "stop"
 
 
-def _result_row(state: DemoState) -> dict[str, Any]:
+def _result_row(state: ChatState) -> dict[str, Any]:
     target, run = _current_target(state), state.get("run") or {}
     selected = (run.get("current_vulnerabilities") or [{}])[0]
     return {
@@ -210,7 +210,7 @@ def _stop_reason(target: dict[str, Any], run: dict[str, Any]) -> str:
     return "Run stopped early."
 
 
-def finish_target(state: DemoState) -> dict:
+def finish_target(state: ChatState) -> dict:
     row = _result_row(state)
     icon = {"pass": "✅", "pass_unverified": "🟡", "inconclusive": "🟡"}.get(row["classification"], "❌")
     extra = f" ({row['category']})" if row["category"] else ""
@@ -222,11 +222,11 @@ def finish_target(state: DemoState) -> dict:
     }
 
 
-def route_after_target(state: DemoState) -> str:
+def route_after_target(state: ChatState) -> str:
     return "next" if (state.get("target_index") or 0) < len(state.get("targets") or []) else "done"
 
 
-def batch_summary(state: DemoState) -> dict:
+def batch_summary(state: ChatState) -> dict:
     results = state.get("results") or []
     if len(results) < 2:
         return {}
@@ -375,13 +375,13 @@ def _summary(step: str, run: dict) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Building the demo graph around graph.py's pipeline
+# Building the chat graph around graph.py's pipeline
 # ---------------------------------------------------------------------------
 
-def _pipeline_step(step: str, node: Callable[[dict], dict]) -> Callable[[DemoState], dict]:
+def _pipeline_step(step: str, node: Callable[[dict], dict]) -> Callable[[ChatState], dict]:
     """Run a pipeline node on the current target's state and post its summary."""
 
-    def run(state: DemoState) -> dict:
+    def run(state: ChatState) -> dict:
         current = dict(state.get("run") or {})
         started = time.monotonic()
         update = node(dict(current)) or {}
@@ -398,10 +398,10 @@ def _pipeline_step(step: str, node: Callable[[dict], dict]) -> Callable[[DemoSta
     return run
 
 
-def _route_on_run(path: Callable[[dict], Any]) -> Callable[[DemoState], Any]:
+def _route_on_run(path: Callable[[dict], Any]) -> Callable[[ChatState], Any]:
     """Apply a pipeline routing rule to the current target's state; END means the target is done."""
 
-    def route(state: DemoState) -> Any:
+    def route(state: ChatState) -> Any:
         choice = path(state.get("run") or {})
         return "finish_target" if choice == END else choice
 
@@ -412,19 +412,19 @@ def _callable(runnable: Any) -> Callable[[dict], Any]:
     return getattr(runnable, "func", None) or runnable.invoke
 
 
-def build_demo_graph(pipeline: Any = pipeline_graph):
+def build_chat_graph(pipeline: Any = pipeline_graph):
     """Wrap a compiled pipeline graph (graph.py by default) with the chat front end."""
     source = pipeline.builder
-    builder = StateGraph(DemoState)
-    builder.add_node("demo_input", demo_input)
+    builder = StateGraph(ChatState)
+    builder.add_node("chat_input", chat_input)
     builder.add_node("start_target", start_target)
     builder.add_node("finish_target", finish_target)
     builder.add_node("batch_summary", batch_summary)
     for name, spec in source.nodes.items():
         builder.add_node(name, _pipeline_step(name, _callable(spec.runnable)))
 
-    builder.add_edge(START, "demo_input")
-    builder.add_conditional_edges("demo_input", route_after_input, {"start": "start_target", "end": END})
+    builder.add_edge(START, "chat_input")
+    builder.add_conditional_edges("chat_input", route_after_input, {"start": "start_target", "end": END})
     for start, end in source.edges:
         if start == START:
             builder.add_edge("start_target", end)
@@ -442,4 +442,4 @@ def build_demo_graph(pipeline: Any = pipeline_graph):
     return builder.compile()
 
 
-graph = build_demo_graph()
+graph = build_chat_graph()
