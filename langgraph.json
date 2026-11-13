@@ -1,7 +1,8 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "graph": "./graph.py:graph"
+    "graph": "./graph.py:graph",
+    "pipeline-chat": "./chat_graph.py:graph"
   },
   "env": ".env"
 } 

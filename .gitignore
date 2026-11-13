@@ -23,3 +23,6 @@ Thumbs.db
 .workspace/
 package_index/
 repo_index/
+
+# Agent Chat UI checkout (cloned by scripts/start_chat_ui.sh)
+chat_ui/
