@@ -42,7 +42,7 @@ def _state(**overrides):
     state = {
         "package_name": "demo",
         "package_version": "1.0.0",
-        "current_patch": {"model_used": "anthropic/claude-sonnet-5", "diff": "--- a/x\n+++ b/x\n"},
+        "current_patch": {"model_used": "openai/gpt-5.3-codex", "diff": "--- a/x\n+++ b/x\n"},
         "vulnerabilities": [{"id": "CVE-TEST-0001", "description": "unsafe parser"}],
         "validation": {"build_succeeded": True, "tests_passed": True, "revalidation_scan_clean": True, "logs": "tests passed"},
         "remaining_vulnerabilities": [],
@@ -62,7 +62,7 @@ def test_evaluator_records_independent_genuine_fix_verdict(monkeypatch):
     assert result["status"] == "evaluated"
     assert result["test_suite_pass"] == "pass"
     assert result["genuine_fix"] == "true"
-    assert result["evaluator_model"] == "openai/gpt-5.3-codex"
+    assert result["evaluator_model"] == "anthropic/claude-sonnet-5"
     logged = next(document for document in cost_log._collection().find() if document["key"] == "demo-fc111-1")
     assert logged["key"] == "demo-fc111-1"
     assert logged["package_name"] == "demo"
@@ -70,17 +70,34 @@ def test_evaluator_records_independent_genuine_fix_verdict(monkeypatch):
     request = logged["requests"][0]
     assert request["node"] == "adversarial_evaluation"
     assert request["call"] == "evaluate"
-    assert request["model"] == "openai/gpt-5.3-codex"
+    assert request["model"] == "anthropic/claude-sonnet-5"
     assert request["prompt_tokens"] == 30
     assert request["completion_tokens"] == 12
     assert request["cost"] == 0.125
     assert request["lines_added"] is None
 
 
-def test_evaluator_selects_the_other_model_when_given_the_generator_model(monkeypatch):
+def test_evaluator_does_not_judge_a_patch_written_by_the_same_model(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setattr(evaluation, "OpenAI", _Client)
-    result = evaluation.adversarial_evaluation(_state(evaluator_model="anthropic/claude-sonnet-5"))["adversarial_evaluation"]
+    result = evaluation.adversarial_evaluation(_state(
+        current_patch={"model_used": "anthropic/claude-sonnet-5", "diff": "--- a/x\n+++ b/x\n"},
+        evaluator_model="openai/gpt-5.3-codex",
+    ))["adversarial_evaluation"]
+
+    assert result["status"] == "uncertain"
+    assert result["evaluator_model"] == "anthropic/claude-sonnet-5"
+    assert result["evaluation_error"] == "evaluator model matches generator model"
+
+
+def test_ablation_evaluator_still_selects_the_other_model(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(evaluation, "OpenAI", _Client)
+    result = evaluation.adversarial_evaluation(_state(
+        ablation_id="patch-_CoT-demo",
+        current_patch={"model_used": "anthropic/claude-sonnet-5", "diff": "--- a/x\n+++ b/x\n"},
+        evaluator_model="anthropic/claude-sonnet-5",
+    ))["adversarial_evaluation"]
 
     assert result["status"] == "evaluated"
     assert result["evaluator_model"] == "openai/gpt-5.3-codex"
@@ -99,7 +116,9 @@ def test_evaluator_selects_the_other_model_for_direct_and_openrouter_names(monke
 
 def test_evaluator_failure_is_non_blocking_and_uncertain(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    result = evaluation.adversarial_evaluation(_state())["adversarial_evaluation"]
+    result = evaluation.adversarial_evaluation(_state(
+        current_patch={"model_used": "openai/gpt-5.3-codex", "diff": "--- a/x\n+++ b/x\n"},
+    ))["adversarial_evaluation"]
 
     assert result["status"] == "uncertain"
     assert result["test_suite_pass"] == "pass"

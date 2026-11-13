@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from cost_log import record_request
+from model_catalog import stage_model
 from prompt_variant import prompt_path
 from repo_graph import ensure_repo_graph, retrieve_entity
 from run_cost import response_cost
@@ -488,7 +489,10 @@ def _advisory_keywords(state: dict) -> list[str]:
 
 def _openrouter_action(state: dict, messages: list[dict[str, str]]) -> tuple[dict, float]:
     api_key = os.getenv("OPENROUTER_API_KEY")
-    model_name = state.get("model_name") or "anthropic/claude-sonnet-5"
+    locked = stage_model(state, "locator")
+    model_name = locked or state.get("model_name") or "anthropic/claude-sonnet-5"
+    if locked:
+        state["model_name"] = locked
     if not api_key:
         logger.warning("locator: OPENROUTER_API_KEY is not set")
         return {"action": "locate", "locations": []}, 0.0

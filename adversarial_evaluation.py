@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from cost_log import record_request
-from model_catalog import canonical_model_id, evaluator_for
+from model_catalog import canonical_model_id, evaluator_for, stage_model
 from run_cost import add_run_cost, response_cost
 from state import GraphState
 
@@ -151,8 +151,12 @@ def adversarial_evaluation(state: GraphState) -> dict[str, Any]:
         test_suite_pass = "pass" if deterministic_pass else "fail"
     generator_model = (state.get("current_patch") or {}).get("model_used") or state.get("generation_model_used")
     provider = state.get("evaluator_provider") or os.getenv("EVALUATOR_PROVIDER", DEFAULT_EVALUATOR_PROVIDER)
-    requested_model = state.get("evaluator_model") or os.getenv("EVALUATOR_MODEL", DEFAULT_EVALUATOR_MODEL)
-    model = evaluator_for(generator_model, requested_model) or requested_model
+    locked = stage_model(state, "adversarial")
+    if locked:
+        model = locked
+    else:
+        requested_model = state.get("evaluator_model") or os.getenv("EVALUATOR_MODEL", DEFAULT_EVALUATOR_MODEL)
+        model = evaluator_for(generator_model, requested_model) or requested_model
 
     if not state.get("current_patch"):
         return {"adversarial_evaluation": _result(

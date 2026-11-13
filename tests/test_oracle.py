@@ -42,6 +42,18 @@ def test_oracle_parser_accepts_json_wrapped_in_a_markdown_fence():
     assert generation._response_source(payload) == SAFE_SOURCE
 
 
+def test_oracle_parser_accepts_a_raw_newline_inside_the_source_string():
+    payload = (
+        '{"source": "console.log(\'ORACLE_RESULT \' + JSON.stringify({'
+        'operation_completed:true,exploit_succeeded:false,evidence:\'ok\'}));\n", '
+        '"explanation": "line break"}'
+    )
+    parsed = generation._parse_candidate(payload, 1, "model")
+    assert not isinstance(parsed, str)
+    assert "\n" in parsed["source"]
+    assert generation._response_source(payload) == parsed["source"]
+
+
 def test_oracle_parser_accepts_protocol_and_rejects_process_launching():
     parsed = generation._parse_candidate(
         '{"source": ' + __import__('json').dumps(SAFE_SOURCE) + ', "explanation": "test"}',

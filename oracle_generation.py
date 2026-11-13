@@ -16,6 +16,7 @@ from typing import Any
 from openai import OpenAI
 
 from cost_log import record_request
+from model_catalog import stage_model
 from prompt_variant import prompt_path
 from run_cost import response_cost
 from state import GraphState, OracleSpec
@@ -161,9 +162,14 @@ def _json_text(content: str) -> str:
     return text
 
 
+def _load_model_json(content: str):
+    """Parse a model JSON object, including a raw newline inside a string."""
+    return json.loads(_json_text(content), strict=False)
+
+
 def _parse_candidate(content: str, attempt: int, model: str | None) -> OracleSpec | str:
     try:
-        payload = json.loads(_json_text(content))
+        payload = _load_model_json(content)
     except json.JSONDecodeError as exc:
         return f"model response was not JSON: {exc}"
     if not isinstance(payload, dict):
@@ -199,7 +205,7 @@ def _parse_candidate(content: str, attempt: int, model: str | None) -> OracleSpe
 def _response_source(content: str) -> str:
     """Recover a rejected candidate's source so the next attempt can correct it."""
     try:
-        payload = json.loads(_json_text(content))
+        payload = _load_model_json(content)
     except (json.JSONDecodeError, TypeError):
         return ""
     source = payload.get("source") if isinstance(payload, dict) else None
@@ -242,7 +248,10 @@ def oracle_generation(state: GraphState) -> dict:
         return {**base, "oracle_candidate": candidate, "oracle_attempts": attempts}
 
     api_key = os.getenv("OPENROUTER_API_KEY")
-    model = state.get("model_name") or "anthropic/claude-sonnet-5"
+    locked = stage_model(state, "oracle")
+    model = locked or state.get("model_name") or "anthropic/claude-sonnet-5"
+    if locked:
+        state["model_name"] = locked
     if not api_key:
         message = "OPENROUTER_API_KEY is not set"
         candidate = OracleSpec(

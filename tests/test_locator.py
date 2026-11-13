@@ -83,13 +83,17 @@ def test_generation_fetch_returns_to_patch_generation(tmp_path, monkeypatch):
     assert "return input" in state["graph_result"]["entities"][0]["code"]
 
 
-def test_prompt_keeps_the_chain_of_thought_and_the_tool_contract():
+def test_prompt_keeps_the_enriched_brief_and_the_tool_contract():
     prompt = _system_prompt({"package_name": "demo"})
 
-    assert "Step 1: Categorize and Extract Key Problem Information" in prompt
-    assert "modules in the 'demo' package" in prompt
+    assert "in the 'demo' package" in prompt
+    assert "CWE ID:" in prompt
     assert "SearchEntity" in prompt
     assert '"action":"locate"' in prompt
+
+    cot = _system_prompt({"package_name": "demo", "prompt_suffix": "_CoT"})
+    assert "Step 1: Categorize and Extract Key Problem Information" in cot
+    assert "modules in the 'demo' package" in cot
 
 
 def test_final_locations_accept_the_locator_block():

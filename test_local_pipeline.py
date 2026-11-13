@@ -425,7 +425,8 @@ def _parse_args() -> argparse.Namespace:
                    help="Patch one detected vulnerability by its primary ID or alias")
     p.add_argument("--list-vulnerabilities", action="store_true", default=_env_bool("LIST_VULNERABILITIES"),
                    help="List detected target-package vulnerabilities and exit before patch generation")
-    p.add_argument("--max-retries", type=int, default=int(os.getenv("MAX_RETRIES", "1")))
+    p.add_argument("--max-retries", type=int, default=int(os.getenv("MAX_RETRIES", "5")),
+                   help="Failed patch rewrites allowed after the first attempt (default: 5)")
     p.add_argument("--max-oracle-attempts", type=int,
                    default=int(os.getenv("MAX_ORACLE_ATTEMPTS", "5")),
                    help="Maximum oracle generation/correction attempts (default: 5)")

@@ -46,6 +46,11 @@ def test_route_retries_while_attempts_remain():
     assert route_after_classification({"classification": "fail", "retry_count": 0, "max_retries": 1}) == "retry"
 
 
+def test_patch_retries_default_to_five():
+    assert route_after_classification({"classification": "fail", "retry_count": 4}) == "retry"
+    assert route_after_classification({"classification": "fail", "retry_count": 5}) == "eval"
+
+
 def test_patch_generation_routes_a_graph_fetch_before_validation():
     assert route_after_patch_generation({
         "graph_request": {"caller": "patch_generation", "tool": "RetrieveEntity"},

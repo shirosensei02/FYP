@@ -86,7 +86,7 @@ class _FakeOpenRouterResponse:
 
 class _FakeOpenRouterCompletions:
     def create(self, model, temperature, max_tokens, response_format, extra_body, messages):
-        assert model == "qwen/qwen3-coder:free", model
+        assert model == "openai/gpt-5.3-codex", model
         assert temperature == 0, temperature
         assert max_tokens == patch_generation.OPENROUTER_MAX_TOKENS, max_tokens
         assert response_format == {"type": "json_object"}, response_format
@@ -367,18 +367,57 @@ def test_patch_generation_openrouter_provider_uses_configured_model(monkeypatch,
         }
     )
 
-    assert result["current_patch"]["model_used"] == "qwen/qwen3-coder:free"
+    assert result["current_patch"]["model_used"] == "openai/gpt-5.3-codex"
     assert "--- a/index.js" in result["current_patch"]["diff"]
     logged = next(iter(cost_log._collection().find()))
     assert logged["package_name"] == "demo-package"
     assert logged["package_version"] == "1.0.0"
-    assert logged["model"] == "qwen/qwen3-coder:free"
+    assert logged["model"] == "openai/gpt-5.3-codex"
     assert logged["attempt_number"] == 1
     assert logged["key"].endswith("-1")
     assert logged["requests"][0]["node"] == "patch_generation"
     assert logged["requests"][0]["call"] == "generate"
     assert logged["requests"][0]["lines_added"] == 1
     assert logged["requests"][0]["lines_removed"] == 1
+
+
+def test_ablation_openrouter_run_keeps_the_study_model(monkeypatch, tmp_path):
+    source_dir = tmp_path / "package"
+    source_dir.mkdir()
+    manifest_path = source_dir / "package.json"
+    manifest_path.write_text('{"name":"demo-package","version":"1.0.0","main":"index.js"}', encoding="utf-8")
+    (source_dir / "index.js").write_text("module.exports = 42;\n", encoding="utf-8")
+
+    seen = {}
+
+    class _Completions:
+        def create(self, model, **kwargs):
+            seen["model"] = model
+            return _FakeOpenRouterResponse()
+
+    class _Client:
+        def __init__(self, **kwargs):
+            self.chat = type("Chat", (), {"completions": _Completions()})()
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(patch_generation, "OpenAI", _Client)
+
+    result = patch_generation.patch_generation(
+        {
+            "ablation_id": "patch-_enriched-demo",
+            "prompt_suffix": "_enriched",
+            "package_name": "demo-package",
+            "package_version": "1.0.0",
+            "source_dir": str(source_dir),
+            "package_manifest_path": str(manifest_path),
+            "model_provider": "openrouter",
+            "model_name": "anthropic/claude-sonnet-5",
+            "vulnerabilities": [{"id": "CVE-TEST-0001", "description": "Test vulnerability"}],
+        }
+    )
+
+    assert seen["model"] == "anthropic/claude-sonnet-5"
+    assert result["current_patch"]["model_used"] == "anthropic/claude-sonnet-5"
 
 
 def test_openrouter_explanation_only_response_is_repaired_once_then_recorded_as_failure(monkeypatch, tmp_path):
@@ -406,7 +445,7 @@ def test_openrouter_explanation_only_response_is_repaired_once_then_recorded_as_
     assert [item["call"] for item in logged["requests"]] == ["generate", "repair"]
     assert all(item["lines_added"] is None for item in logged["requests"])
     assert result["generation_status"] == "failed"
-    assert result["generation_model_used"] == "nvidia/nemotron-3-super-120b-a12b:free"
+    assert result["generation_model_used"] == "openai/gpt-5.3-codex"
     assert result["current_patch"] is None
     assert "invalid or incomplete patch response" in result["generation_error"]
 
@@ -605,9 +644,10 @@ def test_openrouter_prompt_requires_a_reachable_behavioral_security_fix():
         [{"path": "index.js", "content": "function parse(value) { return value; }\n"}],
     )
 
-    assert "must change reachable runtime behavior on the vulnerable path" in prompt
-    assert "Do not add unused variables" in prompt
-    assert "silently verify" in prompt
+    assert "CWE ID:" in prompt
+    assert "Typical control:" in prompt
+    assert '"edits"' in prompt
+    assert "Do not modify package version metadata" in prompt
 
 
 def test_source_excerpt_prioritizes_a_relevant_function_over_earlier_mentions():

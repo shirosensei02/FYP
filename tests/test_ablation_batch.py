@@ -43,8 +43,9 @@ def test_prompt_suffix_maps_onto_the_existing_files():
     assert prompt_path("oracle", "_enriched").name == "oracle.txt"
     assert prompt_path("oracle", "_CoT").name == "oracle_CoT.txt"
     assert prompt_path("patch", "_CoT").name == "patch_CoT.txt"
+    assert prompt_path("locator", None).name == "locator_enriched.txt"
     assert prompt_path("oracle", None).name == "oracle.txt"
-    assert prompt_path("patch", "").name == "baseline.txt"
+    assert prompt_path("patch", "").name == "patch_enriched.txt"
 
 
 def test_loop_buckets_count_five_and_ten():
@@ -93,7 +94,7 @@ def test_answer_key_lists_the_ten_packages_without_bodies():
 def test_batch_config_selects_suffix_loop_and_all_packages():
     config = load_config()
     assert config["prompt_suffix"] in {"_generic", "_enriched", "_CoT"}
-    assert config["max_loop"] == 10
+    assert config["max_loop"] == 5
     assert config["node"] in {"locator", "oracle", "patch"}
     assert len(config["packages"]) == 10
     assert config["packages"][0]["package_name"] == "shell-quote"

@@ -21,6 +21,7 @@ except ImportError:
 
 from cost_log import note_written_lines, record_request
 from failure_context import load_feedback, record_failure
+from model_catalog import stage_model
 from run_cost import response_cost
 from state import GraphState, PatchAttempt, Vulnerability
 from vulnerability_localization import extract_focus_terms, rank_relevant_source_files
@@ -39,7 +40,6 @@ DEFAULT_MODELS = {
 }
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "baseline.txt"
 MAX_CONTEXT_FILES = 32
 MAX_RELEVANT_CONTEXT_FILES = 6
 MAX_CONTEXT_CHARS_PER_FILE = 16_000
@@ -352,7 +352,7 @@ def _build_openrouter_prompt(
     from prompt_variant import prompt_path
 
     suffix = str(state.get("prompt_suffix") or "").strip()
-    template_path = prompt_path("patch", suffix) if suffix else OPENROUTER_PROMPT_PATH
+    template_path = prompt_path("patch", suffix)
     if not template_path.is_file():
         return "\n\n".join(
             message["content"]
@@ -365,26 +365,16 @@ def _build_openrouter_prompt(
     )
     relevant_source_code = relevant_source_code[:MAX_OPENROUTER_CONTEXT_CHARS]
     template = template_path.read_text(encoding="utf-8")
-    if suffix:
-        prompt = _format_present(template, {
-            "vulnerability_id": vulnerability.get("id", "unknown"),
-            "vulnerability_description": vulnerability.get("description", ""),
-            "scanner_finding": json.dumps(vulnerability),
-            "relevant_source_code": relevant_source_code,
-            "cwe_id": state.get("cwe_id") or "",
-            "cwe_name": state.get("cwe_name") or "",
-            "cwe_description": state.get("cwe_description") or "",
-            "typical_control": state.get("typical_control") or "",
-        })
-    else:
-        prompt = template.format(
-            vulnerability_id=vulnerability.get("id", "unknown"),
-            vulnerability_class=vulnerability.get("severity", "unknown"),
-            vulnerability_description=vulnerability.get("description", ""),
-            scanner_finding=json.dumps(vulnerability),
-            relevant_source_code=relevant_source_code,
-            relevant_tests="Tests are included in the repository context. Do not modify them.",
-        )
+    prompt = _format_present(template, {
+        "vulnerability_id": vulnerability.get("id", "unknown"),
+        "vulnerability_description": vulnerability.get("description", ""),
+        "scanner_finding": json.dumps(vulnerability),
+        "relevant_source_code": relevant_source_code,
+        "cwe_id": state.get("cwe_id") or "",
+        "cwe_name": state.get("cwe_name") or "",
+        "cwe_description": state.get("cwe_description") or "",
+        "typical_control": state.get("typical_control") or "",
+    })
     history = load_feedback(state)
     if history:
         prompt += "\n\n" + history
@@ -634,7 +624,7 @@ def _generate_with_openrouter(
     if not api_key:
         return "patch_generation: OPENROUTER_API_KEY is not set", 0.0
 
-    model_name = state.get("model_name", DEFAULT_MODELS["openrouter"])
+    model_name = stage_model(state, "patch") or state.get("model_name", DEFAULT_MODELS["openrouter"])
     call = "repair" if repair_feedback else "generate"
     client = OpenAI(
         api_key=api_key,
@@ -986,6 +976,11 @@ def _patch_generation(state: GraphState) -> dict:
             provider=provider, 
             selected_vulnerabilities=selected_vulnerabilities)
     model_name = state.get("model_name", default_model)
+    if provider == "openrouter":
+        locked = stage_model(state, "patch")
+        if locked:
+            model_name = locked
+            state["model_name"] = locked
 
     # Debugger locations are the source slice when the loop found a function.
     located = [

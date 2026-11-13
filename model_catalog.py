@@ -3,13 +3,23 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 
 _MODELS_PATH = Path(__file__).resolve().parent / "config" / "models.json"
 _PATCH_EVALUATOR_IDS = {
     "openai/gpt-5.3-codex",
     "anthropic/claude-sonnet-5",
+}
+SONNET = "anthropic/claude-sonnet-5"
+CODEX = "openai/gpt-5.3-codex"
+STAGE_MODELS = {
+    "locator": SONNET,
+    "oracle": SONNET,
+    "patch": CODEX,
+    "adversarial": SONNET,
 }
 
 
@@ -33,6 +43,19 @@ def canonical_model_id(model: str | None) -> str:
         if value.startswith(provider):
             return value.removeprefix(provider)
     return value
+
+
+def stage_model(state: Mapping[str, Any], stage: str) -> str | None:
+    """Return the locked production model.
+
+    An ablation run keeps the model stored on its state, so this returns None.
+    """
+    ablation_id = state.get("ablation_id")
+    if isinstance(ablation_id, str) and ablation_id.strip():
+        return None
+    if stage not in STAGE_MODELS:
+        raise ValueError(f"unknown pipeline stage: {stage}")
+    return STAGE_MODELS[stage]
 
 
 def evaluator_for(generator_model: str | None, requested_evaluator: str | None = None) -> str | None:

@@ -39,7 +39,7 @@ def route_after_apply(state: GraphState) -> str:
 
 def _writer_attempts_remain(state: GraphState) -> bool:
     maximum = state.get("max_retries")
-    limit = 1 if maximum is None else int(maximum)
+    limit = 5 if maximum is None else int(maximum)
     return int(state.get("retry_count") or 0) < limit
 
 

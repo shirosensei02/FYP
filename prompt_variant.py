@@ -1,8 +1,8 @@
-"""Resolve an ablation prompt file without changing a normal pipeline run.
+"""Resolve an ablation prompt file.
 
-An empty suffix keeps the production prompt. ``_CoT`` for the locator is
-``locator.txt``, and ``_enriched`` for the oracle is ``oracle.txt``, because
-those production files already are those variants.
+An empty suffix is the production prompt: the enriched locator, the enriched
+oracle (``oracle.txt``), and the enriched patch. ``_CoT`` for the locator is
+``locator.txt``, and ``_enriched`` for the oracle is ``oracle.txt``.
 """
 
 from __future__ import annotations
@@ -30,9 +30,9 @@ _FILES = {
     },
 }
 _DEFAULTS = {
-    "locator": "locator.txt",
+    "locator": "locator_enriched.txt",
     "oracle": "oracle.txt",
-    "patch": "baseline.txt",
+    "patch": "patch_enriched.txt",
 }
 _TEXT_FIELDS = (
     "prompt_suffix",
