@@ -1,5 +1,7 @@
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command
 
 import chat_graph
 from chat_graph import _parse_request, _parse_targets, _select_vulnerability, chat_input
@@ -11,11 +13,14 @@ def test_parse_request_reads_package_advisory_and_model():
         "package_version": "3.7.1",
         "vulnerability_id": "GHSA-36fh-84j7-cv5h",
         "model_name": "openai/gpt-5.3-codex",
+        "user_prompt": "jszip@3.7.1 GHSA-36fh-84j7-cv5h codex",
     }
     assert _parse_request("please patch @actions/artifact@2.1.1 with anthropic/claude-sonnet-5") == {
         "package_name": "@actions/artifact",
         "package_version": "2.1.1",
         "model_name": "anthropic/claude-sonnet-5",
+        "suspected_issue": "please patch with",
+        "user_prompt": "please patch @actions/artifact@2.1.1 with anthropic/claude-sonnet-5",
     }
     assert _parse_request("hello there") == {}
 
@@ -84,7 +89,7 @@ def test_chat_graph_has_exactly_the_pipeline_steps_plus_chat_steps():
 
     main_nodes = set(main_graph.graph.get_graph().nodes) - {"__start__", "__end__"}
     chat_nodes = set(chat_graph.graph.get_graph().nodes) - {"__start__", "__end__"}
-    assert chat_nodes == main_nodes | {"chat_input", "start_target", "finish_target", "batch_summary"}
+    assert chat_nodes == main_nodes | {"chat_input", "confirm_target", "start_target", "finish_target", "batch_summary"}
 
 
 def test_sandbox_summary_reports_stage_statuses_and_regression():
@@ -134,12 +139,40 @@ def _fake_pipeline(seen_states):
     return builder.compile()
 
 
+def test_chat_confirm_posts_the_draft_and_starts_after_one_confirm(monkeypatch):
+    monkeypatch.setenv("MODEL_NAME", "openai/gpt-5.3-codex")
+    seen = []
+    chat = chat_graph.build_chat_graph(_fake_pipeline(seen), checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "one"}}
+    paused = chat.invoke({"messages": [HumanMessage(content=(
+        "shell-quote@1.8.3 command injection in quote "
+        "https://github.com/ljharb/shell-quote/commit/abc1234"
+    ))]}, config)
+
+    assert paused["__interrupt__"]
+    draft = paused["__interrupt__"][0].value
+    assert "shell-quote@1.8.3" in draft
+    assert 'suspected issue: "command injection in quote"' in draft
+    assert "maintainer patch: https://github.com/ljharb/shell-quote/commit/abc1234" in draft
+    assert seen == []
+
+    final = chat.invoke(Command(resume="confirm"), config)
+    assert not final.get("__interrupt__")
+    assert seen[0]["package_name"] == "shell-quote"
+    assert seen[0]["suspected_issue"] == "command injection in quote"
+    assert seen[0]["maintainer_commit_url"].endswith("/commit/abc1234")
+    assert seen[0]["intake_confirmed"] is True
+
+
 def test_several_targets_run_one_after_another_with_fresh_state(monkeypatch):
     monkeypatch.setenv("MODEL_NAME", "openai/gpt-5.3-codex")
     seen = []
-    chat = chat_graph.build_chat_graph(_fake_pipeline(seen))
+    chat = chat_graph.build_chat_graph(_fake_pipeline(seen), checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "batch"}}
 
-    final = chat.invoke({"messages": [HumanMessage(content="jszip@3.7.1 GHSA-bbbb-bbbb-bbbb codex, tar-fs@3.0.8 GHSA-zzzz-zzzz-zzzz sonnet")]})
+    chat.invoke({"messages": [HumanMessage(content="jszip@3.7.1 GHSA-bbbb-bbbb-bbbb codex, tar-fs@3.0.8 GHSA-zzzz-zzzz-zzzz sonnet")]}, config)
+    chat.invoke(Command(resume="confirm"), config)
+    final = chat.invoke(Command(resume="confirm"), config)
 
     assert [s["package_name"] for s in seen] == ["jszip", "tar-fs"]
     assert "source_dir" not in seen[1] and "classification" not in seen[1]  # nothing leaked from jszip

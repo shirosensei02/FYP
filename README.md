@@ -143,11 +143,12 @@ Agent Chat UI; your browser talks to your local server directly, so no data goes
    - **Assistant/Graph ID**: `pipeline-chat`
    - **LangSmith API Key**: leave blank
 3. If Chrome asks to allow access to your local network, click **Allow** (it remembers the choice).
-4. Send `package@version [advisory ID] [model]`, for example `jszip@3.7.1 GHSA-36fh-84j7-cv5h codex`
+4. Send `package@version [advisory ID] [model]`, optionally followed by a short suspected issue and a maintainer commit URL. For example `jszip@3.7.1 GHSA-36fh-84j7-cv5h codex path traversal when loading a zip https://github.com/Stuk/jszip/commit/abcdef1`
    (models: `codex`, `sonnet`, or any OpenRouter model ID; without a model, `MODEL_NAME` from `.env`).
+   The assistant posts the parsed package, suspected issue, and commit link. Reply `confirm` to start, or send a corrected prompt.
    Several targets (up to 5) can go in one message, separated by commas or new lines:
    `jszip@3.7.1 GHSA-36fh-84j7-cv5h codex, tar-fs@3.0.8 GHSA-8cj5-5rvv-wf4v sonnet`.
-   Each new message starts a new batch; `MAX_RETRIES` in `.env` sets the writer retries (default 1).
+   Each target is confirmed before it runs. Each new message starts a new batch; `MAX_RETRIES` in `.env` sets the writer retries (default 1).
 
 **Fallbacks**
 

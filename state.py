@@ -179,6 +179,10 @@ class GraphState(TypedDict, total=False):
     patch_scope: Literal["single", "all"]
 
     # 1) input
+    user_prompt: str
+    intake_confirmed: bool
+    suspected_issue: str
+    maintainer_commit_url: str
     package_name: str
     package_version: str
     source_dir: str

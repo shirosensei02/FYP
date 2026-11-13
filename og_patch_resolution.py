@@ -109,6 +109,19 @@ def _extract_commit_refs(references: list[Any]) -> list[dict[str, str]]:
     return refs
 
 
+def commit_ref_from_url(url: str | None) -> dict[str, str] | None:
+    """Return one GitHub commit reference, or None when the URL is not a commit."""
+    match = _COMMIT_RE.search(str(url or ""))
+    if not match:
+        return None
+    return {
+        "owner": match.group("owner"),
+        "repo": match.group("repo"),
+        "sha": match.group("sha"),
+        "url": match.group(0),
+    }
+
+
 def _patched_version_identifier(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
@@ -286,20 +299,35 @@ def og_patch_resolution(state: GraphState) -> dict:
         "files": [],
         "diff": None,
     }
-    if not ghsa_id and not cve_id:
+    user_commit = commit_ref_from_url(state.get("maintainer_commit_url"))
+    if not ghsa_id and not cve_id and not user_commit:
         return {"answer_key": empty}
 
-    advisory, error = _fetch_advisory(ghsa_id, cve_id)
-    if error:
-        empty["status"] = "error"
-        empty["summary"] = error
-        return {"answer_key": empty}
-    if not advisory:
-        return {"answer_key": empty}
+    advisory = None
+    error = None
+    if ghsa_id or cve_id:
+        advisory, error = _fetch_advisory(ghsa_id, cve_id)
+        if (error or not advisory) and not user_commit:
+            if error:
+                empty["status"] = "error"
+                empty["summary"] = error
+            return {"answer_key": empty}
 
-    ghsa_id = advisory.get("ghsa_id") or ghsa_id
-    cve_id = advisory.get("cve_id") or cve_id
-    commit_refs = _extract_commit_refs(advisory.get("references") or [])
+    if advisory:
+        ghsa_id = advisory.get("ghsa_id") or ghsa_id
+        cve_id = advisory.get("cve_id") or cve_id
+        empty["ghsa_id"] = ghsa_id
+        empty["cve_id"] = cve_id
+    commit_refs = _extract_commit_refs((advisory or {}).get("references") or [])
+    if user_commit:
+        user_key = (user_commit["owner"], user_commit["repo"], user_commit["sha"].lower())
+        commit_refs = [
+            user_commit,
+            *[
+                ref for ref in commit_refs
+                if (ref["owner"], ref["repo"], ref["sha"].lower()) != user_key
+            ],
+        ]
     files: list[str] = []
     diffs: list[str] = []
     fetch_error = None
@@ -315,7 +343,7 @@ def og_patch_resolution(state: GraphState) -> dict:
             diffs.append(commit_diff)
     combined_diff = "\n".join(diffs) if diffs else None
 
-    first_patched = _first_patched_version(advisory, state.get("package_name"))
+    first_patched = _first_patched_version(advisory, state.get("package_name")) if advisory else None
     if not first_patched and vulnerabilities:
         first_patched = vulnerabilities[0].get("fixed_version")
 
@@ -333,8 +361,8 @@ def og_patch_resolution(state: GraphState) -> dict:
         "ghsa_id": ghsa_id,
         "cve_id": cve_id,
         "first_patched_version": first_patched,
-        "advisory_url": f"https://github.com/advisories/{ghsa_id}" if ghsa_id else advisory.get("html_url"),
-        "summary": advisory_bug_statement(advisory) or fetch_error,
+        "advisory_url": f"https://github.com/advisories/{ghsa_id}" if ghsa_id else (advisory or {}).get("html_url"),
+        "summary": (advisory_bug_statement(advisory) if advisory else None) or error or fetch_error,
         "commit_refs": commit_refs,
         "files": files,
         "diff": combined_diff,

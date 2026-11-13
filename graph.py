@@ -15,6 +15,7 @@ from oracle_generation import oracle_generation
 from oracle_validation import oracle_validation, generated_patch_oracle_validation
 from vulnerability_localization import vulnerability_localization
 from final_evaluation import final_evaluation
+from intake import apply_resume, confirmed_fields, format_draft, parse_prompt
 from state import GraphState
 
 
@@ -83,6 +84,26 @@ def route_after_classification(state: GraphState) -> str:
     return "retry"
 
 
+def intake_node(state: GraphState) -> dict:
+    """Show the parsed prompt and wait until it is confirmed.
+
+    Automated runs that already name a package, and chat runs that already
+    confirmed, go straight on to package download.
+    """
+    prompt = str(state.get("user_prompt") or "").strip()
+    if state.get("intake_confirmed") or not prompt:
+        return {}
+    from langgraph.types import interrupt
+
+    draft = parse_prompt(prompt)
+    while True:
+        resume = interrupt(format_draft(draft))
+        outcome = apply_resume(draft, resume)
+        draft = outcome["draft"]
+        if outcome["confirmed"]:
+            return confirmed_fields(draft)
+
+
 def increment_retry(state: GraphState) -> dict:
     return {
         "retry_count": state.get("retry_count", 0) + 1,
@@ -92,6 +113,7 @@ def increment_retry(state: GraphState) -> dict:
 
 
 graph = StateGraph(GraphState)
+graph.add_node("intake_node", intake_node)
 graph.add_node("package_input_node", package_input)
 graph.add_node("vulnerability_detection_node", vulnerability_detection)
 graph.add_node("og_patch_resolution_node", og_patch_resolution)
@@ -114,7 +136,8 @@ graph.add_node("final_evaluation_node", final_evaluation)
 graph.add_node("maintainer_eval_node", maintainer_eval)
 graph.add_node("increment_retry", increment_retry)
 
-graph.add_edge(START, "package_input_node")
+graph.add_edge(START, "intake_node")
+graph.add_edge("intake_node", "package_input_node")
 graph.add_edge("package_input_node", "vulnerability_detection_node")
 graph.add_edge("vulnerability_detection_node", "og_patch_resolution_node")
 graph.add_edge("og_patch_resolution_node", "repo_graph_node")

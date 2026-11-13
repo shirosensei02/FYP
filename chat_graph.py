@@ -31,6 +31,7 @@ from langgraph.graph.message import add_messages
 
 from batch_runner import _fresh_state
 from graph import graph as pipeline_graph
+from intake import apply_resume, format_draft, parse_prompt
 
 
 MODEL_ALIASES = {
@@ -39,15 +40,16 @@ MODEL_ALIASES = {
     "sonnet": "anthropic/claude-sonnet-5",
     "claude": "anthropic/claude-sonnet-5",
 }
-PACKAGE_PATTERN = re.compile(r"(@?[A-Za-z0-9][\w.-]*(?:/[\w.-]+)?)@(\d[\w.+-]*)")
-ADVISORY_PATTERN = re.compile(r"\b(GHSA(?:-[a-z0-9]{4}){3}|CVE-\d{4}-\d+)\b", re.IGNORECASE)
 MAX_TARGETS = 5
 MAX_DIFF_CHARS = 4_000
 USAGE = (
-    "Send one or more targets as `package@version [advisory ID] [model]`, separated by commas "
-    "or new lines, e.g.\n\n"
+    "Send one or more targets as `package@version [advisory ID] [model]`, optionally followed by "
+    "a short suspected issue and a maintainer commit URL, separated by commas or new lines, e.g.\n\n"
+    "`jszip@3.7.1 GHSA-36fh-84j7-cv5h codex path traversal when loading a zip "
+    "https://github.com/Stuk/jszip/commit/abcdef1`\n\n"
     "`jszip@3.7.1 GHSA-36fh-84j7-cv5h codex, tar-fs@3.0.8 GHSA-8cj5-5rvv-wf4v sonnet`\n\n"
-    "Models: `codex`, `sonnet`, or any OpenRouter model ID such as `anthropic/claude-sonnet-5`."
+    "Models: `codex`, `sonnet`, or any OpenRouter model ID such as `anthropic/claude-sonnet-5`. "
+    "The run starts after you reply confirm to the parsed draft."
 )
 
 
@@ -72,20 +74,25 @@ def _message_text(message: Any) -> str:
 
 
 def _parse_request(text: str) -> dict[str, Any]:
-    package = PACKAGE_PATTERN.search(text)
-    if not package:
+    draft = parse_prompt(text)
+    if not draft["package_name"]:
         return {}
-    request: dict[str, Any] = {"package_name": package.group(1), "package_version": package.group(2)}
-    advisory = ADVISORY_PATTERN.search(text)
-    if advisory:
-        request["vulnerability_id"] = advisory.group(1)
-    rest = (text[:package.start()] + " " + text[package.end():]).split()
-    for token in rest:
-        lowered = token.lower().strip(",.")
-        if lowered in MODEL_ALIASES:
-            request["model_name"] = MODEL_ALIASES[lowered]
-        elif "/" in lowered and not ADVISORY_PATTERN.fullmatch(token):
-            request["model_name"] = token.strip(",.")
+    request: dict[str, Any] = {
+        "package_name": draft["package_name"],
+        "package_version": draft["package_version"],
+        "user_prompt": text.strip(),
+    }
+    if draft["vulnerability_id"]:
+        request["vulnerability_id"] = draft["vulnerability_id"]
+    if draft["suspected_issue"]:
+        request["suspected_issue"] = draft["suspected_issue"]
+    if draft["maintainer_commit_url"]:
+        request["maintainer_commit_url"] = draft["maintainer_commit_url"]
+    model = draft["model_name"].lower()
+    if model in MODEL_ALIASES:
+        request["model_name"] = MODEL_ALIASES[model]
+    elif model:
+        request["model_name"] = draft["model_name"]
     return request
 
 
@@ -134,7 +141,40 @@ def chat_input(state: ChatState) -> dict:
 
 
 def route_after_input(state: ChatState) -> str:
-    return "end" if state.get("input_error") else "start"
+    return "end" if state.get("input_error") else "confirm"
+
+
+def confirm_target(state: ChatState) -> dict:
+    """Post the parsed draft and wait. A correction is parsed and shown again."""
+    from langgraph.types import interrupt
+
+    targets = [dict(item) for item in state.get("targets") or []]
+    index = state.get("target_index") or 0
+    draft = parse_prompt(str(targets[index].get("user_prompt") or ""))
+    draft["package_name"] = targets[index].get("package_name") or draft["package_name"]
+    draft["package_version"] = targets[index].get("package_version") or draft["package_version"]
+    if targets[index].get("suspected_issue"):
+        draft["suspected_issue"] = targets[index]["suspected_issue"]
+    if targets[index].get("maintainer_commit_url"):
+        draft["maintainer_commit_url"] = targets[index]["maintainer_commit_url"]
+    messages = []
+    while True:
+        text = format_draft(draft)
+        messages.append(AIMessage(content=f"{_label(state)}{text}"))
+        outcome = apply_resume(draft, interrupt(text))
+        draft = outcome["draft"]
+        if not outcome["confirmed"]:
+            continue
+        targets[index]["package_name"] = draft["package_name"]
+        targets[index]["package_version"] = draft["package_version"]
+        targets[index]["suspected_issue"] = draft.get("suspected_issue") or ""
+        targets[index]["maintainer_commit_url"] = draft.get("maintainer_commit_url") or ""
+        if draft.get("vulnerability_id"):
+            targets[index]["vulnerability_id"] = draft["vulnerability_id"]
+        if draft.get("model_name"):
+            model = str(draft["model_name"]).lower()
+            targets[index]["model_name"] = MODEL_ALIASES.get(model, draft["model_name"])
+        return {"targets": targets, "messages": messages}
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +204,10 @@ def start_target(state: ChatState) -> dict:
         max_retries=int(os.getenv("MAX_RETRIES", "1")),
         patch_scope="single",
     )
+    run["user_prompt"] = target.get("user_prompt") or ""
+    run["suspected_issue"] = target.get("suspected_issue") or ""
+    run["maintainer_commit_url"] = target.get("maintainer_commit_url") or ""
+    run["intake_confirmed"] = True
     return {"run": run}
 
 
@@ -248,6 +292,7 @@ def batch_summary(state: ChatState) -> dict:
 # ---------------------------------------------------------------------------
 
 STEP_TITLES = {
+    "intake_node": "📝 Confirm prompt",
     "package_input_node": "📦 Package input",
     "vulnerability_detection_node": "🔍 Vulnerability detection",
     "og_patch_resolution_node": "📚 Maintainer fix lookup",
@@ -277,8 +322,8 @@ def _title(step: str) -> str:
 
 def _summary(step: str, run: dict) -> str | None:
     """Short summary of a finished step, or None for intermediate tool-loop steps."""
-    if step == "repo_graph_node":
-        return None  # code-graph lookups requested by the locator / patch writer
+    if step in {"repo_graph_node", "intake_node"}:
+        return None  # graph lookups, or a confirmation already shown in the thread
     if step == "locator_node":
         if run.get("graph_request") or run.get("locate_status") == "running":
             return None
@@ -412,11 +457,12 @@ def _callable(runnable: Any) -> Callable[[dict], Any]:
     return getattr(runnable, "func", None) or runnable.invoke
 
 
-def build_chat_graph(pipeline: Any = pipeline_graph):
+def build_chat_graph(pipeline: Any = pipeline_graph, checkpointer: Any = None):
     """Wrap a compiled pipeline graph (graph.py by default) with the chat front end."""
     source = pipeline.builder
     builder = StateGraph(ChatState)
     builder.add_node("chat_input", chat_input)
+    builder.add_node("confirm_target", confirm_target)
     builder.add_node("start_target", start_target)
     builder.add_node("finish_target", finish_target)
     builder.add_node("batch_summary", batch_summary)
@@ -424,7 +470,8 @@ def build_chat_graph(pipeline: Any = pipeline_graph):
         builder.add_node(name, _pipeline_step(name, _callable(spec.runnable)))
 
     builder.add_edge(START, "chat_input")
-    builder.add_conditional_edges("chat_input", route_after_input, {"start": "start_target", "end": END})
+    builder.add_conditional_edges("chat_input", route_after_input, {"confirm": "confirm_target", "end": END})
+    builder.add_edge("confirm_target", "start_target")
     for start, end in source.edges:
         if start == START:
             builder.add_edge("start_target", end)
@@ -437,9 +484,9 @@ def build_chat_graph(pipeline: Any = pipeline_graph):
         for branch in branches.values():
             ends = {key: ("finish_target" if target == END else target) for key, target in (branch.ends or {}).items()}
             builder.add_conditional_edges(start, _route_on_run(_callable(branch.path)), ends or None)
-    builder.add_conditional_edges("finish_target", route_after_target, {"next": "start_target", "done": "batch_summary"})
+    builder.add_conditional_edges("finish_target", route_after_target, {"next": "confirm_target", "done": "batch_summary"})
     builder.add_edge("batch_summary", END)
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer)
 
 
 graph = build_chat_graph()

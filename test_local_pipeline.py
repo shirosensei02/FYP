@@ -115,6 +115,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
         "retry_count": 0,
         "max_retries": args.max_retries,
         "max_oracle_attempts": args.max_oracle_attempts,
+        "suspected_issue": getattr(args, "suspected_issue", "") or "",
+        "maintainer_commit_url": getattr(args, "maintainer_commit_url", "") or "",
         "errors": [],
     }
     if args.model_name:
@@ -408,6 +410,8 @@ def _parse_args() -> argparse.Namespace:
               python test_local_pipeline.py --package-name semver --package-version 7.5.1 --dump-state
         """),
     )
+    p.add_argument("--prompt", default=None,
+                   help="Free-text package, optional suspected issue, and optional commit URL. Confirmed before the run.")
     p.add_argument("--package-name", default=os.getenv("PACKAGE_NAME"),
                    help="Falls back to PACKAGE_NAME in .env")
     p.add_argument("--package-version", default=os.getenv("PACKAGE_VERSION"),
@@ -441,6 +445,28 @@ def _parse_args() -> argparse.Namespace:
     args = p.parse_args()
     if args.model_name and args.model_name not in patch_evaluator_models():
         p.error(f"--model-name must be one of: {', '.join(patch_evaluator_models())}")
+    if args.prompt:
+        from intake import apply_resume, format_draft, parse_prompt
+        draft = parse_prompt(args.prompt)
+        if args.package_name:
+            draft["package_name"] = args.package_name
+        if args.package_version:
+            draft["package_version"] = args.package_version
+        while True:
+            print(format_draft(draft))
+            outcome = apply_resume(draft, input("> "))
+            draft = outcome["draft"]
+            if outcome["confirmed"]:
+                break
+        args.package_name = draft["package_name"]
+        args.package_version = draft["package_version"]
+        args.suspected_issue = draft.get("suspected_issue") or ""
+        args.maintainer_commit_url = draft.get("maintainer_commit_url") or ""
+        if draft.get("vulnerability_id") and not args.vulnerability_id:
+            args.vulnerability_id = draft["vulnerability_id"]
+    else:
+        args.suspected_issue = ""
+        args.maintainer_commit_url = ""
     if not args.package_name or not args.package_version:
         p.error("--package-name/--package-version are required (pass the flag, or set "
                  "PACKAGE_NAME/PACKAGE_VERSION in .env)")

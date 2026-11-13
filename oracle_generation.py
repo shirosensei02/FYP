@@ -105,6 +105,7 @@ def _prompt(state: GraphState) -> str:
         },
         "source_context": _source_context(state),
         "previous_failure": _bounded_feedback(state),
+        "suspected_issue": str(state.get("suspected_issue") or "").strip(),
     }
     suffix = str(state.get("prompt_suffix") or "").strip()
     if suffix in {"_generic", "_CoT"}:
@@ -113,6 +114,7 @@ def _prompt(state: GraphState) -> str:
             "package": state.get("package_name"),
             "vulnerable_version": state.get("package_version"),
             "description": vulnerability.get("description") or "",
+            "suspected_issue": payload["suspected_issue"],
             "source_context": payload["source_context"],
             "previous_failure": payload["previous_failure"],
         }

@@ -314,6 +314,7 @@ def _build_messages(
         "patch_scope": state.get("patch_scope", "single"),
         "vulnerabilities": vulnerabilities,
         "context_files": context_files,
+        "suspected_issue": str(state.get("suspected_issue") or "").strip(),
         "output_schema": {
             "edits": [{
                 "path": "source file path relative to package root",
@@ -375,6 +376,9 @@ def _build_openrouter_prompt(
         "cwe_description": state.get("cwe_description") or "",
         "typical_control": state.get("typical_control") or "",
     })
+    suspected = str(state.get("suspected_issue") or "").strip()
+    if suspected:
+        prompt += f"\n\nSuspected issues:\n{suspected}\n"
     history = load_feedback(state)
     if history:
         prompt += "\n\n" + history

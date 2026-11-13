@@ -160,6 +160,33 @@ def test_og_patch_resolution_reads_commit_files(monkeypatch):
     assert "@@ -20,6 +20,8 @@" in (answer["diff"] or "")
 
 
+def test_user_commit_resolves_an_advisory_that_has_no_commit(monkeypatch):
+    def fake_github_get(url):
+        if "commits/abc1234" in url:
+            return {"files": [{"filename": "quote.js", "patch": "@@ -1 +1 @@\n-old\n+new\n"}]}, None
+        return {
+            "ghsa_id": "GHSA-test-test-test",
+            "summary": "Upgrade only",
+            "references": ["https://github.com/advisories/GHSA-test-test-test"],
+            "vulnerabilities": [
+                {"package": {"ecosystem": "npm", "name": "shell-quote"}, "first_patched_version": "1.8.4"}
+            ],
+        }, None
+
+    monkeypatch.setattr("og_patch_resolution._github_get", fake_github_get)
+    result = og_patch_resolution({
+        "package_name": "shell-quote",
+        "maintainer_commit_url": "https://github.com/ljharb/shell-quote/commit/abc1234",
+        "current_vulnerabilities": [{"id": "GHSA-test-test-test"}],
+    })
+    answer = result["answer_key"]
+    assert answer["status"] == "resolved"
+    assert answer["first_patched_version"] == "1.8.4"
+    assert answer["commit_refs"][0]["sha"] == "abc1234"
+    assert answer["files"] == ["quote.js"]
+    assert "--- a/quote.js" in (answer["diff"] or "")
+
+
 def test_og_patch_resolution_version_only_when_no_commit(monkeypatch):
     def fake_github_get(url):
         return {

@@ -379,7 +379,9 @@ def _system_prompt(state: dict) -> str:
 def _messages(state: dict, trace: list[dict]) -> list[dict[str, str]]:
     findings = state.get("current_vulnerabilities") or state.get("vulnerabilities") or []
     finding = findings[0] if findings else {}
+    suspected = str(state.get("suspected_issue") or "").strip()
     advisory = "\n".join([
+        *( [f"Suspected issues: {suspected}", ""] if suspected else [] ),
         "GitHub problem description:",
         f"id: {finding.get('id', 'unknown')}",
         f"severity: {finding.get('severity', 'unknown')}",
