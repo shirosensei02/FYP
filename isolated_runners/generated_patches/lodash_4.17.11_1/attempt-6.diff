@@ -1,0 +1,20 @@
+diff --git a/lodash.js b/lodash.js
+--- a/lodash.js
++++ b/lodash.js
+@@ -6613,11 +6613,15 @@
+      * @returns {*} Returns the property value.
+      */
+     function safeGet(object, key) {
+-      if (key == '__proto__') {
++      if (key == '__proto__' || key == 'constructor' || key == 'prototype') {
+         return;
+       }
+ 
+       return object[key];
++    }
++
++    function baseMergeDeepSafeKey(key) {
++      return !(key == '__proto__' || key == 'constructor' || key == 'prototype');
+     }
+ 
+     /**

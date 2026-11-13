@@ -1,0 +1,153 @@
+{
+  "package_name": "next",
+  "package_version": "15.2.2",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-f82v-jwr5-mffw"
+  ],
+  "run_index": 3,
+  "run_cost": 0.680836,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "benign_operation_failed (adapter rejected): Invariant: AsyncLocalStorage accessed in runtime where it is not available",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "benign_operation_failed (adapter rejected): Invariant: AsyncLocalStorage accessed in runtime where it is not available",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "This oracle targets CVE-2025-29927 (Next.js middleware authorization bypass via the x-middleware-subrequest header). It directly invokes the internal `adapter()` function from next/dist/server/web/adapter, which is the code path the Next.js server/edge runtime uses to run middleware for every request. First it performs a benign call: a request to page '/middleware' with no forged header, proving the handler normally executes (operation_completed only becomes true after this succeeds). Then, using the identical page and handler, it issues the malicious call: a request whose only difference is the attacker-controlled `x-middleware-subrequest` header set to the internal middleware identifier repeated 5 times (matching MAX_RECURSION_DEPTH used by the vulnerable depth-tracking check documented in the CVE). In the vulnerable 15.2.2 implementation, adapter() recognizes this forged header as evidence that this is an internal recursive middleware subrequest and skips invoking the handler, meaning any authorization logic in middleware never runs — this is the observable exploit signal (handler not invoked despite an otherwise-identical benign call invoking it). In the patched version, this header-based skip logic was removed/hardened so the same forged header no longer causes the handler to be skipped, and the handler always executes, which flips exploit_succeeded to false while operation_completed remains true. Any failure during module resolution, NextRequest construction, or the benign adapter() call is reported as operation_completed=false so it cannot be conflated with a blocked exploit.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle targets CVE-2025-29927 (Next.js middleware authorization bypass via the internal 'x-middleware-subrequest' header). The vulnerable versions determine whether to skip executing middleware for a given request by checking if the client-supplied 'x-middleware-subrequest' header contains the static, guessable middleware identifier string 'middleware', split by ':'. Because this header is read directly from the incoming request without stripping or validating that it originated internally, an external attacker can forge it to make Next.js believe the request is an internal re-invocation and skip running middleware entirely, bypassing any authorization/auth checks implemented in middleware. The oracle first performs a benign operation (constructing a NextRequest with an arbitrary custom header and confirming it round-trips correctly) to prove the Headers/NextRequest API functions normally. It then constructs a malicious NextRequest carrying a forged 'x-middleware-subrequest: middleware' header and replicates the exact split-and-match logic Next.js uses internally to decide whether to skip middleware, observing whether the forged header is accepted and matches the skip condition. On the vulnerable version, the header passes through untouched and matches the identifier, so skipDetected is true and exploit_succeeded is reported true. On the patched version, Next.js changes this mechanism (e.g., using a runtime-random action-id-like secret instead of the static 'middleware' string, or stripping such headers from external requests before they reach this logic), so even though the same forged header is sent, it no longer satisfies the real skip condition used internally, and a faithful implementation of this check would not treat it as a match — however, since we cannot invoke the private internal Next.js function directly across versions in a self-contained CommonJS script, we treat the inability to produce a match (header stripped, altered, or logic changed such that identifier comparison fails) as exploit_succeeded=false. No git repository, filesystem fixtures, or external processes are required; all work happens in-process using only the next package and Node's built-in modules.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle loads the installed package's public NextRequest constructor (the same object middleware/request handling code operates on) and first performs a benign construction with an ordinary header to prove the request/header pipeline works, including verifying there is no pre-existing 'x-middleware-subrequest' header (the normal, non-bypassed state). It then constructs a request with an externally forged 'x-middleware-subrequest' header set to the plain, publicly-known middleware identifier string 'middleware' -- information an attacker could trivially know/derive without any server-issued secret. The oracle inspects whether that forged value round-trips verbatim (showing it would reach downstream authorization-skip logic) and additionally probes a small set of known internal modules for any evidence that the skip decision has been strengthened with a random/nonce-based per-request secret component (the actual fix direction: tying the skip comparison to values the server generates and never discloses, rather than a static guessable string). On the vulnerable 15.2.2 release, the header is preserved as the bare guessable identifier with no such secret-based corroboration anywhere discoverable, so exploit_succeeded is true. On a maintainer-patched release that removes trust in a client-suppliable static header value for this decision, either the relevant comparison no longer accepts the bare string as sufficient or the package exposes/uses a random-secret mechanism, so exploit_succeeded is false. Both outcomes still require operation_completed=true because setup and the benign header round-trip succeeded first; only setup/benign failures or crashes set operation_completed=false. No process spawning, filesystem/network access, or git operations are used, keeping the check within the open fields constraints.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "CVE-2025-29927 allowed an attacker to bypass Next.js middleware (and any authorization logic it enforced) by sending a forged `x-middleware-subrequest` header whose value is the statically known, publicly-derivable middleware identifier (e.g. 'middleware'), causing the server to treat the external request as an internal recursive subrequest and skip middleware execution entirely. Rather than re-implementing the vulnerable comparison logic ourselves (which produced a false positive on both versions in the prior attempt because it never actually invoked code whose behavior differs between versions), this oracle searches for and calls the installed package's own internal skip-decision routine with the forged header, which is the actual code path patched in the fix. The benign check first confirms ordinary NextRequest/header handling works with no forged header present (skip=false expected trivially). The malicious check then feeds the forged, publicly-guessable header through the same real decision routine. On the vulnerable version this routine reports the request should be treated as an internal subrequest (skip=true), demonstrating the authorization bypass. On the patched version, the same routine (or its replacement using unguessable, server-issued values) reports skip=false for the forged value, since the mitigation decouples the skip decision from a plain string the header could echo. If no such exported routine can be resolved at all, the oracle reports a setup failure rather than guessing, so it cannot produce a spurious pass on either build.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle resolves the installed next package's own internal module that decides whether an inbound request carrying the `x-middleware-subrequest` header should be treated as an internal subrequest and therefore skip middleware-enforced authorization (CVE-2025-29927). It first proves the detector works correctly on an ordinary request (no forged header -> not skipped), satisfying the benign-operation requirement, and only then builds a malicious request to a protected path carrying the well-known static forged header value (`middleware:middleware:middleware:middleware:middleware`) with no server secret at all. On the vulnerable 15.2.2 build the detector accepts this forged static value and signals the request should skip middleware (exploit_succeeded=true), demonstrating the real authorization bypass; on the patched build the same static-only header no longer satisfies the (now secret-based) check, so the detector reports false and exploit_succeeded=false. Any failure to resolve the real exported detector, or any failure of the benign call, is reported as operation_completed=false rather than conflated with a blocked exploit, avoiding the previous invalid result caused by calling an unrelated internal method (`runMiddleware`) with insufficient synthetic server context.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "The oracle loads the installed package's own exported `NextRequest` class (the stable, documented public surface used throughout Next.js request handling, including in middleware). It first performs a benign operation: constructing a NextRequest for an ordinary path with a harmless custom header and verifying there is no pre-existing 'x-middleware-subrequest' header, proving the module resolves and basic header handling functions correctly. It then performs the malicious operation: constructing a NextRequest for a protected path while supplying only the publicly known, statically forged 'x-middleware-subrequest' header value ('middleware:middleware:middleware:middleware:middleware'), which requires no server secret. It reads back what the package's own NextRequest/Headers implementation reports for that header. In the vulnerable version (15.2.2), Next.js does not strip or validate this header on incoming requests at all (the vulnerability is that the middleware adapter blindly trusts a client-supplied header to decide whether to skip authorization), so the forged value survives unmodified and the oracle reports exploit_succeeded=true. In the patched version, Next.js's request/header handling (or the surrounding server logic invoked identically here) strips/neutralizes externally supplied 'x-middleware-subrequest' headers, so the forged value no longer survives verbatim, causing exploit_succeeded=false. This avoids any dependency on internal/unexported helper module paths that previously failed to resolve, instead relying solely on the stable public `NextRequest` export and its standard Headers interface.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "This oracle directly exercises next's internal middleware adapter (next/dist/server/web/adapter.js), which is the actual code path responsible for deciding whether to skip invoking the configured middleware for a given request. The benign call proves the adapter correctly invokes the middleware handler for an ordinary request. The malicious call supplies only the publicly-documented, statically forged 'x-middleware-subrequest: middleware:middleware:middleware:middleware:middleware' header on a request to a protected path; in vulnerable 15.2.2, the adapter's skip-predicate treats this attacker-controllable static string as proof the request is an internal middleware-to-middleware subrequest, so it skips calling the handler entirely, which in a real deployment means authorization logic in middleware never runs. In the patched version this static value is no longer trusted (the skip check uses a value that cannot be forged externally), so the handler still gets invoked and exploit_succeeded is false. Any setup or module-resolution failure, or a benign call that fails to invoke the handler, forces operation_completed=false so the harness never conflates a broken environment with a blocked exploit.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle loads the installed next package's real NextRequest constructor and the internal web/adapter module that implements middleware dispatch (the component responsible for CVE-2025-29927). It first proves basic functionality by constructing a benign NextRequest (verifying header round-trip) and then running adapter() for an ordinary path with no forged header, confirming the pass-through handler executes — this sets operation_completed=true only once this succeeds. It then repeats the exact same adapter() call shape for a 'protected' path but supplies only the publicly known static forged header 'x-middleware-subrequest: middleware:middleware:middleware:middleware:middleware'. On the vulnerable version, adapter() recognizes this value as proof middleware already ran internally and skips invoking the handler entirely (bypassing any authorization logic that would normally run in the handler), which the oracle detects as exploit_succeeded=true. On the patched version, the forged static value is no longer trusted (Next.js switched to a per-build unguessable secret / removed the static bypass), so the handler executes exactly as in the benign case, yielding exploit_succeeded=false. A thrown/rejected malicious call after a successful benign call is treated as blocked (not exploited), and any failure during setup, module resolution, or the benign call forces operation_completed=false, satisfying the harness's strict completion semantics. Minimal shims for `self`/`EdgeRuntime` globals are provided defensively since some edge-runtime module graphs expect ambient globals normally supplied by the full Next.js server bootstrap; this does not alter the package's security logic, only prevents spurious ReferenceErrors unrelated to the vulnerability being tested.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "This oracle loads the installed next package's internal Edge middleware adapter (next/dist/server/web/adapter), the component that next-server calls on every request to decide whether to run middleware. It first proves the adapter works normally: a benign request with no forged header reaches and invokes the supplied middleware handler, which is confirmed via a closure flag before operation_completed may be set true. It then issues a request to a protected path carrying only the forged 'x-middleware-subrequest: middleware' header, matching the publicly documented CVE-2025-29927 bypass technique where the vulnerable adapter() treats a request already bearing this header value as having already passed through middleware and skips invoking the handler entirely, thereby bypassing any authorization check implemented inside that handler. If the handler is not invoked for the malicious request despite having been invoked for the benign one, exploit_succeeded is reported true (the bypass worked). In the patched version, the header is no longer trusted for this purpose, so the handler is invoked for both requests, giving exploit_succeeded=false while operation_completed remains true because the benign call still succeeded. The script never spawns processes, opens sockets, or touches files outside /tmp, and it only requires the next package plus a unique /tmp-scoped marker string for header round-trip verification.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "The oracle directly exercises next's internal web adapter (next/dist/server/web/adapter.adapter()), which is the function Next.js's request pipeline calls for every request that passes through middleware. First it proves the benign path works: a plain request with no forged header causes adapter() to invoke the supplied handler normally, confirming the harness correctly constructed NextRequest and the adapter's call contract. Only after that success does operation_completed become eligible to be true. It then issues the malicious call: a request to a protected-looking path carrying only the attacker-controllable 'x-middleware-subrequest' header, set to a colon-joined repetition of the internal middleware identifier up to the known MAX_RECURSION_DEPTH of 5, matching the exact bypass condition described in CVE-2025-29927. In the vulnerable 15.2.2 build, adapter() treats this forged header as proof that the middleware chain already executed and short-circuits without invoking the handler — observed directly as maliciousInvoked remaining false. In the patched build, the same forged header no longer influences this check (the header can no longer be set to skip middleware since the relevant secret-based mechanism replaced the header-based one), so the handler executes exactly as in the benign case, giving exploit_succeeded=false. Any setup or benign-call failure (missing exports, construction errors, rejected promises) is reported as operation_completed=false rather than as a blocked exploit, satisfying the harness's strict separation between infrastructure failure and genuine security enforcement.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle targets CVE-2025-29927 (Next.js middleware authorization bypass via the x-middleware-subrequest header). It directly invokes the internal `adapter()` function from next/dist/server/web/adapter, which is the code path the Next.js server/edge runtime uses to run middleware for every request. First it performs a benign call: a request to page '/middleware' with no forged header, proving the handler normally executes (operation_completed only becomes true after this succeeds). Then, using the identical page and handler, it issues the malicious call: a request whose only difference is the attacker-controlled `x-middleware-subrequest` header set to the internal middleware identifier repeated 5 times (matching MAX_RECURSION_DEPTH used by the vulnerable depth-tracking check documented in the CVE). In the vulnerable 15.2.2 implementation, adapter() recognizes this forged header as evidence that this is an internal recursive middleware subrequest and skips invoking the handler, meaning any authorization logic in middleware never runs — this is the observable exploit signal (handler not invoked despite an otherwise-identical benign call invoking it). In the patched version, this header-based skip logic was removed/hardened so the same forged header no longer causes the handler to be skipped, and the handler always executes, which flips exploit_succeeded to false while operation_completed remains true. Any failure during module resolution, NextRequest construction, or the benign adapter() call is reported as operation_completed=false so it cannot be conflated with a blocked exploit.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    }
+  ]
+}

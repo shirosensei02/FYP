@@ -1,0 +1,54 @@
+{
+  "package_name": "form-data",
+  "package_version": "4.0.3",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-fjxv-7rqg-78g4"
+  ],
+  "run_index": 5,
+  "run_cost": 0.0128765,
+  "oracle_attempt_count": 1,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "Boundaries are digit-only with dash prefix across samples, consistent with unsafe Math.random-based generation. sample=--------------------------395598612257842750112495 charset=-0123456789",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "Boundary generation includes broader/non-digit character patterns; unsafe predictable format not observed. sample=--------------------------29d8a2c19e6d73c2093ffe16",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 1,
+    "explanation": "This oracle validates the public FormData flow first by creating a form, appending a field, and reading its boundary. Only after that succeeds does it mark operation_completed=true. It then probes boundary generation across multiple instances and flags exploitation when every boundary matches a digit-only format with dash prefix (the vulnerable pattern associated with non-cryptographic randomness). Patched behavior is expected to produce boundaries that do not all match that restricted pattern, causing exploit_succeeded=false while keeping operation_completed=true.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle validates the public FormData flow first by creating a form, appending a field, and reading its boundary. Only after that succeeds does it mark operation_completed=true. It then probes boundary generation across multiple instances and flags exploitation when every boundary matches a digit-only format with dash prefix (the vulnerable pattern associated with non-cryptographic randomness). Patched behavior is expected to produce boundaries that do not all match that restricted pattern, causing exploit_succeeded=false while keeping operation_completed=true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

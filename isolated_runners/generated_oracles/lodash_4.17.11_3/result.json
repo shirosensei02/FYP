@@ -1,0 +1,155 @@
+{
+  "package_name": "lodash",
+  "package_version": "4.17.11",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-jf85-cpcp-j695"
+  ],
+  "run_index": 3,
+  "run_cost": 0.364454,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "Object.prototype.polluted === \"yes\" after _.zipObjectDeep([\"constructor.prototype.polluted\"],[\"yes\"]); fresh {}.polluted=yes",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "Object.prototype.polluted === \"yes\" after _.zipObjectDeep([\"constructor.prototype.polluted\"],[\"yes\"]); fresh {}.polluted=yes",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "The previous attempt used a literal '__proto__.polluted' path, but modern JS object literal semantics and some lodash internal helpers special-case '__proto__' as a literal key assignment target in ways that still happen to pollute even after the official patch, making the oracle unable to distinguish vulnerable from fixed. Using the 'constructor.prototype.polluted' path segment instead exercises the same class of prototype-pollution defect (missing guard against dangerous path segments in baseSet/zipObjectDeep) while being exactly the kind of path lodash's patched isKey/baseSet guards (checking for '__proto__', 'constructor', 'prototype') were added to block, so vulnerable 4.17.11 pollutes Object.prototype while the patched version detects and refuses the dangerous segment, leaving fresh object literals unpolluted.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves lodash's merge works correctly on an ordinary plain-object merge (benign case), including a trivial /tmp fixture roundtrip to validate the sandbox. Only after that succeeds does it set operation_completed=true. It then performs the classic CVE-2018-16487 prototype-pollution payload: merging a JSON-parsed object containing a __proto__ key into an empty target via lodash.merge. On vulnerable 4.17.11, lodash's baseMergeDeep follows the __proto__ key and writes onto Object.prototype, so a brand-new unrelated object literal ({}) subsequently exhibits an inherited 'polluted' property — this is the exploit_observable, checked independently of the merge's return value to ensure it reflects true global pollution rather than just the merged object's own properties. On the patched version, lodash explicitly skips '__proto__'/'constructor'/'prototype' keys during merge, so Object.prototype is never touched and the fresh object shows no such property, yielding exploit_succeeded=false while operation_completed remains true because the benign merge still succeeded. Any exception during the malicious merge after benign success is treated as a block (exploit_succeeded=false, operation_completed=true), while any failure during setup/benign operation correctly yields operation_completed=false per the specification.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The previous attempt used a plain `__proto__` key payload, which even lodash 4.17.11 already blocks in `merge` via `baseMergeDeep`'s explicit `__proto__` key filtering (that protection predates 4.17.11). The actual CVE-2018-16487 fix in lodash 4.17.12 hardens against a different bypass: payloads that reach Object.prototype through the `constructor.prototype` property chain rather than the literal `__proto__` key. In 4.17.11 this path is still exploitable because the safeguard only checked the `__proto__`/`constructor`/`prototype` key names in isolation but not sufficiently to block traversal through `constructor` -> `prototype`. Using `{\"constructor\":{\"prototype\":{\"polluted\":\"yes\"}}}` as the merge source against vulnerable 4.17.11 pollutes `Object.prototype.polluted`, observable on any freshly created object literal. The patched lodash tightens key-name checks performed in `baseMergeDeep`/`safeGet` to also guard the `constructor.prototype` traversal, so the fixed package leaves `Object.prototype` untouched and `{}.polluted` stays `undefined`.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The previous oracle used a constructor.prototype payload which lodash 4.17.11 does not pollute (that bypass affects a later, already-fixed version window). lodash 4.17.11 is specifically vulnerable to the simpler `__proto__` key prototype pollution in `_.merge` (CVE-2018-3721 family), which was patched by adding safeGet/guarded key checks in 4.17.12+. This oracle first proves `_.merge` behaves correctly on benign nested objects and performs a tmp-file roundtrip, then calls `_.merge({}, JSON.parse('{\"__proto__\":{\"polluted\":\"yes\"}}'))`. On the vulnerable 4.17.11 build this pollutes Object.prototype so that a brand-new `{}` inherits `polluted === 'yes'`; on patched versions the merge skips the `__proto__` key and no pollution occurs. Any setup, module-resolution, or benign-operation failure short-circuits with operation_completed=false, and exceptions during the malicious call after a successful benign phase are treated as blocked rather than crashes.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves lodash.merge works correctly via a benign nested-object merge and a /tmp round-trip, setting operation_completed=true only on success. It then feeds merge a JSON-parsed payload containing a 'constructor.prototype.polluted' path — the historically correct PoC for the lodash <4.17.11 prototype pollution vulnerability (CVE-2018-16487), distinct from the __proto__-key variant that this package version's merge does not propagate. After the malicious call, it checks whether a brand-new, unrelated object literal now inherits 'polluted' from Object.prototype, which is only possible if merge mutated the shared prototype. The patched lodash adds explicit guards against 'constructor', 'prototype', and '__proto__' keys during recursive merge, so the same payload leaves Object.prototype untouched, yielding exploit_succeeded=false while operation_completed remains true because the benign call still succeeds identically.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "The oracle calls lodash.zipObjectDeep first with a benign nested path ('a.b','a.c') to prove the deep-zip operation works correctly, then calls it again with the known CVE-2018-16487 proof-of-concept payload ['__proto__.polluted'] -> ['yes']. In vulnerable lodash 4.17.11-and-earlier builds affected by this specific regression, zipObjectDeep's internal path-based assignment walks through '__proto__' and sets a property directly on Object.prototype, which is then observable on a brand-new, unrelated object literal. The patched version treats '__proto__'/'constructor'/'prototype' path segments as unsafe during this traversal and refuses to assign through them, so the same call leaves Object.prototype untouched. The script only marks operation_completed=true after the benign call and a /tmp fixture round-trip succeed, and any exception during setup or the benign call reports operation_completed=false as required; an exception during the malicious call after benign success is treated as blocked (exploit_succeeded reflects actual pollution state, not just lack of throw).",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves lodash's deep-path setter works correctly via a benign call to _.set({}, 'a.b.c', 1) on a fresh plain object, verifying the resulting nested structure. Only after this benign operation succeeds does it set operation_completed=true. It then exercises the well-known CVE-2018-3721/2019-10744-class prototype pollution payload: _.set({}, '__proto__.polluted', 'yes'). In vulnerable lodash 4.17.11, the internal baseSet path-walking logic does not special-case dangerous keys like '__proto__', so the assignment walks through the target's prototype chain and lands on Object.prototype itself. The exploit_observable is checked on a brand-new, completely unrelated object literal created after the malicious call: if `{}.polluted === 'yes'` and `Object.prototype.hasOwnProperty('polluted')` is true, pollution has escaped the intended target and contaminated the global Object.prototype, which is the defining signature of this vulnerability class. In the patched version (>=4.17.11 fix / 4.17.12), lodash added explicit checks in the path-resolution/assignment internals (isKey and stringToPath handling of '__proto__', 'constructor', and 'prototype' segments) that prevent writes through these keys, so Object.prototype remains clean and the fresh object's .polluted stays undefined, yielding exploit_succeeded=false while operation_completed remains true because the benign call still works identically in both versions. Any exception thrown during setup or the benign call is reported as operation_completed=false per the harness contract; an exception during the malicious call after benign success is treated as a blocked exploit (exploit_succeeded computed from the post-call prototype state, defaulting to false if no pollution is detectable).",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves the public zipObjectDeep API works correctly by building a nested object from a benign dotted path ('a.b.c'), and also exercises a writable /tmp roundtrip for fixture-access confirmation. Only after this benign success does operation_completed become true. It then calls the same API with a path whose first segment is '__proto__', which in vulnerable lodash 4.17.11 reaches the internal path-assignment logic without filtering dangerous keys, polluting Object.prototype. The exploit is detected by checking a brand-new, previously untouched object literal for the polluted property and confirming Object.prototype itself owns that property — this is independent of the returned value of the malicious call itself, avoiding false negatives/positives from local object mutation alone. In the patched version, the internal baseSet-related guards skip '__proto__', 'constructor', and 'prototype' keys, so no pollution occurs and the fresh object remains clean, making exploit_succeeded false while operation_completed stays true. Any unexpected crash before the benign operation succeeds is reported as operation_completed=false, and prototype pollution state is cleaned up in all paths to avoid leaking state across runs.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves lodash's merge functionality works correctly on a benign nested-object merge, confirming the module loaded and operates normally, and also validates a /tmp round-trip to satisfy fixture usage. Only after that benign success does it attempt the malicious call: merging a destination {} with a source object produced by JSON.parse of a string containing a '__proto__' key, mirroring the real-world CVE-2019-10744 attack vector where untrusted JSON is merged into application state. It then checks a freshly created, totally unrelated object literal for the injected 'polluted' property and separately verifies Object.prototype itself owns that property, which is the unambiguous signature of prototype pollution rather than a coincidental own-property on the destination. Lodash 4.17.11 is vulnerable because baseMergeDeep did not guard against '__proto__' as a key during recursive merges, letting the assignment walk up to Object.prototype; versions 4.17.12 and later explicitly blacklist '__proto__' (and 'constructor'/'prototype') in the merge/assignment internals, so the same call leaves Object.prototype clean and the exploit observable never appears.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves _.zipObjectDeep works correctly for a benign nested-path construction (a.b, a.c, d), confirming the public API and /tmp fixture access are functional, before setting operation_completed=true. It then calls _.zipObjectDeep with a path array containing '__proto__.polluted', which in lodash 4.17.11 traverses into Object.prototype via the internal baseSet/assignValue path-walking logic and assigns 'polluted'='yes' directly onto Object.prototype. The check uses a brand-new, untouched object literal to detect inherited pollution plus an explicit hasOwnProperty check on Object.prototype itself, avoiding false positives from the call's own return value. In the patched version (>=4.17.12), guards against '__proto__'/'constructor'/'prototype' keys in the path-setting internals prevent the write, so Object.prototype remains clean and exploit_succeeded is false. Pollution is cleaned up in a finally-like path after the check to avoid cross-run contamination.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "The previous attempt used a literal '__proto__.polluted' path, but modern JS object literal semantics and some lodash internal helpers special-case '__proto__' as a literal key assignment target in ways that still happen to pollute even after the official patch, making the oracle unable to distinguish vulnerable from fixed. Using the 'constructor.prototype.polluted' path segment instead exercises the same class of prototype-pollution defect (missing guard against dangerous path segments in baseSet/zipObjectDeep) while being exactly the kind of path lodash's patched isKey/baseSet guards (checking for '__proto__', 'constructor', 'prototype') were added to block, so vulnerable 4.17.11 pollutes Object.prototype while the patched version detects and refuses the dangerous segment, leaving fresh object literals unpolluted.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    }
+  ]
+}

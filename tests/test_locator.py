@@ -1,7 +1,14 @@
 from pathlib import Path
 
 import repo_graph
-from locator import _parse_action, _system_prompt, locator_node, route_after_locator
+from locator import (
+    _locations_with_bodies,
+    _parse_action,
+    _render_trace,
+    _system_prompt,
+    locator_node,
+    route_after_locator,
+)
 from repo_graph import repo_graph_node, route_after_repo_graph
 
 
@@ -108,3 +115,90 @@ def test_final_locations_accept_the_locator_block():
     }
     assert parsed["locations"][1]["path"] == "lib/util.js"
     assert parsed["locations"][1]["function"] == "escape"
+
+
+def test_named_module_export_resolves_when_the_model_says_module_exports(tmp_path, monkeypatch):
+    monkeypatch.setattr(repo_graph, "INDEX_ROOT", tmp_path / "index")
+    monkeypatch.setattr(repo_graph, "_CACHE", {})
+    source = tmp_path / "pkg"
+    source.mkdir()
+    (source / "quote.js").write_text(
+        "module.exports = function quote(xs) {\n"
+        "  return xs.map(function (s) {\n"
+        "    return s;\n"
+        "  });\n"
+        "};\n",
+        encoding="utf-8",
+    )
+    state = {
+        "source_dir": str(source),
+        "package_name": "demo",
+        "package_version": "1.0.0",
+    }
+    kept = _locations_with_bodies(state, [{
+        "id": "quote.js:module.exports",
+        "path": "quote.js",
+        "function": "module.exports",
+        "line": 8,
+        "class": "",
+        "rank": 1,
+    }])
+    assert kept[0]["id"] == "quote.js:quote"
+    assert kept[0]["function"] == "quote"
+    assert "return s" in kept[0]["body"]
+
+
+def test_anonymous_export_and_a_functionless_file_stay_locations(tmp_path, monkeypatch):
+    monkeypatch.setattr(repo_graph, "INDEX_ROOT", tmp_path / "index")
+    monkeypatch.setattr(repo_graph, "_CACHE", {})
+    source = tmp_path / "pkg"
+    source.mkdir()
+    (source / "verify.js").write_text(
+        "module.exports = function (value) {\n  return value;\n};\n",
+        encoding="utf-8",
+    )
+    (source / "notes.js").write_text("const marker = 1;\n", encoding="utf-8")
+    state = {
+        "source_dir": str(source),
+        "package_name": "demo",
+        "package_version": "1.0.0",
+    }
+
+    kept = _locations_with_bodies(state, [
+        {
+            "id": "verify.js:module.exports",
+            "path": "verify.js",
+            "function": "module.exports",
+            "line": 2,
+            "class": "",
+            "rank": 1,
+        },
+        {"id": "notes.js", "path": "notes.js", "function": "", "line": 1, "class": "", "rank": 2},
+    ])
+
+    assert kept[0]["id"] == "verify.js:default"
+    assert kept[0]["function"] == "default"
+    assert "return value" in kept[0]["body"]
+    assert kept[1]["path"] == "notes.js"
+    assert kept[1]["function"] == ""
+    assert "marker" in kept[1]["body"]
+
+
+def test_long_retrieve_keeps_its_cursor_inside_the_prompt_result():
+    code = "x" * 20_000
+    rendered = _render_trace([{
+        "tool": "RetrieveEntity",
+        "arguments": {"entity_ids": ["long.js:huge"]},
+        "result": {
+            "tool": "RetrieveEntity",
+            "entities": [{
+                "id": "long.js:huge",
+                "cursor": 3000,
+                "stopped_at_line": 4,
+                "code": code,
+            }],
+        },
+    }])
+
+    assert "cursor" in rendered
+    assert "stopped_at_line" in rendered

@@ -31,6 +31,9 @@ MAX_HOPS = 3
 MAX_SEARCH_HITS = 8
 MAX_SNIPPET_CHARS = 800
 MAX_CODE_CHARS = 8_000
+# One tool result is copied into the locator prompt at 4,000 characters.
+# The page is smaller so the cursor survives that copy.
+RETRIEVE_PAGE_CHARS = 3_000
 _CACHE: dict[str, dict] = {}
 _CALL_RE = re.compile(r"(?<!function\s)\b([A-Za-z_$][\w$]*)\s*\(")
 _EXTENDS_RE = re.compile(
@@ -259,7 +262,11 @@ def run_tool(graph: dict, request: dict) -> dict:
             _as_list(arguments.get("relation_types")),
         )
     if tool == "RetrieveEntity":
-        return retrieve_entity(graph, _as_list(arguments.get("entity_ids")))
+        return retrieve_entity(
+            graph,
+            _as_list(arguments.get("entity_ids")),
+            arguments.get("cursor"),
+        )
     return {"tool": tool, "error": "unknown tool", "entities": []}
 
 
@@ -445,15 +452,36 @@ def traverse_graph(
     return {"tool": "TraverseGraph", "entities": entities, "relations": relations}
 
 
-def retrieve_entity(graph: dict, entity_ids) -> dict:
-    """Return the full source of the requested entities."""
+def retrieve_entity(graph: dict, entity_ids, cursor=0, *, page: bool = True) -> dict:
+    """Return the source of the requested entities.
+
+    The tool pages a body that does not fit in one prompt result. A body that
+    fits is returned whole. ``page=False`` is for the kept location and returns
+    the body up to ``MAX_CODE_CHARS`` with no cursor.
+    """
+    start = _as_int(cursor, 0)
+    if start < 0:
+        start = 0
     by_id = {node["id"]: node for node in graph["nodes"]}
     entities = []
     for raw in entity_ids:
         node = by_id.get(str(raw))
         if node is None:
             continue
-        entities.append(_present(graph, node, "full"))
+        presented = _present(graph, node, "fold")
+        text = _node_text(graph, node)
+        if not page:
+            presented["code"] = text[:MAX_CODE_CHARS]
+        elif start >= len(text):
+            presented["code"] = ""
+        else:
+            shown = text[start:start + RETRIEVE_PAGE_CHARS]
+            end = start + len(shown)
+            if end < len(text):
+                presented["cursor"] = end
+                presented["stopped_at_line"] = _line_at(text, end)
+            presented["code"] = shown
+        entities.append(presented)
     return {"tool": "RetrieveEntity", "entities": entities}
 
 
@@ -473,6 +501,17 @@ def _present(graph: dict, node: dict, detail: str) -> dict:
         return presented
     presented["snippet"] = text[:MAX_SNIPPET_CHARS]
     return presented
+
+
+def _line_at(text: str, end: int) -> int:
+    """1-based line number of the last character included in a page."""
+    if end <= 0:
+        return 1
+    included = text[:end]
+    line = included.count("\n")
+    if included[-1] != "\n":
+        line += 1
+    return max(line, 1)
 
 
 def _node_text(graph: dict, node: dict) -> str:

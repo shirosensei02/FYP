@@ -1,0 +1,30 @@
+{
+  "package_name": "minimatch",
+  "package_version": "3.0.4",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-f8q6-p94x-37v3"
+  ],
+  "run_index": 7,
+  "run_cost": 0.0160615,
+  "patch_attempt_count": 1,
+  "success_loop": 1,
+  "validation_status": "SECURITY_PASS",
+  "validation_reason": "Relevant operation completed and the exploit was blocked.",
+  "locked_oracle": {
+    "source_run": "minimatch_3.0.4_2",
+    "attempt_number": 2
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_PASS",
+      "reason": "Relevant operation completed and the exploit was blocked.",
+      "execution_status": "EXPLOIT_BLOCKED",
+      "evidence": "Malicious braceExpand pattern (n=50000) completed in 0ms (below threshold), no DoS observed. maliciousThrew=false; resultType=array[1]"
+    }
+  ]
+}

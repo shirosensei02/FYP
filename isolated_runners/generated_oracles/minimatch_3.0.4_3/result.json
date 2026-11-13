@@ -1,0 +1,46 @@
+{
+  "package_name": "minimatch",
+  "package_version": "3.0.4",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-f8q6-p94x-37v3"
+  ],
+  "run_index": 3,
+  "run_cost": 0.02958,
+  "oracle_attempt_count": 1,
+  "validation_status": "ERROR",
+  "validation_reason": "Oracle infrastructure failed; baseline validation was not attempted again. Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=INFRA_ERROR and fixed=NOT_RUN.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "INFRA_ERROR",
+    "operation_completed": false,
+    "exploit_succeeded": null,
+    "evidence": "Docker image build failed.",
+    "exit_code": 1,
+    "failure_kind": "infrastructure",
+    "timed_out": false
+  },
+  "fixed": null,
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 1,
+    "explanation": "The oracle first proves minimatch's public matching API works correctly on an ordinary glob (a fixed directory path matched against a '**/*.txt' pattern under /tmp), establishing operation_completed=true only on success. It then times a baseline of repeated benign calls to establish a normal-speed reference. Next it feeds a crafted bracket-expression pattern ('[!' + spaces + ']' + repeated '!') together with a path of repeated spaces — a known trigger class for catastrophic backtracking in minimatch's internal regex construction prior to the ReDoS fix (CVE-2022-3517 class issue, relevant to the <=3.0.4 branch). The size N=28 is chosen so the vulnerable regex engine's exponential/super-linear blowup still completes within a few seconds on typical hardware, while the fixed version (which rewrote the vulnerable regex construction to avoid nested quantifiers) completes in near-baseline time. The verdict compares elapsed time of the malicious call against both an absolute floor (1500ms) and a relative multiplier (200x baseline, with a 200ms minimum) to robustly distinguish the catastrophic-backtracking vulnerable behavior from the fixed linear-time behavior, without relying on an interrupting timer. Any exception during setup or the benign call marks operation_completed=false; an exception during the malicious call after a successful benign call is treated as a safely blocked case (exploit_succeeded=false) rather than a crash.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves minimatch's public matching API works correctly on an ordinary glob (a fixed directory path matched against a '**/*.txt' pattern under /tmp), establishing operation_completed=true only on success. It then times a baseline of repeated benign calls to establish a normal-speed reference. Next it feeds a crafted bracket-expression pattern ('[!' + spaces + ']' + repeated '!') together with a path of repeated spaces — a known trigger class for catastrophic backtracking in minimatch's internal regex construction prior to the ReDoS fix (CVE-2022-3517 class issue, relevant to the <=3.0.4 branch). The size N=28 is chosen so the vulnerable regex engine's exponential/super-linear blowup still completes within a few seconds on typical hardware, while the fixed version (which rewrote the vulnerable regex construction to avoid nested quantifiers) completes in near-baseline time. The verdict compares elapsed time of the malicious call against both an absolute floor (1500ms) and a relative multiplier (200x baseline, with a 200ms minimum) to robustly distinguish the catastrophic-backtracking vulnerable behavior from the fixed linear-time behavior, without relying on an interrupting timer. Any exception during setup or the benign call marks operation_completed=false; an exception during the malicious call after a successful benign call is treated as a safely blocked case (exploit_succeeded=false) rather than a crash.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "ERROR",
+      "validation_reason": "Oracle infrastructure failed; baseline validation was not attempted again. Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=INFRA_ERROR and fixed=NOT_RUN.",
+      "vulnerable_status": "INFRA_ERROR",
+      "fixed_status": null
+    }
+  ]
+}

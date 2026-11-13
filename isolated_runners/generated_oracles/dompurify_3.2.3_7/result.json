@@ -1,0 +1,153 @@
+{
+  "package_name": "dompurify",
+  "package_version": "3.2.3",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-vhxf-7vqr-mrjg"
+  ],
+  "run_index": 7,
+  "run_cost": 0.27087375,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "setup_or_benign_failure:Right-hand side of 'instanceof' is not callable",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "setup_or_benign_failure:Right-hand side of 'instanceof' is not callable",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "Uses the package’s public CJS entry, handles both direct and default export forms, then instantiates DOMPurify with a minimal window/document stub so sanitize() can run in Node without external dependencies. It first validates benign sanitize behavior before marking operation_completed=true. Then it runs an SVG onload payload and flags exploit success only if an on* attribute survives in output. If malicious sanitization throws after benign success, it is treated as blocked. Any setup/module/benign failure reports operation_completed=false per harness rules.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle validates the public sanitize API in two phases: first a benign sanitize call to prove normal operation, then a malicious XSS payload intended to detect unsafe remnants in output. It reports exploit success only when dangerous executable constructs survive sanitization after benign success. Any failure before benign completion is treated as operation failure per harness rules.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The previous run failed because the API was invoked incorrectly (`DOMPurify.sanitize` on the factory export). This oracle correctly uses the public CJS API by creating an instance first, then calling `.sanitize()`. It validates normal behavior with a benign input before marking `operation_completed=true`, then probes the XSS vector and flags success only if dangerous executable patterns remain in sanitized output.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle calls DOMPurify’s public sanitize API through its factory export, verifies a benign sanitize first, then runs a malicious SVG payload. It reports success of the exploit only if dangerous executable patterns remain in sanitized output. Any setup/module/benign failure is reported as operation_completed=false. If malicious input throws after benign success, that is treated as blocked exploit.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal sanitize behavior first, then checks whether a known dangerous MathML/xlink payload survives sanitization. If dangerous patterns remain in output, the exploit is considered succeeded. If the patched version strips/neutralizes them (or throws only on malicious input after benign success), exploit_succeeded is false while operation_completed stays true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "This oracle uses DOMPurify’s public sanitize API with a minimal in-process window/document stub so no external DOM library is needed. It first verifies normal behavior on harmless HTML. Only after that succeeds does it run a known mutation-XSS-style payload and check whether dangerous event-handler syntax survives. Vulnerable behavior is observable as retained onerror/on* attributes in the sanitized string; fixed behavior removes or neutralizes them, yielding exploit_succeeded=false while operation_completed remains true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "This oracle uses DOMPurify's public API as consumed in Node: require('dompurify')(windowLike) followed by sanitize(). It first verifies normal behavior with a benign HTML string. Only after that succeeds does it mark operation_completed=true and test a known mXSS-style payload associated with the vulnerable line. The exploit is considered successful only if sanitized output still contains an inline event-handler attribute (on* =), which indicates XSS-capable markup survived. If the malicious call throws after benign success, it is treated as blocked (exploit_succeeded=false) per harness rules.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "This oracle uses DOMPurify’s public sanitize API via the package’s CommonJS factory call. It first verifies normal operation with a simple benign HTML string and only then marks operation_completed=true. Next it sanitizes an SVG payload carrying an inline event handler; exploit success is observed if any on*= attribute remains in output. In a fixed version, those dangerous handlers should be stripped, making exploit_succeeded false while still completing operation.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "This oracle uses DOMPurify’s public factory + sanitize API, first proving normal sanitization works, then checking whether a known SVG event-handler payload survives. If the vulnerable version leaves an on* attribute, exploit_succeeded is true. In a fixed version, that attribute should be removed (or malicious call may throw after successful benign call), yielding exploit_succeeded false with operation_completed true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "Uses the package's documented factory + sanitize API with a minimal window/document stub sufficient for ordinary sanitization in Node. First validates benign sanitization works, then tests a known SVG inline-event payload. Vulnerable behavior is detected by preserved on* attribute in output; fixed behavior removes it or throws after benign success.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "Uses the package’s public CJS entry, handles both direct and default export forms, then instantiates DOMPurify with a minimal window/document stub so sanitize() can run in Node without external dependencies. It first validates benign sanitize behavior before marking operation_completed=true. Then it runs an SVG onload payload and flags exploit success only if an on* attribute survives in output. If malicious sanitization throws after benign success, it is treated as blocked. Any setup/module/benign failure reports operation_completed=false per harness rules.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    }
+  ]
+}

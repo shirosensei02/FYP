@@ -1,0 +1,20 @@
+diff --git a/minimatch.js b/minimatch.js
+--- a/minimatch.js
++++ b/minimatch.js
+@@ -250,6 +250,16 @@
+     !pattern.match(/\{.*\}/)) {
+     // shortcut. no need to expand.
+     return [pattern]
++  }
++
++  var braceIndices = []
++  for (var bi = 0; bi < pattern.length; bi++) {
++    if (pattern.charAt(bi) === '{' || pattern.charAt(bi) === '}') {
++      braceIndices.push(bi)
++    }
++  }
++  if (braceIndices.length > 64) {
++    throw new TypeError('pattern has too many brace expansion characters')
+   }
+ 
+   return expand(pattern)

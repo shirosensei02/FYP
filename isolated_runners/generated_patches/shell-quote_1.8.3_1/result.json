@@ -1,0 +1,111 @@
+{
+  "package_name": "shell-quote",
+  "package_version": "1.8.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-w7jw-789q-3m8p"
+  ],
+  "run_index": 1,
+  "run_cost": 0.093712,
+  "patch_attempt_count": 10,
+  "success_loop": null,
+  "validation_status": "SECURITY_FAIL",
+  "validation_reason": "The accepted exploit still succeeds against the generated patch.",
+  "locked_oracle": {
+    "source_run": "shell-quote_1.8.3_1",
+    "attempt_number": 3
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\n 'echo SQ_MARKER_1_1794514526397_INJECTED'\""
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\n 'echo SQ_MARKER_1_1794514535104_INJECTED'\""
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\n 'echo SQ_MARKER_1_1794514540309_INJECTED'\""
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\n 'echo SQ_MARKER_1_1794514547994_INJECTED'\""
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\n 'echo SQ_MARKER_1_1794514553082_INJECTED'\""
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\n 'echo SQ_MARKER_1_1794514565358_INJECTED'\""
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\n 'echo SQ_MARKER_1_1794514572946_INJECTED'\""
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\n 'echo SQ_MARKER_1_1794514578314_INJECTED'\""
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\n 'echo SQ_MARKER_1_1794514586043_INJECTED'\""
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\n 'echo SQ_MARKER_1_1794514591289_INJECTED'\""
+    }
+  ]
+}

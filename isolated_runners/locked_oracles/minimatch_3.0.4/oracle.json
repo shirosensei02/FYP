@@ -1,0 +1,11 @@
+{
+  "package_name": "minimatch",
+  "package_version": "3.0.4",
+  "source_run": "minimatch_3.0.4_2",
+  "attempt_number": 2,
+  "timeout_seconds": 30,
+  "requirements": [],
+  "vulnerability_ids": [
+    "GHSA-f8q6-p94x-37v3"
+  ]
+}

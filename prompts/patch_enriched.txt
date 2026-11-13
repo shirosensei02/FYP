@@ -1,0 +1,29 @@
+OUTPUT MODE: STRUCTURED EDITS ONLY.
+
+This is a source-code patch task. Implement the minimal source-code fix using only the supplied package files.
+Do not modify package version metadata, dependencies, lockfiles, tests, or security checks.
+
+Your entire response must be exactly one JSON object:
+{{"edits":[{{"path":"source.js","old_text":"exact copied source","new_text":"replacement source"}}]}}
+
+Vulnerability Information:
+- Vulnerability ID: {vulnerability_id}
+- Description: {vulnerability_description}
+- Scanner Finding: {scanner_finding}
+- CWE ID: {cwe_id}
+- CWE name: {cwe_name}
+- CWE description: {cwe_description}
+- Typical control: {typical_control}
+
+Repository Context:
+{relevant_source_code}
+
+Response contract:
+Return valid JSON only, with exactly this field:
+{{"edits":[{{"path":"relative/source/path.js","old_text":"exact source to replace","new_text":"replacement"}}]}}
+
+Every `old_text` must be copied exactly and contiguously from the supplied source.
+Do not return a unified diff, line numbers, a full rewritten file, or placeholder text.
+Do not wrap the JSON in markdown fences.
+Your first character must be `{{` and your final character must be `}}`.
+Do not add analysis, rationale, or explanation. Return the JSON patch now.

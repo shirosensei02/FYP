@@ -11,6 +11,7 @@ Collections
   fyp_patches.successful_patches  – patches that passed all validation stages
   fyp_patches.all_attempts        – every terminal pipeline attempt
   fyp_patches.attempt_costs       – token, cost, and line totals for one attempt
+  fyp_patches.ablation_costs      – per-loop token and cost totals for one ablation package
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ _DB_NAME    = "fyp_patches"
 _COL_PASS   = "successful_patches"
 _COL_ATTEMPTS = "all_attempts"
 _COL_COSTS = "attempt_costs"
+_COL_ABLATION = "ablation_costs"
 
 # Atlas TLS handshakes to this cluster intermittently fail with
 # TLSV1_ALERT_INTERNAL_ERROR (~30-40% of cold connections, observed against
@@ -113,6 +115,7 @@ def _ensure_indexes(db) -> None:
         [("run_attempt_id", ASCENDING), ("attempt_number", ASCENDING)],
         unique=True,
     )
+    db[_COL_ABLATION].create_index([("ablation_id", ASCENDING)], unique=True)
 
 
 # ── Public helpers ────────────────────────────────────────────────────────────

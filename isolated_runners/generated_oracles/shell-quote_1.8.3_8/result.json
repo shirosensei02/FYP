@@ -1,0 +1,153 @@
+{
+  "package_name": "shell-quote",
+  "package_version": "1.8.3",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-w7jw-789q-3m8p"
+  ],
+  "run_index": 8,
+  "run_cost": 0.11693885,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "out=\"safe \\\\&\\n\\\\G\\\\H\\\\S\\\\A\\\\_\\\\W\\\\7\\\\J\\\\W\\\\_\\\\7\\\\8\\\\9\\\\Q\\\\_\\\\3\\\\M\\\\8\\\\P\\\\_\\\\M\\\\A\\\\R\\\\K tail\";raw_newline=true;marker=false;backslash_n_literal=false",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "malicious_rejected:invalid `op` value: \"&\\nGHSA_W7JW_789Q_3M8P_MARK\"",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "Validates quote() with a benign documented object operator first, then tests a malicious object token whose .op contains a literal newline. Vulnerable versions emit output containing that raw newline (command separator) plus attacker marker, while patched versions reject/neutralize it so exploit_succeeded is false. Any setup/module/benign failure reports operation_completed=false.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle exercises shell-quote's public quote() API with object tokens. It first verifies a benign object-token quote call succeeds, then submits a malicious object token whose .op includes a literal newline. The vulnerability is detected by observing whether quote() returns a command string that still contains the newline and attacker marker (indicating command-separator injection potential). Patched behavior is expected to block or neutralize this input so exploit_succeeded becomes false after operation_completed is true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle validates the public quote() API in two phases. First it runs a benign call using a standard object operator token ({ op: '&&' }) and only sets operation_completed=true after that succeeds. Then it sends a malicious object token whose .op includes a literal newline plus a marker. In vulnerable versions, quote() allows that literal newline to survive in output, so exploit_succeeded becomes true when both the newline and marker are present in the returned command string. In patched versions, the malicious call should be rejected or otherwise prevented from producing this newline-bearing output, resulting in exploit_succeeded=false while operation_completed remains true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle validates the public quote() API in two phases. First it performs a benign call using a normal operator token ({ op: '&&' }) and only sets operation_completed=true after that succeeds. Then it sends a malicious object token with an embedded newline in .op. In vulnerable versions, quote() allows a literal newline plus attacker-controlled trailing text through, so the output contains a real '\\n' followed immediately by the marker string. In patched versions, the malicious input is rejected or normalized such that this newline+marker pattern does not appear. Any setup/module/benign failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "This oracle targets shell-quote's quote() handling of object tokens with an attacker-controlled .op containing a newline. It first performs a benign documented call using an operator token { op: '&&' } and only sets operation_completed=true after that succeeds. It then submits a malicious token { op: '&&\\n<marker>' } to quote(). Vulnerable behavior is identified by returned output that contains a literal newline followed immediately by the marker, indicating newline passed through into shell output structure. Patched behavior should reject/neutralize this input so exploit_succeeded=false, typically via exception. Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "Validates that quote() works on a normal object op token first, then probes newline injection via attacker-controlled object .op. Vulnerable versions should return a quoted string containing a literal newline plus attacker marker (exploit_succeeded=true). Patched versions should reject or otherwise prevent that pattern (exploit_succeeded=false) while keeping operation_completed=true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "This oracle exercises shell-quote.quote() with a normal operator token first to confirm ordinary behavior. After that succeeds, it sends a malicious object token whose .op contains a literal newline followed by attacker-controlled text. In vulnerable versions, quote() returns a string containing that raw newline and marker text, indicating newline passthrough in operator quoting. In patched versions, the malicious call should be rejected (or otherwise not produce both raw newline and marker in output). Any setup/module/benign failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "This oracle validates the public quote() API in two phases. First, it performs a benign call using only string tokens (['echo','ok']) to ensure normal operation succeeds; only after this does it set operation_completed=true. Next, it supplies a malicious object token with an operator containing a literal newline (\"&&\\n<marker>\"). In vulnerable versions, quote() returns a string that still contains the raw newline and attacker marker, indicating the injection primitive survives serialization (exploit_succeeded=true). In patched versions, the malicious input is expected to be blocked (throw) or otherwise not preserve both raw newline and marker in output (exploit_succeeded=false). Any setup/module/benign failure is reported with operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "This oracle validates the public quote() API with a benign object operator token first, then probes the vulnerable path by supplying an object token whose .op contains a newline. It treats exploitation as successful only when quote() returns a string that still contains a real line terminator and attacker marker text, indicating command-splitting material survived serialization. If the malicious call throws after successful setup/benign execution, it is reported as blocked with operation_completed=true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "This oracle validates shell-quote.quote() in two phases. First it runs a benign call (['echo','ok']) and requires exact successful output so operation_completed is only set true after a normal public operation works. Then it supplies a malicious object token with .op containing an actual newline ('&&\\nMARK'). In vulnerable versions, quote() emits a command string that still contains the raw newline and marker, indicating command-splitting injection potential. In patched versions, the malicious input should be rejected or transformed so no raw newline+marker sequence survives. Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "Validates quote() with a benign documented object operator first, then tests a malicious object token whose .op contains a literal newline. Vulnerable versions emit output containing that raw newline (command separator) plus attacker marker, while patched versions reject/neutralize it so exploit_succeeded is false. Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

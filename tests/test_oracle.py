@@ -178,6 +178,10 @@ def test_baseline_validation_returns_structured_feedback(monkeypatch, tmp_path):
     })
     assert result["oracle_validation"]["status"] == "INVALID"
     assert result["oracle_feedback"]["vulnerable"]["status"] == "EXPLOIT_BLOCKED"
+    revision = result["oracle_feedback"]["revision"]
+    assert "Fixed package already passed (exploit was blocked). Do not edit that test." in revision
+    assert "Vulnerable package did not pass" in revision
+    assert "leave every passing side unchanged" in revision
 
 
 def test_baseline_feedback_identifies_git_prerequisite_failure(monkeypatch, tmp_path):
@@ -220,6 +224,35 @@ def test_prompt_names_the_advisory_and_the_acceptance_rule():
     assert payload["source_context"][0]["path"] == "lib/ps.js"
     assert "operation_completed true and exploit_succeeded false" in prompt
     assert "exit code is not the verdict" in prompt
+
+
+def test_retry_prompt_keeps_a_vulnerable_exploit_that_already_succeeded(monkeypatch, tmp_path):
+    vulnerable = tmp_path / "vulnerable"
+    fixed = tmp_path / "fixed"
+    vulnerable.mkdir()
+    fixed.mkdir()
+    candidate = {"status": "generated", "attempt_number": 1, "source": SAFE_SOURCE}
+
+    def run_oracle(source_dir, oracle, label):
+        return _execution("EXPLOIT_SUCCEEDED", exploit=True)
+
+    monkeypatch.setattr(validation, "_prepare_fixed_workspace", lambda state, parent: (fixed, None))
+    monkeypatch.setattr(validation, "_run_oracle", run_oracle)
+    result = validation.oracle_validation({
+        "source_dir": str(vulnerable),
+        "oracle_candidate": candidate,
+        "oracle_attempts": [{"attempt_number": 1}],
+    })
+    revision = result["oracle_feedback"]["revision"]
+    assert "Vulnerable package already passed (exploit succeeded). Do not edit that test." in revision
+    assert "Fixed package did not pass (status EXPLOIT_SUCCEEDED; a pass is EXPLOIT_BLOCKED)." in revision
+    prompt = generation._prompt({
+        "oracle_feedback": result["oracle_feedback"],
+        "oracle_candidate": candidate,
+        "package_name": "example",
+        "package_version": "1.0.0",
+    })
+    assert "PREVIOUS RUN:\n" + revision in prompt
 
 
 def test_invalid_candidate_feedback_includes_previous_source():

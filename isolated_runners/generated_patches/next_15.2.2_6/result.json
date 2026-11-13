@@ -1,0 +1,30 @@
+{
+  "package_name": "next",
+  "package_version": "15.2.2",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-f82v-jwr5-mffw"
+  ],
+  "run_index": 6,
+  "run_cost": 0.026068,
+  "patch_attempt_count": 1,
+  "success_loop": 1,
+  "validation_status": "SECURITY_PASS",
+  "validation_reason": "Relevant operation completed and the exploit was blocked.",
+  "locked_oracle": {
+    "source_run": "next_15.2.2_2",
+    "attempt_number": 2
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_PASS",
+      "reason": "Relevant operation completed and the exploit was blocked.",
+      "execution_status": "EXPLOIT_BLOCKED",
+      "evidence": "Forged x-middleware-subrequest header was stripped because the subrequest id did not match the server secret, blocking the bypass"
+    }
+  ]
+}

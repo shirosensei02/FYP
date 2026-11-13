@@ -42,6 +42,42 @@ def test_parser_binds_a_namespace_member_call():
     assert facts.calls[0].name == "scrub"
 
 
+def test_named_module_export_keeps_its_name_and_the_export_alias():
+    facts = parse_javascript(
+        "quote.js",
+        "module.exports = function quote(xs) {\n"
+        "  return xs.map(function (s) {\n"
+        "    return s;\n"
+        "  });\n"
+        "};\n",
+    )
+    assert facts is not None
+    exported = [symbol for symbol in facts.symbols if symbol.name == "quote"]
+    assert len(exported) == 1
+    assert exported[0].qualified == "quote"
+    assert "module.exports" in exported[0].export_names
+    assert "default" in exported[0].export_names
+
+
+def test_iife_and_prototype_assignment_keep_the_inner_names():
+    facts = parse_javascript(
+        "lib/form_data.js",
+        ";(function () {\n"
+        "  function safeGet(object, key) {\n"
+        "    return object[key];\n"
+        "  }\n"
+        "  function FormData() {}\n"
+        "  FormData.prototype._generateBoundary = function () {\n"
+        "    return safeGet(this, '_boundary');\n"
+        "  };\n"
+        "}.call(this));\n",
+    )
+    assert facts is not None
+    qualified = {symbol.qualified for symbol in facts.symbols}
+    assert "safeGet" in qualified
+    assert "_generateBoundary" in qualified
+
+
 def test_parser_qualifies_a_nested_function_and_an_object_method():
     facts = parse_javascript(
         "lib/a.js",

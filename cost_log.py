@@ -48,6 +48,9 @@ def record_request(
     Storage failures are logged and ignored so a database write cannot abort a run.
     """
     try:
+        if state.get("ablation_id"):
+            from ablation_cost import record_loop
+            record_loop(state, node=node, call=call, model=model, response=response, error=error)
         located = _attempt(state)
         if located is None:
             return
@@ -88,6 +91,9 @@ def note_written_lines(state: Mapping[str, Any], diff: str) -> None:
     if not isinstance(diff, str) or not diff.strip():
         return
     try:
+        if state.get("ablation_id"):
+            from ablation_cost import note_lines
+            note_lines(state, diff)
         located = _attempt(state)
         if located is None:
             return

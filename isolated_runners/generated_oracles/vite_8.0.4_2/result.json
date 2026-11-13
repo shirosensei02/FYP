@@ -1,0 +1,153 @@
+{
+  "package_name": "vite",
+  "package_version": "8.0.4",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-4w7w-66w2-5vf9"
+  ],
+  "run_index": 2,
+  "run_cost": 0.5294179999999999,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "path traversal attempt blocked for url=/node_modules/.vite/deps/../../../../vite_oracle_1794490302584_tsuib34ttb/unsafe.map: status=200 body=",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "path traversal attempt blocked for url=/node_modules/.vite/deps/../../../../vite_oracle_1794490317513_dixngjj5459/unsafe.map: status=200 body=",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "The oracle starts a Vite dev server in middleware mode rooted at a temporary project directory containing a legitimate optimized-dependency chunk (node_modules/.vite/deps/legit-chunk.js with its own sourcemap) registered in _metadata.json. It first issues a benign request for that legitimate chunk's JS content through the transform middleware to prove normal optimized-deps serving works (operation_completed only becomes true after this succeeds). It then places a secret JSON file named unsafe.map one directory above the project root (outside server.fs.allow) and sends crafted requests reusing traversal sequences modeled directly on the optimized-deps sourcemap handler and the advisory's own fs-serve regression test (an /@fs/-prefixed path into node_modules/.vite/deps followed by '..' segments, plus a root-relative deps-prefixed variant) to reach that external unsafe.map. On vulnerable 8.0.4, the sourcemap handler resolves the path and reads/returns the file without verifying it belongs to the optimized deps directory (missing isOptimizedDepFile check), so the secret marker leaks into the response body, setting exploit_succeeded=true. On patched 8.0.5, the added isOptimizedDepFile guard causes the handler to call next() instead of serving the external file, so the traversal requests fail to return the secret content, yielding exploit_succeeded=false while operation_completed remains true because the benign legitimate-chunk request already succeeded. No child processes, sockets, or files outside /tmp are used; cleanup removes the temporary directory in a finally block.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 2 column 3325 (char 3326)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 3325 (char 3326)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle starts a Vite dev server in middleware mode rooted at a temporary project directory with server.fs.strict enabled. It first issues a benign request for a legitimate sourcemap file located inside the project's node_modules/.vite/deps directory via the /@fs/ prefix, confirming the normal optimized-deps sourcemap serving path works (operation_completed only becomes true after this succeeds with a 200 response containing the expected content). It then issues a malicious request using the same /@fs/ prefix but with a URL path containing '../' segments that traverse from the deps directory out to a sibling 'outside' directory containing a secret unsafe.map file with a unique marker value, located entirely outside the project root and not on any fs.allow list. On vulnerable Vite (8.0.4), the transform middleware's optimized-deps sourcemap handler resolves this path without verifying it remains inside the optimized deps directory, reads the file, and returns its JSON content, leaking the secret marker (exploit_succeeded=true). On the patched version (8.0.5+), the added isOptimizedDepFile check causes the middleware to call next() instead of serving the file, so the traversal request does not return the secret content and typically falls through to a 403/404 (exploit_succeeded=false). The script only uses vite, node:fs, node:path, and node:os, makes no network connections (requests are driven directly through server.middlewares as synthetic IncomingMessage/ServerResponse-like objects), spawns no processes, and confines all file writes to a unique marker directory under /tmp which is cleaned up at the end.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle creates a temporary Vite project with an optimized-deps directory (node_modules/.vite/deps) containing a legitimate chunk and its .js.map file, plus a corresponding _metadata.json describing it as an optimized dependency. It starts a middleware-mode Vite dev server with strict fs access restricted to the project root, and drives the server's connect middleware stack directly (no network sockets). First it issues a benign request for the legitimate '.vite/deps/legit-chunk.js.map' to confirm the sourcemap-serving feature works (status 200, contains expected content) before marking operation_completed. It then issues a malicious request using the same '/node_modules/.vite/deps/...map' URL shape but with '../' segments that traverse out of the deps directory to a secret .map file placed outside the project root (in /tmp), containing a unique marker. On vulnerable Vite (8.0.4), the sourcemap handler resolves the path and reads the file without verifying it still resides in the optimized deps directory, leaking the secret content (exploit_succeeded=true). On patched Vite (>=8.0.5), the added isOptimizedDepFile check rejects the resolved path since it falls outside the deps directory, causing the middleware to fall through (next()) and return a non-200 response without the secret, yielding exploit_succeeded=false. All file operations remain confined to a unique marker directory under os.tmpdir(), and the server is closed and temp files removed in a finally block.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle starts a Vite dev server in middleware mode rooted at a temporary project with a fake optimized-deps directory (node_modules/.vite/deps) containing a legitimate chunk file plus metadata so depsOptimizer recognizes it. It first issues a benign request for the real optimized-deps chunk file (not a .map) to prove the dev server's transform middleware pipeline is working end-to-end; only after that succeeds does it set operation_completed=true. It then issues a crafted request whose URL starts as a legitimate `/node_modules/.vite/deps/...` sourcemap-style path but uses `../` segments to escape the deps directory and reach a secret `unsafe.map` file placed outside the project root (also outside server.fs.allow). On vulnerable 8.0.4, the transform middleware's sourcemap handler resolves the path without verifying it stays within the optimized deps directory and returns the external file's content (detected via a unique secret marker embedded in the JSON), so exploit_succeeded=true. On the patched 8.0.5, the added `depsOptimizer.isOptimizedDepFile` check rejects paths outside the recognized optimized dependency files and the middleware falls through (next()), resulting in a non-200 response or body without the secret marker, so exploit_succeeded=false. No git, filesystem access outside /tmp, network sockets, or subprocesses are used.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "The oracle starts a Vite dev server in middleware mode against a synthetic project containing an optimized-deps directory (node_modules/.vite/deps) with a legitimate chunk file and its sourcemap, plus valid _metadata.json so depsOptimizer recognizes the chunk as an optimized dep. It first sends a benign request for the legitimate chunk's own .map file (node_modules/.vite/deps/legit-chunk.js.map) and verifies the dev server correctly parses and returns that sourcemap JSON, proving the optimized-deps sourcemap handling path works. Only after that benign call succeeds (operation_completed=true) does it send a malicious request using a traversal path (node_modules/.vite/deps/../../../outside/unsafe.map) that resolves outside the optimized-deps directory and outside the project root to a secret .map file placed in an adjacent /tmp directory. On vulnerable Vite (8.0.4), the transform middleware resolves the sourcemapPath via normalizePath/path.resolve without verifying it still lies within the optimized deps directory, so the readFile succeeds and the secret marker content is returned (exploit_succeeded=true). On the patched version (8.0.5+), the added depsOptimizer.isOptimizedDepFile(sourcemapPath) check rejects the resolved path since it escapes the deps directory, causing the middleware to call next() and the request falls through to a 404/other response that does not contain the secret marker (exploit_succeeded=false). All file operations are confined to a unique marker-named directory under os.tmpdir(), and the server is always closed and the temp directory removed in a finally block.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "The oracle creates a minimal Vite project with an optimized-deps directory containing a legitimate chunk file plus its matching .js.map sourcemap, registered via a synthetic node_modules/.vite/deps/_metadata.json so depsOptimizer.isOptimizedDepFile() recognizes files under that directory. It starts Vite's dev server in middleware mode with server.fs.strict enabled, and directly drives server.middlewares with a fake req/res pair (no sockets opened). First it issues a benign request for the legitimate chunk's own sourcemap (/node_modules/.vite/deps/legit-chunk.js.map) and verifies the expected JSON content is returned, proving the normal optimized-deps sourcemap handling works (operation_completed only becomes true after this succeeds). It then writes a secret marker JSON file named unsafe.map outside the project root (in a sibling 'outside' directory) and issues a malicious request that uses the deps-dir request prefix with '../../../' traversal segments to reach that outside file while still matching the optimized-deps sourcemap route. On vulnerable Vite 8.0.4, the transform middleware resolves the traversal path and calls fsp.readFile without checking depsOptimizer.isOptimizedDepFile(), so the outside secret content is returned (status 200, body containing the secret marker) -> exploit_succeeded=true. On patched Vite 8.0.5, the added isOptimizedDepFile() check rejects the resolved path (falls through to next(), typically yielding 404/403, and never includes the secret marker) -> exploit_succeeded=false. Any setup, module resolution, or benign-operation failure (including crashes) causes operation_completed to remain false, which the harness rejects, so only genuine blocking/success behavior differentiates the two versions.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle creates a minimal Vite project with an optimized-deps directory containing a legitimate chunk file and its matching .map file registered in _metadata.json, plus a secret .map file placed outside the project root. It starts Vite's dev server in middleware mode and first issues a benign request for the legitimate optimized-dep sourcemap (node_modules/.vite/deps/legit-chunk.js.map), confirming the normal sourcemap-serving code path works and the parsed JSON matches expectations before marking operation_completed=true. It then issues a crafted request using '../' traversal segments under the same '/node_modules/.vite/deps/' prefix to reach a secret unsafe.map file located outside the optimized deps directory. On the vulnerable version (8.0.4), the middleware resolves the path without verifying it's still inside the optimized deps directory, so the secret JSON content is read and returned, leaking the marker value (exploit_succeeded=true). On the patched version (>=8.0.5), the added isOptimizedDepFile() check rejects the resolved path since it falls outside the deps directory, causing the middleware to call next() and ultimately return a non-200/non-matching response, so exploit_succeeded=false. Fixture files (project structure, chunk, maps) are created directly in os.tmpdir() under a unique marker directory and cleaned up afterward; no git repository or external fixtures are required.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "Creates a temp Vite project with a registered optimized dependency chunk (legit-chunk.js) and its sourcemap inside node_modules/.vite/deps, plus a _metadata.json so depsOptimizer.isOptimizedDepFile() recognizes legitimate files. First proves the dev server's transform middleware works normally by requesting the legitimate optimized dep chunk's JS content directly (benign operation, unrelated to the vulnerable code path itself but confirming the server/middleware pipeline functions). Only after that succeeds does it mark operation_completed=true and attempt the malicious request: a URL ending in .map located under the deps dir prefix but using '../../../' traversal segments to escape to a secret unsafe.map file placed outside the project root in /tmp. On vulnerable 8.0.4, the sourcemap handler resolves the path without checking isOptimizedDepFile and returns the outside file's JSON content (containing a unique secret marker), so exploit_succeeded=true. On patched 8.0.5, the added isOptimizedDepFile check rejects the resolved path and calls next(), so the secret is not returned (typically 404), yielding exploit_succeeded=false. No process spawning, no network sockets, and all files are written to a unique marker directory under os.tmpdir() and cleaned up afterward.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "Creates a temporary Vite project with an optimized dependency chunk registered in node_modules/.vite/deps/_metadata.json, plus a secret .map file placed outside the project root. First issues a benign request for the legitimate optimized dependency chunk JS file through the dev server's middleware stack (constructed via vite.createServer in middlewareMode) to prove normal request handling works. Then issues malicious requests using path-traversal URLs (both a root-relative '../' traversal and a deps-directory-prefixed traversal) targeting the transform middleware's sourcemap-serving code path for .map requests. In the vulnerable version (8.0.4), the middleware resolves the path via path.resolve(root, url) without restricting '..' segments and without verifying the resolved path is an optimized dep file, so it reads and returns the secret .map file contents outside the project root. In the patched version (8.0.5+), the added isOptimizedDepFile check rejects paths that don't correspond to legitimate optimized dependency files, calling next() instead of leaking the file, so the secret marker never appears in the response body.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "The oracle starts a Vite dev server in middleware mode rooted at a temporary project directory containing a legitimate optimized-dependency chunk (node_modules/.vite/deps/legit-chunk.js with its own sourcemap) registered in _metadata.json. It first issues a benign request for that legitimate chunk's JS content through the transform middleware to prove normal optimized-deps serving works (operation_completed only becomes true after this succeeds). It then places a secret JSON file named unsafe.map one directory above the project root (outside server.fs.allow) and sends crafted requests reusing traversal sequences modeled directly on the optimized-deps sourcemap handler and the advisory's own fs-serve regression test (an /@fs/-prefixed path into node_modules/.vite/deps followed by '..' segments, plus a root-relative deps-prefixed variant) to reach that external unsafe.map. On vulnerable 8.0.4, the sourcemap handler resolves the path and reads/returns the file without verifying it belongs to the optimized deps directory (missing isOptimizedDepFile check), so the secret marker leaks into the response body, setting exploit_succeeded=true. On patched 8.0.5, the added isOptimizedDepFile guard causes the handler to call next() instead of serving the external file, so the traversal requests fail to return the secret content, yielding exploit_succeeded=false while operation_completed remains true because the benign legitimate-chunk request already succeeded. No child processes, sockets, or files outside /tmp are used; cleanup removes the temporary directory in a finally block.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

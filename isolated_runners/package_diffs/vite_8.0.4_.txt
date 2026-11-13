@@ -1,0 +1,50 @@
+diff --git a/packages/vite/src/node/server/middlewares/transform.ts b/packages/vite/src/node/server/middlewares/transform.ts
+index ce5a39105ee670..c6faf6fd7307c0 100644
+--- a/packages/vite/src/node/server/middlewares/transform.ts
++++ b/packages/vite/src/node/server/middlewares/transform.ts
+@@ -161,6 +161,10 @@ export function transformMiddleware(
+           const sourcemapPath = url.startsWith(FS_PREFIX)
+             ? fsPathFromId(url)
+             : normalizePath(path.resolve(server.config.root, url.slice(1)))
++          // url may contain relative path that may resolve outside of the optimized deps directory
++          if (!depsOptimizer.isOptimizedDepFile(sourcemapPath)) {
++            return next()
++          }
+           try {
+             const map = JSON.parse(
+               await fsp.readFile(sourcemapPath, 'utf-8'),
+diff --git a/playground/fs-serve/__tests__/fs-serve.spec.ts b/playground/fs-serve/__tests__/fs-serve.spec.ts
+index fc17b6e60280c7..4619ec11b32b81 100644
+--- a/playground/fs-serve/__tests__/fs-serve.spec.ts
++++ b/playground/fs-serve/__tests__/fs-serve.spec.ts
+@@ -90,6 +90,21 @@ describe.runIf(isServe)('invalid request', () => {
+       target: path.posix.join('/@fs/', root, 'root/src/dummy.crt/') + '.',
+       status: 'HTTP/1.1 403 Forbidden',
+     },
++    {
++      name: 'denied optimize deps sourcemap handler',
++      target:
++        path.posix.join('/@fs/', root) +
++        '/node_modules/.vite/deps/../../../unsafe.map',
++      status: 'HTTP/1.1 403 Forbidden',
++    },
++    {
++      name: 'denied backslash optimize deps sourcemap handler',
++      target:
++        path.posix.join('/@fs/', root) +
++        '/node_modules/.vite/deps/..\\..\\..\\unsafe.map',
++      status: isWindows ? 'HTTP/1.1 403 Forbidden' : 'HTTP/1.1 200 OK',
++      content: isWindows ? undefined : 'Cache-Control: no-cache',
++    },
+     {
+       name: 'HTML outside root with relative path',
+       target: '/../unsafe.html',
+diff --git a/playground/fs-serve/unsafe.map b/playground/fs-serve/unsafe.map
+new file mode 100644
+index 00000000000000..1f012ec0e1b34b
+--- /dev/null
++++ b/playground/fs-serve/unsafe.map
+@@ -0,0 +1,3 @@
++{
++  "key": "unsafe"
++}

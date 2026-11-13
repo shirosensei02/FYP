@@ -1,0 +1,98 @@
+{
+  "package_name": "shell-quote",
+  "package_version": "1.8.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-w7jw-789q-3m8p"
+  ],
+  "run_index": 3,
+  "run_cost": 0.131542,
+  "oracle_attempt_count": 5,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "quote() output contains an unescaped raw newline from object .op field, enabling command injection: \"echo safe \\\\F\\\\O\\\\O\\n\\\\e\\\\c\\\\h\\\\o\\\\ \\\\I\\\\N\\\\J\\\\E\\\\C\\\\T\\\\E\\\\D\\\\_\\\\O\\\\R\\\\A\\\\C\\\\L\\\\E\\\\_\\\\M\\\\A\\\\R\\\\K\\\\E\\\\R\\\\_\\\\1\\\\_\\\\1\\\\7\\\\9\\\\4\\\\4\\\\8\\\\8\\\\7\\\\8\\\\9\\\\7\\\\2\\\\8 bar\"",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "quote() threw on malicious object-token input: invalid `op` value: \"FOO\\necho INJECTED_ORACLE_MARKER_1_1794488797050\"",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 5,
+    "explanation": "The oracle first proves shell-quote's quote() works normally by quoting a token array containing a safe object-token operator ('&&') plus a unique marker string, checking the marker and operator characters appear in the output (loosely, since the exact escaping form differs between versions and must not be hardcoded). Once this benign call succeeds, operation_completed is set true. It then builds a malicious object token whose .op field contains an embedded literal newline followed by an injected shell command, mirroring the documented object-token API surface (direct construction or envFn splicing) described in the advisory. It calls quote() on this malicious token array. In the vulnerable version (1.8.3), the per-character escaping regex /(.)/g does not match line terminators, so the raw '\\n' byte passes through unescaped into the quoted string, which the oracle detects by checking for a literal '\\n' character in the output — this is reported as exploit_succeeded=true. In the patched version (1.8.4+), the newline is escaped into a non-raw representation, so no literal '\\n' survives in the output, and exploit_succeeded is reported false. If quote() throws on the malicious input (also a valid blocking behavior), that is likewise treated as blocked. Any exception during setup or the benign call is captured separately and forces operation_completed=false, distinguishing crashes/module-resolution failures from a deliberately blocked exploit. The script only requires the shell-quote package and uses no filesystem, process, or network APIs.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 2 column 944 (char 945)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 944 (char 945)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 2 column 1526 (char 1527)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 1526 (char 1527)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle first calls shell-quote's quote() with a benign array of tokens, including a normal object-token with a standard operator ('&&'), and verifies the output is a correctly-formed string containing the expected marker and operator — proving the public quote() API works as expected and setting operation_completed=true only after this succeeds. It then exercises the documented object-token API surface by constructing a token whose .op field contains an embedded literal newline (simulating attacker-controlled data reaching quote() via direct construction or via an envFn return value, both documented paths per the advisory). It inspects whether the produced shell-safe string contains a raw, unescaped newline character. In the vulnerable version (1.8.3), the per-character escaping regex /(.)/g does not match line terminators, so the newline passes through unescaped, which would let a POSIX shell interpret it as a command separator — this sets exploit_succeeded=true. In the patched version (>=1.8.4), the newline is properly escaped or rejected, so no raw newline appears in the output, leaving exploit_succeeded=false. Any exception during setup or the benign call is caught and reported as operation_completed=false without exploit_succeeded being set true, satisfying the crash/invalid-input handling requirements. The oracle only requires the shell-quote module and node's built-in fs/path/os (unused here beyond requirement scaffolding), performs no process spawning, socket activity, or file writes, and uses a unique marker string for traceability.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves shell-quote.quote() works correctly on a benign input set, including a normal object token with a safe `.op` value ('&&'), checking the marker and operator appear in the output. Only after this benign call succeeds does it set operation_completed=true. It then constructs a malicious object token whose `.op` field contains an embedded literal newline followed by an injected shell command, mirroring the documented object-token API surface (direct construction or envFn-returned tokens) described in the advisory. It calls quote() on this malicious token array. If quote() throws, the exploit is considered blocked. Otherwise it inspects the returned string for a literal, unescaped newline character: in the vulnerable 1.8.3 version the per-character escaping regex does not match line terminators, so the raw `\\n` passes through untouched into the quoted output, which would let a downstream shell interpret the following text as a second command — exploit_succeeded=true. In the patched 1.8.4 version the newline is escaped (so no raw `\\n` appears in the output), yielding exploit_succeeded=false. The script only requires the target package and node's fs/path/os (none of which are actually used beyond requiring shell-quote), does not spawn processes, open sockets, or touch the filesystem outside of using an in-memory marker, and always prints a single ORACLE_RESULT JSON line reflecting operation_completed and exploit_succeeded based on actual behavior rather than crashing.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves shell-quote's quote() works normally by quoting a token array containing a safe object-token operator ('&&') plus a unique marker string, checking the marker and operator characters appear in the output (loosely, since the exact escaping form differs between versions and must not be hardcoded). Once this benign call succeeds, operation_completed is set true. It then builds a malicious object token whose .op field contains an embedded literal newline followed by an injected shell command, mirroring the documented object-token API surface (direct construction or envFn splicing) described in the advisory. It calls quote() on this malicious token array. In the vulnerable version (1.8.3), the per-character escaping regex /(.)/g does not match line terminators, so the raw '\\n' byte passes through unescaped into the quoted string, which the oracle detects by checking for a literal '\\n' character in the output — this is reported as exploit_succeeded=true. In the patched version (1.8.4+), the newline is escaped into a non-raw representation, so no literal '\\n' survives in the output, and exploit_succeeded is reported false. If quote() throws on the malicious input (also a valid blocking behavior), that is likewise treated as blocked. Any exception during setup or the benign call is captured separately and forces operation_completed=false, distinguishing crashes/module-resolution failures from a deliberately blocked exploit. The script only requires the shell-quote package and uses no filesystem, process, or network APIs.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

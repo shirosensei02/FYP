@@ -166,6 +166,53 @@ def _write_diagnostic(context: Path, name: str, value: str) -> None:
         (context / name).write_text(value, encoding="utf-8", errors="replace")
 
 
+def _revision_instruction(
+    vulnerable: OracleExecutionResult | None,
+    fixed: OracleExecutionResult | None,
+) -> str:
+    """Name the sides that already match the acceptance rule.
+
+    A vulnerable pass is EXPLOIT_SUCCEEDED. A fixed pass is EXPLOIT_BLOCKED.
+    The next generation is told to leave each passing side unchanged.
+    """
+    vulnerable_status = vulnerable.get("status") if isinstance(vulnerable, dict) else None
+    fixed_status = fixed.get("status") if isinstance(fixed, dict) else None
+    if vulnerable_status is None and fixed_status is None:
+        return (
+            "Neither package has a passing result yet. "
+            "A passing vulnerable run is EXPLOIT_SUCCEEDED. "
+            "A passing fixed run is EXPLOIT_BLOCKED. "
+            "Leave a passing side unchanged when you regenerate the script."
+        )
+    return " ".join((
+        _side_instruction("Vulnerable", vulnerable_status, "EXPLOIT_SUCCEEDED", "exploit succeeded"),
+        _side_instruction("Fixed", fixed_status, "EXPLOIT_BLOCKED", "exploit was blocked"),
+        "Regenerate the full script, and leave every passing side unchanged.",
+    ))
+
+
+def _side_instruction(label: str, status: str | None, passing: str, passing_phrase: str) -> str:
+    if status == passing:
+        return f"{label} package already passed ({passing_phrase}). Do not edit that test."
+    if status == "OPERATION_FAILED":
+        return (
+            f"{label} package did not pass: the ordinary operation failed. "
+            "Fix that call on this side."
+        )
+    if status is None:
+        return f"{label} package did not run, so it has not passed."
+    return (
+        f"{label} package did not pass (status {status}; a pass is {passing}). "
+        "Change only this side."
+    )
+
+
+def _feedback(result: OracleValidationResult) -> dict[str, Any]:
+    feedback = dict(result)
+    feedback["revision"] = _revision_instruction(result.get("vulnerable"), result.get("fixed"))
+    return feedback
+
+
 def _failure_guidance(*executions: OracleExecutionResult | None) -> list[str]:
     """Turn common prerequisite failures into bounded, actionable retry hints."""
     combined = "\n".join(
@@ -408,7 +455,7 @@ def oracle_validation(state: GraphState) -> dict:
         return {
             "oracle_validation": result,
             "oracle_attempts": _append_attempt_validation(state, result),
-            "oracle_feedback": dict(result),
+            "oracle_feedback": _feedback(result),
         }
     if candidate_status != "generated":
         result = OracleValidationResult(status="ERROR", reason=candidate.get("explanation") or "Oracle generation failed.", vulnerable=None, fixed=None)
@@ -472,7 +519,7 @@ def oracle_validation(state: GraphState) -> dict:
         update["accepted_oracle"] = accepted
         update["oracle_feedback"] = None
     elif result.get("status") == "INVALID":
-        update["oracle_feedback"] = dict(result)
+        update["oracle_feedback"] = _feedback(result)
     return update
 
 

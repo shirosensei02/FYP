@@ -1,0 +1,153 @@
+{
+  "package_name": "drizzle-orm",
+  "package_version": "0.45.1",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-gpj5-g38j-94v9"
+  ],
+  "run_index": 4,
+  "run_cost": 0.19727364999999997,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "{\"benignSql\":\"select \\\"users\\\".\\\"id\\\" from \\\"users\\\"\",\"malSql\":\"select \\\"x\\\"\\\";select '__drizzle_ident_oracle_3f1b7e__' as p;--\\\".\\\"c\\\" from \\\"x\\\"\\\";select '__drizzle_ident_oracle_3f1b7e__' as p;--\\\"\",\"markerPresent\":true,\"multiStatementPattern\":true}",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "{\"benignSql\":\"select \\\"users\\\".\\\"id\\\" from \\\"users\\\"\",\"malSql\":\"select \\\"x\\\"\\\";select '__drizzle_ident_oracle_3f1b7e__' as p;--\\\".\\\"c\\\" from \\\"x\\\"\\\";select '__drizzle_ident_oracle_3f1b7e__' as p;--\\\"\",\"markerPresent\":true,\"multiStatementPattern\":true}",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "This oracle validates Drizzle’s SQL generation path using public APIs (`sql`, `sqliteTable`, `text`) and a custom dialect config for `toQuery`. It first proves normal behavior with a benign identifier. It then uses a malicious identifier containing a statement break and a unique marker. The exploit is considered successful only if the generated SQL includes both the marker and a clear injected `;select ...;--` multi-statement pattern. This avoids false positives on patched versions that may still include the marker as inert quoted text but do not produce executable injected statement structure.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle exercises Drizzle ORM SQL generation with identifier interpolation. It first performs a benign public operation: building a simple select query from a normal sqliteTable and ensuring SQL text is produced. Only after that succeeds does it set operation_completed=true. It then repeats the same operation with a malicious table identifier containing SQL-control characters and comment syntax. The oracle treats the package as vulnerable when the generated SQL text contains the injected payload markers unescaped (showing identifier injection reached output), and patched when the malicious call throws or the payload does not appear as raw SQL control content.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "Builds SQL using Drizzle public APIs and explicitly compiles via toQuery with a standard identifier/string escaper. First verifies benign identifier rendering works, then supplies a malicious table identifier containing quote/semicolon/comment payload. Oracle reports exploit success only when payload artifacts leak into compiled SQL text; exceptions after benign success are treated as blocked.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "Uses Drizzle's public sqlite-core table/column API plus sql template to compile SQL without a database connection. It first verifies benign identifier rendering via toSQL(). After that succeeds, it supplies a malicious table identifier containing quote/semicolon/comment payload and checks whether compiled SQL contains injection artifacts (marker, extra SELECT, or comment). Vulnerable versions should leak payload into SQL text; patched versions should escape or reject it.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "Builds a benign SQL statement first using drizzle-orm public SQL composition APIs and verifies expected quoted identifiers via toQuery(). Only after that succeeds does operation_completed become true. Then it builds a malicious identifier payload intended to break out of identifier quoting and inject `; select ... --`. If generated SQL contains injection indicators (marker/select/comment), exploit_succeeded is true; otherwise false. Any setup/module/benign failure keeps operation_completed=false per contract.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "Builds SQL via public drizzle-orm/sqlite-core APIs. First verifies a benign identifier renders correctly. Then injects a malicious table identifier and checks whether payload tokens (literal marker, statement separator, comment) survive in generated SQL. Presence indicates identifier-escaping failure (exploit_succeeded=true). If malicious processing throws after benign success, it is treated as blocked.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "Builds SQL via public drizzle-orm/sqlite-core APIs. First validates benign identifier rendering works, then uses a malicious table identifier payload. The oracle treats vulnerable behavior as success when generated SQL shows injection indicators (marker in SQL string context, extra statement delimiter) or fails to preserve the fully escaped quoted identifier form. Patched behavior should keep payload safely inside a quoted identifier and therefore set exploit_succeeded=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "This oracle validates Drizzle’s public SQL-building path with sqliteTable + sql template. It first confirms benign query generation works. Then it injects a malicious SQL identifier payload containing a quoted marker and statement separator. Exploit success is only reported when the generated SQL contains an actual injected `; select 'marker' as p` sequence, indicating identifier escaping failed and SQL tokens escaped identifier context. If patched code throws on malicious input (after benign success) or keeps payload inert so the injected select sequence is absent, exploit_succeeded is false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "Builds SQL with drizzle-orm/sqlite-core for a benign table first to confirm normal operation. Then uses a malicious identifier payload containing a statement separator and SELECT marker. It treats exploit success only when the rendered SQL contains the injected second-statement pattern plus multiple semicolons, reducing false positives from safely quoted identifier text. Exceptions during malicious phase are treated as blocked only after benign success.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "This oracle uses Drizzle's public SQL builder path with sqlite-core table/column identifiers and toQuery() compilation. It first verifies a benign identifier round-trips into exactly expected SQL, then attempts identifier injection with an embedded statement/comment payload. Exploit success is detected by unsafe SQL structure in compiled output (injected statement sequence or semicolon appearing inside the select identifier clause). If patched code rejects/sanitizes the payload, exploit_succeeded becomes false after operation_completed is already true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle validates Drizzle’s SQL generation path using public APIs (`sql`, `sqliteTable`, `text`) and a custom dialect config for `toQuery`. It first proves normal behavior with a benign identifier. It then uses a malicious identifier containing a statement break and a unique marker. The exploit is considered successful only if the generated SQL includes both the marker and a clear injected `;select ...;--` multi-statement pattern. This avoids false positives on patched versions that may still include the marker as inert quoted text but do not produce executable injected statement structure.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    }
+  ]
+}

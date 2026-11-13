@@ -153,10 +153,15 @@ def _visit(node, walk: _Walk) -> None:
         return
     if kind == "call_expression":
         _collect_call(node, walk)
-        arguments = _child(node, "arguments")
-        if arguments is not None:
-            for child in arguments.children:
+        for child in node.children:
+            if child.type == "arguments":
+                for item in child.children:
+                    _visit(item, walk)
+            else:
                 _visit(child, walk)
+        return
+    if kind in {"function_expression", "arrow_function", "function"}:
+        _walk_function_body(node, walk)
         return
     if kind == "new_expression":
         _collect_new(node, walk)
@@ -206,6 +211,19 @@ def _collect_class(node, walk: _Walk) -> None:
         for child in body.children:
             _visit(child, walk)
     _leave(walk, saved)
+
+
+def _walk_function_body(node, walk: _Walk) -> None:
+    """Visit a function expression so declarations inside an IIFE are collected."""
+    body = _child(node, "statement_block")
+    if body is not None:
+        for child in body.children:
+            _visit(child, walk)
+        return
+    for child in node.children:
+        if child.type in {"formal_parameters", "identifier", "property_identifier"}:
+            continue
+        _visit(child, walk)
 
 
 def _collect_function(node, walk: _Walk, name: str) -> None:
@@ -285,10 +303,15 @@ def _collect_assignment(node, walk: _Walk) -> None:
         previous_default = walk.default_export
         walk.exported = True
         walk.default_export = True
-        _collect_function_value(value, value, walk, function_name, export_name=function_name)
+        _collect_function_value(value, value, walk, function_name, export_name="module.exports")
         walk.exported = previous_export
         walk.default_export = previous_default
         return
+    if value is not None and value.type in {"function_expression", "arrow_function", "function"}:
+        name = _assigned_member_name(left)
+        if name and name not in {"exports", "prototype"}:
+            _collect_function_value(value, value, walk, name)
+            return
     for child in node.children:
         _visit(child, walk)
 
@@ -529,6 +552,14 @@ def _export_member_name(node) -> str:
     if obj == "module":
         return ""
     return ""
+
+
+def _assigned_member_name(node) -> str:
+    """The property a function is assigned to, such as ``_generateBoundary``."""
+    identifiers = [child for child in node.children if child.type in {"identifier", "property_identifier"}]
+    if not identifiers:
+        return ""
+    return _text(identifiers[-1])
 
 
 def _is_module_exports(node) -> bool:

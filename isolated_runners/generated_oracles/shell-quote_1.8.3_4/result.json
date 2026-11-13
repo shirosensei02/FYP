@@ -1,0 +1,46 @@
+{
+  "package_name": "shell-quote",
+  "package_version": "1.8.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-w7jw-789q-3m8p"
+  ],
+  "run_index": 4,
+  "run_cost": 0.028444,
+  "oracle_attempt_count": 1,
+  "validation_status": "ERROR",
+  "validation_reason": "Oracle infrastructure failed; baseline validation was not attempted again. Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=INFRA_ERROR and fixed=NOT_RUN.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "INFRA_ERROR",
+    "operation_completed": false,
+    "exploit_succeeded": null,
+    "evidence": "Docker image build failed.",
+    "exit_code": 1,
+    "failure_kind": "infrastructure",
+    "timed_out": false
+  },
+  "fixed": null,
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 1,
+    "explanation": "The oracle first proves shell-quote's quote() works correctly on a benign array of plain strings, confirming the module loaded and the basic operation completed. It then calls quote() with an object element whose `op` property contains embedded newline characters. In the vulnerable version (1.8.3), quote() does not escape newlines inside `.op` values, so the returned string contains a raw, unescaped newline that splits the output, allowing an attacker-controlled fragment to appear on its own line as if it were a separate shell command — this is the observable exploit signal. In the patched version, the newline (and other control characters) in `.op` values are escaped/encoded before being embedded in the output, so no raw newline appears adjacent to the injected fragment, and the oracle reports exploit_succeeded=false. The check distinguishes a genuine raw-newline line split from merely containing the fragment text (which could appear safely quoted/escaped), avoiding false positives.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves shell-quote's quote() works correctly on a benign array of plain strings, confirming the module loaded and the basic operation completed. It then calls quote() with an object element whose `op` property contains embedded newline characters. In the vulnerable version (1.8.3), quote() does not escape newlines inside `.op` values, so the returned string contains a raw, unescaped newline that splits the output, allowing an attacker-controlled fragment to appear on its own line as if it were a separate shell command — this is the observable exploit signal. In the patched version, the newline (and other control characters) in `.op` values are escaped/encoded before being embedded in the output, so no raw newline appears adjacent to the injected fragment, and the oracle reports exploit_succeeded=false. The check distinguishes a genuine raw-newline line split from merely containing the fragment text (which could appear safely quoted/escaped), avoiding false positives.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "ERROR",
+      "validation_reason": "Oracle infrastructure failed; baseline validation was not attempted again. Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=INFRA_ERROR and fixed=NOT_RUN.",
+      "vulnerable_status": "INFRA_ERROR",
+      "fixed_status": null
+    }
+  ]
+}

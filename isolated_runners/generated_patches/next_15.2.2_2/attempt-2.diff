@@ -1,0 +1,34 @@
+diff --git a/dist/server/lib/server-ipc/utils.js b/dist/server/lib/server-ipc/utils.js
+--- a/dist/server/lib/server-ipc/utils.js
++++ b/dist/server/lib/server-ipc/utils.js
+@@ -75,6 +75,11 @@
+             delete headers[header];
+         }
+     }
++    for(const header in headers){
++        if (typeof header === 'string' && header.toLowerCase() === 'x-middleware-subrequest') {
++            delete headers[header];
++        }
++    }
+ };
+ 
+ //# sourceMappingURL=utils.js.mapdiff --git a/dist/server/lib/router-server.js b/dist/server/lib/router-server.js
+--- a/dist/server/lib/router-server.js
++++ b/dist/server/lib/router-server.js
+@@ -162,6 +162,16 @@
+         if (!process.env.NEXT_PRIVATE_TEST_HEADERS) {
+             (0, _utils1.filterInternalHeaders)(req.headers);
+         }
++        // The x-middleware-subrequest header must never be trusted when it
++        // originates from an external client, as it is used internally to
++        // mark requests that have already passed through middleware. Strip
++        // it unconditionally (even under NEXT_PRIVATE_TEST_HEADERS) before
++        // any further processing or handler invocation can observe it.
++        for(const header in req.headers){
++            if (typeof header === 'string' && header.toLowerCase() === 'x-middleware-subrequest') {
++                delete req.headers[header];
++            }
++        }
+         if (!opts.minimalMode && config.i18n && config.i18n.localeDetection !== false) {
+             var _this;
+             const urlParts = (req.url || '').split('?', 1);

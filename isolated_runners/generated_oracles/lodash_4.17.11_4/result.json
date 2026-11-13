@@ -1,0 +1,87 @@
+{
+  "package_name": "lodash",
+  "package_version": "4.17.11",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-jf85-cpcp-j695"
+  ],
+  "run_index": 4,
+  "run_cost": 0.04625775,
+  "oracle_attempt_count": 4,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "Object prototype polluted via _.defaultsDeep constructor.prototype path",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "malicious defaultsDeep completed without observable prototype pollution",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 4,
+    "explanation": "Uses lodash public API _.defaultsDeep, which is affected in vulnerable lodash versions by prototype pollution through constructor.prototype. The oracle first verifies a benign defaultsDeep merge works; only then sets operation_completed=true. It then applies a malicious payload and checks whether Object.prototype receives a unique marker. Pollution means exploit_succeeded=true (vulnerable behavior). If patched, no pollution occurs (and possibly an exception), yielding exploit_succeeded=false while keeping operation_completed=true.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle tests lodash prototype pollution via the public _.merge API. It first performs a benign merge to confirm ordinary functionality; only after that succeeds does it mark operation_completed=true. It then supplies a malicious object containing __proto__ and checks whether a new empty object inherits the injected property. In vulnerable versions, Object.prototype is polluted and exploit_succeeded=true. In patched versions, pollution is prevented (or malicious merge throws), yielding exploit_succeeded=false while operation_completed remains true. Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle uses lodash's public _.set API, which is vulnerable in older releases (including 4.17.11) to prototype pollution when given a path containing __proto__. It first performs a benign _.set call to verify normal operation and only then marks operation_completed=true. Next it performs a malicious _.set({}, '__proto__.__oracle_pp_flag__', 'PWNED') and checks whether a fresh plain object inherits that marker. In vulnerable versions, the marker appears on Object.prototype (exploit_succeeded=true). In patched versions, the marker should not appear (exploit_succeeded=false). Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle targets lodash prototype pollution by exercising _.merge, which is a public API implicated in lodash 4.17.11 pollution issues. It first performs a benign merge and validates expected behavior; only then does it set operation_completed=true. The malicious step uses a constructor.prototype payload (not just __proto__) to distinguish patched behavior that may specifically block one vector. The oracle declares exploit success only if a fresh object inherits the injected marker from Object.prototype. If the malicious call throws after benign success, that is treated as blocked (exploit_succeeded=false) with evidence. Any setup/module/benign failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "Uses lodash public API _.defaultsDeep, which is affected in vulnerable lodash versions by prototype pollution through constructor.prototype. The oracle first verifies a benign defaultsDeep merge works; only then sets operation_completed=true. It then applies a malicious payload and checks whether Object.prototype receives a unique marker. Pollution means exploit_succeeded=true (vulnerable behavior). If patched, no pollution occurs (and possibly an exception), yielding exploit_succeeded=false while keeping operation_completed=true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

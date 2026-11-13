@@ -1,0 +1,137 @@
+{
+  "package_name": "dompurify",
+  "package_version": "3.2.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-vhxf-7vqr-mrjg"
+  ],
+  "run_index": 2,
+  "run_cost": 1.151868,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 2154 (char 2155)",
+  "guidance": [],
+  "vulnerable": null,
+  "fixed": null,
+  "oracle": {
+    "status": "invalid",
+    "attempt_number": 10,
+    "explanation": "model response was not JSON: Invalid control character at: line 2 column 2154 (char 2155)",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 2 column 6225 (char 6226)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 6225 (char 6226)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle loads dompurify together with jsdom to construct a DOM window (dompurify requires a DOM environment to be functional; jsdom is a standard peer for Node usage and does not spawn processes or touch the filesystem outside /tmp). It first performs a benign sanitize() call with SAFE_FOR_TEMPLATES:true on simple safe markup to prove the API works, only then marking operation_completed=true. It then sanitizes a malicious payload crafted to exploit the vulnerable TMPLIT_EXPR regex (/\\$\\{[\\w\\W]*/gm, missing the closing brace requirement) combined with a classic mXSS nested-style/img-onerror mutation vector. On the vulnerable 3.2.3 version, the over-broad/incomplete regex combined with the mutation fails to fully neutralize the injected img/onerror markup, so the dangerous markup remains in the sanitized output, setting exploit_succeeded=true. On the patched 3.2.4 version, the corrected TMPLIT_EXPR (and stricter window/Element checks) causes the sanitizer to properly strip the dangerous markup, so the check finds no surviving onerror/script markup and exploit_succeeded=false. Any exception during setup, module resolution, or the benign call results in operation_completed=false, never a false exploit_succeeded=false. An exception during the malicious call after successful setup is treated as the payload being blocked (exploit_succeeded=false, operation_completed=true). The script only requires dompurify, jsdom, and node core fs/path/os modules, performs no network or subprocess calls, and only ever strings are compared in-memory, so it is self-contained and safe.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle builds a minimal, self-contained DOM shim (no jsdom dependency) implementing just the subset of Node/Element/Document APIs DOMPurify needs (createElement, appendChild, innerHTML/outerHTML serialization, attributes, NodeIterator, DOMParser, HTMLTemplateElement, DocumentFragment, NamedNodeMap) so DOMPurify.isSupported is true and sanitize() can run entirely in-process without spawning any process or touching the filesystem. It first calls createDOMPurify(window) and sanitizes a benign '<b>marker benign</b>' string with SAFE_FOR_TEMPLATES:true, verifying the expected text survives, before marking operation_completed=true. It then sanitizes a crafted payload containing an unterminated '${' template-literal marker followed by an <img onerror=...> handler inside an <svg><style> context, designed to exploit the vulnerable TMPLIT_EXPR regex (/\\$\\{[\\w\\W]*/gm, missing the closing '}' requirement) from GHSA-vhxf-7vqr-mrjg, versus the patched regex (/\\$\\{[\\w\\W]*/gm correctly requiring termination logic per the diff) that behaves differently and should cause the dangerous onerror/img markup to be stripped. If the malicious sanitize call throws after setup and benign success, it is treated as blocked (exploit_succeeded=false, operation_completed stays true). The final line reports operation_completed and exploit_succeeded based on whether the dangerous onerror attribute or script tag survived sanitization, which indicates whether the buggy regex allowed the mXSS payload through. No Git repository, writable tmp files, or external fixture files are required since everything happens in-memory via the custom DOM shim and dompurify's pure string/object sanitize() API.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Unterminated string starting at: line 1 column 11 (char 10)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Unterminated string starting at: line 1 column 11 (char 10)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 2 column 7710 (char 7711)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 7710 (char 7711)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Unterminated string starting at: line 2 column 13 (char 14)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Unterminated string starting at: line 2 column 13 (char 14)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle requires jsdom (a peer-style runtime dependency commonly available alongside dompurify in Node test environments) to construct a window, then creates a DOMPurify instance via createDOMPurify(window). It first performs a benign sanitize call with SAFE_FOR_TEMPLATES:true on a well-formed template-literal-like string to prove the API works, only setting operation_completed=true after that succeeds. It then sanitizes a crafted payload containing an unterminated '${' template-literal marker combined with an <img onerror=...> handler, designed to trigger the GHSA-vhxf-7vqr-mrjg regex flaw where TMPLIT_EXPR (/\\$\\{[\\w\\W]*}/gm) requires a closing brace to strip content, versus the vulnerable pattern's reliance on matching behavior that can leave a live event handler unsanitized in certain mutation scenarios. The oracle checks whether the sanitized output still contains a live onerror handler tied to a unique marker, which indicates the mXSS bypass succeeded (exploit_succeeded=true) on the vulnerable version; the patched version (3.2.4) fully strips the dangerous attribute causing exploit_succeeded=false. Any setup, module-resolution, or benign-operation failure (including jsdom being unavailable) reports operation_completed=false, and any exception from the malicious call after a successful benign operation is treated as blocked (exploit_succeeded=false) rather than a crash.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "The oracle requires jsdom (declared as a dependency via requires_fixture_files is not needed since jsdom is resolved from /consumer's node_modules like dompurify itself; it is a standard peer tool used in DOMPurify's own test suite and is expected to be present alongside the package under test). It builds a jsdom Window, constructs a DOMPurify instance, and first sanitizes a benign, well-formed template-literal-like string with SAFE_FOR_TEMPLATES enabled, verifying the sanitizer still returns a string and preserves benign content without any live markup -- proving the API works. Only after that succeeds does operation_completed become true. It then sanitizes a crafted payload using an SVG/style trick combined with an unterminated '${' template-literal opener immediately followed by a live <img onerror> element. In the vulnerable TMPLIT_EXPR regex (/\\$\\{[\\w\\W]*/gm, missing the trailing '}' requirement from the advisory diff), the neutralization pass's matching behavior differs from the patched anchored-closing-brace version, and through DOM mutation/serialization the onerror handler combined with the marker token can survive sanitization, which is detected by checking for a live onerror attribute carrying the unique marker in the output. If that live handler is present, exploit_succeeded=true (vulnerable behavior); if the patched regex (/\\$\\{[\\w\\W]*/gm replaced per the diff, requiring the full match to consume through end of string consistently with neutralization, no closing brace needed is actually the patched regex per the diff, but the behavior changes because the patched version removes the trailing '}' requirement in the opposite direction, which changes how greedily the match consumes and prevents the mXSS mutation) neutralizes or removes the dangerous attribute/element, exploit_succeeded=false. Any exception during setup or the benign call is reported with operation_completed=false; an exception only during the malicious call (after setup and benign operation succeeded) is treated as blocked (exploit_succeeded=false, operation_completed=true). The script only requires dompurify and jsdom plus node:fs/path/os (none of which are actually imported beyond dompurify/jsdom), performs no process spawning, network access, or filesystem writes outside the allowed scope, and prints exactly one ORACLE_RESULT line as the final output.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Expecting ',' delimiter: line 2 column 17770 (char 17771)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Expecting ',' delimiter: line 2 column 17770 (char 17771)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 2 column 2154 (char 2155)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 2154 (char 2155)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    }
+  ]
+}

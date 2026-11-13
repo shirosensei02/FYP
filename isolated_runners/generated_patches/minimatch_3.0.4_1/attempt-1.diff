@@ -1,0 +1,12 @@
+diff --git a/minimatch.js b/minimatch.js
+--- a/minimatch.js
++++ b/minimatch.js
+@@ -247,7 +247,7 @@
+   }
+ 
+   if (options.nobrace ||
+-    !pattern.match(/\{.*\}/)) {
++    !/\{(?:(?!\{).)*\}/.test(pattern)) {
+     // shortcut. no need to expand.
+     return [pattern]
+   }

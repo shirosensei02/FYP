@@ -1,0 +1,48 @@
+diff --git a/pg-core/dialect.js b/pg-core/dialect.js
+--- a/pg-core/dialect.js
++++ b/pg-core/dialect.js
+@@ -71,7 +71,7 @@
+     });
+   }
+   escapeName(name) {
+-    return `"${name}"`;
++    return `"${name.replace(/"/g, '""')}"`;
+   }
+   escapeParam(num) {
+     return `$${num + 1}`;
+diff --git a/sqlite-core/dialect.js b/sqlite-core/dialect.js
+--- a/sqlite-core/dialect.js
++++ b/sqlite-core/dialect.js
+@@ -27,7 +27,7 @@
+     this.casing = new CasingCache(config?.casing);
+   }
+   escapeName(name) {
+-    return `"${name}"`;
++    return `"${name.replace(/"/g, '""')}"`;
+   }
+   escapeParam(_num) {
+     return "?";
+diff --git a/mysql-core/dialect.js b/mysql-core/dialect.js
+--- a/mysql-core/dialect.js
++++ b/mysql-core/dialect.js
+@@ -54,7 +54,7 @@
+     });
+   }
+   escapeName(name) {
+-    return `\`${name}\``;
++    return `\`${name.replace(/`/g, '``')}\``;
+   }
+   escapeParam(_num) {
+     return `?`;
+diff --git a/singlestore-core/dialect.js b/singlestore-core/dialect.js
+--- a/singlestore-core/dialect.js
++++ b/singlestore-core/dialect.js
+@@ -53,7 +53,7 @@
+     });
+   }
+   escapeName(name) {
+-    return `\`${name}\``;
++    return `\`${name.replace(/`/g, '``')}\``;
+   }
+   escapeParam(_num) {
+     return `?`;

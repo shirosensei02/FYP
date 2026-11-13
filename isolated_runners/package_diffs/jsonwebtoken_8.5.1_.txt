@@ -1,0 +1,975 @@
+diff --git a/test/claim-aud.test.js b/test/claim-aud.test.js
+index 448da5c8..3a27fd89 100644
+--- a/test/claim-aud.test.js
++++ b/test/claim-aud.test.js
+@@ -6,7 +6,7 @@ const util = require('util');
+ const testUtils = require('./test-utils');
+ 
+ function signWithAudience(audience, payload, callback) {
+-  const options = {algorithm: 'none'};
++  const options = {algorithm: 'HS256'};
+   if (audience !== undefined) {
+     options.audience = audience;
+   }
+@@ -15,7 +15,7 @@ function signWithAudience(audience, payload, callback) {
+ }
+ 
+ function verifyWithAudience(token, audience,  callback) {
+-  testUtils.verifyJWTHelper(token, undefined, {audience}, callback);
++  testUtils.verifyJWTHelper(token, 'secret', {audience}, callback);
+ }
+ 
+ describe('audience', function() {
+@@ -47,7 +47,7 @@ describe('audience', function() {
+ 
+     // undefined needs special treatment because {} is not the same as {aud: undefined}
+     it('should error with with value undefined', function (done) {
+-      testUtils.signJWTHelper({}, 'secret', {audience: undefined, algorithm: 'none'}, (err) => {
++      testUtils.signJWTHelper({}, 'secret', {audience: undefined, algorithm: 'HS256'}, (err) => {
+         testUtils.asyncCheck(done, () => {
+           expect(err).to.be.instanceOf(Error);
+           expect(err).to.have.property('message', '"audience" must be a string or array');
+diff --git a/test/claim-exp.test.js b/test/claim-exp.test.js
+index 94360f6b..fbdbc522 100644
+--- a/test/claim-exp.test.js
++++ b/test/claim-exp.test.js
+@@ -5,12 +5,10 @@ const expect = require('chai').expect;
+ const sinon = require('sinon');
+ const util = require('util');
+ const testUtils = require('./test-utils');
+-
+-const base64UrlEncode = testUtils.base64UrlEncode;
+-const noneAlgorithmHeader = 'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0';
++const jws = require('jws');
+ 
+ function signWithExpiresIn(expiresIn, payload, callback) {
+-  const options = {algorithm: 'none'};
++  const options = {algorithm: 'HS256'};
+   if (expiresIn !== undefined) {
+     options.expiresIn = expiresIn;
+   }
+@@ -49,7 +47,7 @@ describe('expires', function() {
+ 
+     // undefined needs special treatment because {} is not the same as {expiresIn: undefined}
+     it('should error with with value undefined', function (done) {
+-      testUtils.signJWTHelper({}, undefined, {expiresIn: undefined, algorithm: 'none'}, (err) => {
++      testUtils.signJWTHelper({}, 'secret', {expiresIn: undefined, algorithm: 'HS256'}, (err) => {
+         testUtils.asyncCheck(done, () => {
+           expect(err).to.be.instanceOf(Error);
+           expect(err).to.have.property(
+@@ -133,9 +131,10 @@ describe('expires', function() {
+       {foo: 'bar'},
+     ].forEach((exp) => {
+       it(`should error with with value ${util.inspect(exp)}`, function (done) {
+-        const encodedPayload = base64UrlEncode(JSON.stringify({exp}));
+-        const token = `${noneAlgorithmHeader}.${encodedPayload}.`;
+-        testUtils.verifyJWTHelper(token, undefined, {exp}, (err) => {
++        const header = { alg: 'HS256' };
++        const payload = { exp };
++        const token = jws.sign({ header, payload, secret: 'secret', encoding: 'utf8' });
++        testUtils.verifyJWTHelper(token, 'secret', { exp }, (err) => {
+           testUtils.asyncCheck(done, () => {
+             expect(err).to.be.instanceOf(jwt.JsonWebTokenError);
+             expect(err).to.have.property('message', 'invalid exp value');
+@@ -158,7 +157,7 @@ describe('expires', function() {
+     it('should set correct "exp" with negative number of seconds', function(done) {
+       signWithExpiresIn(-10, {}, (e1, token) => {
+         fakeClock.tick(-10001);
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -170,7 +169,7 @@ describe('expires', function() {
+ 
+     it('should set correct "exp" with positive number of seconds', function(done) {
+       signWithExpiresIn(10, {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -183,7 +182,7 @@ describe('expires', function() {
+     it('should set correct "exp" with zero seconds', function(done) {
+       signWithExpiresIn(0, {}, (e1, token) => {
+         fakeClock.tick(-1);
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -196,7 +195,7 @@ describe('expires', function() {
+     it('should set correct "exp" with negative string timespan', function(done) {
+       signWithExpiresIn('-10 s', {}, (e1, token) => {
+         fakeClock.tick(-10001);
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -209,7 +208,7 @@ describe('expires', function() {
+     it('should set correct "exp" with positive string timespan', function(done) {
+       signWithExpiresIn('10 s', {}, (e1, token) => {
+         fakeClock.tick(-10001);
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -222,7 +221,7 @@ describe('expires', function() {
+     it('should set correct "exp" with zero string timespan', function(done) {
+       signWithExpiresIn('0 s', {}, (e1, token) => {
+         fakeClock.tick(-1);
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -267,7 +266,7 @@ describe('expires', function() {
+ 
+     it('should set correct "exp" when "iat" is passed', function (done) {
+       signWithExpiresIn(-10, {iat: 80}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -279,7 +278,7 @@ describe('expires', function() {
+ 
+     it('should verify "exp" using "clockTimestamp"', function (done) {
+       signWithExpiresIn(10, {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {clockTimestamp: 69}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {clockTimestamp: 69}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -293,7 +292,7 @@ describe('expires', function() {
+     it('should verify "exp" using "clockTolerance"', function (done) {
+       signWithExpiresIn(5, {}, (e1, token) => {
+         fakeClock.tick(10000);
+-        testUtils.verifyJWTHelper(token, undefined, {clockTimestamp: 6}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {clockTimestamp: 6}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -306,7 +305,7 @@ describe('expires', function() {
+ 
+     it('should ignore a expired token when "ignoreExpiration" is true', function (done) {
+       signWithExpiresIn('-10 s', {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {ignoreExpiration: true}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {ignoreExpiration: true}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -319,7 +318,7 @@ describe('expires', function() {
+ 
+     it('should error on verify if "exp" is at current time', function(done) {
+       signWithExpiresIn(undefined, {exp: 60}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.instanceOf(jwt.TokenExpiredError);
+@@ -331,7 +330,7 @@ describe('expires', function() {
+ 
+     it('should error on verify if "exp" is before current time using clockTolerance', function (done) {
+       signWithExpiresIn(-5, {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {clockTolerance: 5}, (e2) => {
++        testUtils.verifyJWTHelper(token, 'secret', {clockTolerance: 5}, (e2) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.instanceOf(jwt.TokenExpiredError);
+diff --git a/test/claim-iat.test.js b/test/claim-iat.test.js
+index 5bf8df7f..a3dd474a 100644
+--- a/test/claim-iat.test.js
++++ b/test/claim-iat.test.js
+@@ -5,24 +5,22 @@ const expect = require('chai').expect;
+ const sinon = require('sinon');
+ const util = require('util');
+ const testUtils = require('./test-utils');
+-
+-const base64UrlEncode = testUtils.base64UrlEncode;
+-const noneAlgorithmHeader = 'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0';
++const jws = require('jws');
+ 
+ function signWithIssueAt(issueAt, options, callback) {
+   const payload = {};
+   if (issueAt !== undefined) {
+     payload.iat = issueAt;
+   }
+-  const opts = Object.assign({algorithm: 'none'}, options);
++  const opts = Object.assign({algorithm: 'HS256'}, options);
+   // async calls require a truthy secret
+   // see: https://github.com/brianloveswords/node-jws/issues/62
+   testUtils.signJWTHelper(payload, 'secret', opts, callback);
+ }
+ 
+-function verifyWithIssueAt(token, maxAge, options, callback) {
++function verifyWithIssueAt(token, maxAge, options, secret, callback) {
+   const opts = Object.assign({maxAge}, options);
+-  testUtils.verifyJWTHelper(token, undefined, opts, callback);
++  testUtils.verifyJWTHelper(token, secret, opts, callback);
+ }
+ 
+ describe('issue at', function() {
+@@ -50,7 +48,7 @@ describe('issue at', function() {
+ 
+     // undefined needs special treatment because {} is not the same as {iat: undefined}
+     it('should error with iat of undefined', function (done) {
+-      testUtils.signJWTHelper({iat: undefined}, 'secret', {algorithm: 'none'}, (err) => {
++      testUtils.signJWTHelper({iat: undefined}, 'secret', {algorithm: 'HS256'}, (err) => {
+         testUtils.asyncCheck(done, () => {
+           expect(err).to.be.instanceOf(Error);
+           expect(err.message).to.equal('"iat" should be a number of seconds');
+@@ -76,9 +74,10 @@ describe('issue at', function() {
+       {foo: 'bar'},
+     ].forEach((iat) => {
+       it(`should error with iat of ${util.inspect(iat)}`, function (done) {
+-        const encodedPayload = base64UrlEncode(JSON.stringify({iat}));
+-        const token = `${noneAlgorithmHeader}.${encodedPayload}.`;
+-        verifyWithIssueAt(token, '1 min', {}, (err) => {
++        const header = { alg: 'HS256' };
++        const payload = { iat };
++        const token = jws.sign({ header, payload, secret: 'secret', encoding: 'utf8' });
++        verifyWithIssueAt(token, '1 min', {}, 'secret', (err) => {
+           testUtils.asyncCheck(done, () => {
+             expect(err).to.be.instanceOf(jwt.JsonWebTokenError);
+             expect(err.message).to.equal('iat required when maxAge is specified');
+@@ -188,9 +187,9 @@ describe('issue at', function() {
+       },
+     ].forEach((testCase) => {
+       it(testCase.description, function (done) {
+-        const token = jwt.sign({}, 'secret', {algorithm: 'none'});
++        const token = jwt.sign({}, 'secret', {algorithm: 'HS256'});
+         fakeClock.tick(testCase.clockAdvance);
+-        verifyWithIssueAt(token, testCase.maxAge, testCase.options, (err, token) => {
++        verifyWithIssueAt(token, testCase.maxAge, testCase.options, 'secret', (err, token) => {
+           testUtils.asyncCheck(done, () => {
+             expect(err).to.be.null;
+             expect(token).to.be.a('object');
+@@ -235,10 +234,10 @@ describe('issue at', function() {
+     ].forEach((testCase) => {
+       it(testCase.description, function(done) {
+         const expectedExpiresAtDate = new Date(testCase.expectedExpiresAt);
+-        const token = jwt.sign({}, 'secret', {algorithm: 'none'});
++        const token = jwt.sign({}, 'secret', {algorithm: 'HS256'});
+         fakeClock.tick(testCase.clockAdvance);
+ 
+-        verifyWithIssueAt(token, testCase.maxAge, testCase.options, (err) => {
++        verifyWithIssueAt(token, testCase.maxAge, testCase.options, 'secret', (err) => {
+           testUtils.asyncCheck(done, () => {
+             expect(err).to.be.instanceOf(jwt.JsonWebTokenError);
+             expect(err.message).to.equal(testCase.expectedError);
+@@ -252,7 +251,7 @@ describe('issue at', function() {
+   describe('with string payload', function () {
+     it('should not add iat to string', function (done) {
+       const payload = 'string payload';
+-      const options = {algorithm: 'none'};
++      const options = {algorithm: 'HS256'};
+       testUtils.signJWTHelper(payload, 'secret', options, (err, token) => {
+         const decoded = jwt.decode(token);
+         testUtils.asyncCheck(done, () => {
+@@ -264,7 +263,7 @@ describe('issue at', function() {
+ 
+     it('should not add iat to stringified object', function (done) {
+       const payload = '{}';
+-      const options = {algorithm: 'none', header: {typ: 'JWT'}};
++      const options = {algorithm: 'HS256', header: {typ: 'JWT'}};
+       testUtils.signJWTHelper(payload, 'secret', options, (err, token) => {
+         const decoded = jwt.decode(token);
+         testUtils.asyncCheck(done, () => {
+diff --git a/test/claim-iss.test.js b/test/claim-iss.test.js
+index ec82102a..1b1b72f9 100644
+--- a/test/claim-iss.test.js
++++ b/test/claim-iss.test.js
+@@ -6,7 +6,7 @@ const util = require('util');
+ const testUtils = require('./test-utils');
+ 
+ function signWithIssuer(issuer, payload, callback) {
+-  const options = {algorithm: 'none'};
++  const options = {algorithm: 'HS256'};
+   if (issuer !== undefined) {
+     options.issuer = issuer;
+   }
+@@ -44,7 +44,7 @@ describe('issuer', function() {
+ 
+     // undefined needs special treatment because {} is not the same as {issuer: undefined}
+     it('should error with with value undefined', function (done) {
+-      testUtils.signJWTHelper({}, undefined, {issuer: undefined, algorithm: 'none'}, (err) => {
++      testUtils.signJWTHelper({}, 'secret', {issuer: undefined, algorithm: 'HS256'}, (err) => {
+         testUtils.asyncCheck(done, () => {
+           expect(err).to.be.instanceOf(Error);
+           expect(err).to.have.property('message', '"issuer" must be a string');
+@@ -92,7 +92,7 @@ describe('issuer', function() {
+   describe('when signing and verifying a token', function () {
+     it('should not verify "iss" if verify "issuer" option not provided', function(done) {
+       signWithIssuer(undefined, {iss: 'foo'}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -105,7 +105,7 @@ describe('issuer', function() {
+     describe('with string "issuer" option', function () {
+       it('should verify with a string "issuer"', function (done) {
+         signWithIssuer('foo', {}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {issuer: 'foo'}, (e2, decoded) => {
++          testUtils.verifyJWTHelper(token, 'secret', {issuer: 'foo'}, (e2, decoded) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.null;
+@@ -117,7 +117,7 @@ describe('issuer', function() {
+ 
+       it('should verify with a string "iss"', function (done) {
+         signWithIssuer(undefined, {iss: 'foo'}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {issuer: 'foo'}, (e2, decoded) => {
++          testUtils.verifyJWTHelper(token, 'secret', {issuer: 'foo'}, (e2, decoded) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.null;
+@@ -129,7 +129,7 @@ describe('issuer', function() {
+ 
+       it('should error if "iss" does not match verify "issuer" option', function(done) {
+         signWithIssuer(undefined, {iss: 'foobar'}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {issuer: 'foo'}, (e2) => {
++          testUtils.verifyJWTHelper(token, 'secret', {issuer: 'foo'}, (e2) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.instanceOf(jwt.JsonWebTokenError);
+@@ -141,7 +141,7 @@ describe('issuer', function() {
+ 
+       it('should error without "iss" and with verify "issuer" option', function(done) {
+         signWithIssuer(undefined, {}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {issuer: 'foo'}, (e2) => {
++          testUtils.verifyJWTHelper(token, 'secret', {issuer: 'foo'}, (e2) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.instanceOf(jwt.JsonWebTokenError);
+@@ -155,7 +155,7 @@ describe('issuer', function() {
+     describe('with array "issuer" option', function () {
+       it('should verify with a string "issuer"', function (done) {
+         signWithIssuer('bar', {}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {issuer: ['foo', 'bar']}, (e2, decoded) => {
++          testUtils.verifyJWTHelper(token, 'secret', {issuer: ['foo', 'bar']}, (e2, decoded) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.null;
+@@ -167,7 +167,7 @@ describe('issuer', function() {
+ 
+       it('should verify with a string "iss"', function (done) {
+         signWithIssuer(undefined, {iss: 'foo'}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {issuer: ['foo', 'bar']}, (e2, decoded) => {
++          testUtils.verifyJWTHelper(token, 'secret', {issuer: ['foo', 'bar']}, (e2, decoded) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.null;
+@@ -179,7 +179,7 @@ describe('issuer', function() {
+ 
+       it('should error if "iss" does not match verify "issuer" option', function(done) {
+         signWithIssuer(undefined, {iss: 'foobar'}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {issuer: ['foo', 'bar']}, (e2) => {
++          testUtils.verifyJWTHelper(token, 'secret', {issuer: ['foo', 'bar']}, (e2) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.instanceOf(jwt.JsonWebTokenError);
+@@ -191,7 +191,7 @@ describe('issuer', function() {
+ 
+       it('should error without "iss" and with verify "issuer" option', function(done) {
+         signWithIssuer(undefined, {}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {issuer: ['foo', 'bar']}, (e2) => {
++          testUtils.verifyJWTHelper(token, 'secret', {issuer: ['foo', 'bar']}, (e2) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.instanceOf(jwt.JsonWebTokenError);
+diff --git a/test/claim-jti.test.js b/test/claim-jti.test.js
+index a10a9b59..9721f7c7 100644
+--- a/test/claim-jti.test.js
++++ b/test/claim-jti.test.js
+@@ -6,7 +6,7 @@ const util = require('util');
+ const testUtils = require('./test-utils');
+ 
+ function signWithJWTId(jwtid, payload, callback) {
+-  const options = {algorithm: 'none'};
++  const options = {algorithm: 'HS256'};
+   if (jwtid !== undefined) {
+     options.jwtid = jwtid;
+   }
+@@ -44,7 +44,7 @@ describe('jwtid', function() {
+ 
+     // undefined needs special treatment because {} is not the same as {jwtid: undefined}
+     it('should error with with value undefined', function (done) {
+-      testUtils.signJWTHelper({}, undefined, {jwtid: undefined, algorithm: 'none'}, (err) => {
++      testUtils.signJWTHelper({}, 'secret', {jwtid: undefined, algorithm: 'HS256'}, (err) => {
+         testUtils.asyncCheck(done, () => {
+           expect(err).to.be.instanceOf(Error);
+           expect(err).to.have.property('message', '"jwtid" must be a string');
+@@ -92,7 +92,7 @@ describe('jwtid', function() {
+   describe('when signing and verifying a token', function () {
+     it('should not verify "jti" if verify "jwtid" option not provided', function(done) {
+       signWithJWTId(undefined, {jti: 'foo'}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -105,7 +105,7 @@ describe('jwtid', function() {
+     describe('with "jwtid" option', function () {
+       it('should verify with "jwtid" option', function (done) {
+         signWithJWTId('foo', {}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {jwtid: 'foo'}, (e2, decoded) => {
++          testUtils.verifyJWTHelper(token, 'secret', {jwtid: 'foo'}, (e2, decoded) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.null;
+@@ -117,7 +117,7 @@ describe('jwtid', function() {
+ 
+       it('should verify with "jti" in payload', function (done) {
+         signWithJWTId(undefined, {jti: 'foo'}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {jetid: 'foo'}, (e2, decoded) => {
++          testUtils.verifyJWTHelper(token, 'secret', {jetid: 'foo'}, (e2, decoded) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.null;
+@@ -129,7 +129,7 @@ describe('jwtid', function() {
+ 
+       it('should error if "jti" does not match verify "jwtid" option', function(done) {
+         signWithJWTId(undefined, {jti: 'bar'}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {jwtid: 'foo'}, (e2) => {
++          testUtils.verifyJWTHelper(token, 'secret', {jwtid: 'foo'}, (e2) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.instanceOf(jwt.JsonWebTokenError);
+@@ -141,7 +141,7 @@ describe('jwtid', function() {
+ 
+       it('should error without "jti" and with verify "jwtid" option', function(done) {
+         signWithJWTId(undefined, {}, (e1, token) => {
+-          testUtils.verifyJWTHelper(token, undefined, {jwtid: 'foo'}, (e2) => {
++          testUtils.verifyJWTHelper(token, 'secret', {jwtid: 'foo'}, (e2) => {
+             testUtils.asyncCheck(done, () => {
+               expect(e1).to.be.null;
+               expect(e2).to.be.instanceOf(jwt.JsonWebTokenError);
+diff --git a/test/claim-nbf.test.js b/test/claim-nbf.test.js
+index 1aa5cda7..72397de1 100644
+--- a/test/claim-nbf.test.js
++++ b/test/claim-nbf.test.js
+@@ -5,12 +5,10 @@ const expect = require('chai').expect;
+ const sinon = require('sinon');
+ const util = require('util');
+ const testUtils = require('./test-utils');
+-
+-const base64UrlEncode = testUtils.base64UrlEncode;
+-const noneAlgorithmHeader = 'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0';
++const jws = require('jws');
+ 
+ function signWithNotBefore(notBefore, payload, callback) {
+-  const options = {algorithm: 'none'};
++  const options = {algorithm: 'HS256'};
+   if (notBefore !== undefined) {
+     options.notBefore = notBefore;
+   }
+@@ -49,7 +47,7 @@ describe('not before', function() {
+ 
+     // undefined needs special treatment because {} is not the same as {notBefore: undefined}
+     it('should error with with value undefined', function (done) {
+-      testUtils.signJWTHelper({}, undefined, {notBefore: undefined, algorithm: 'none'}, (err) => {
++      testUtils.signJWTHelper({}, 'secret', {notBefore: undefined, algorithm: 'HS256'}, (err) => {
+         testUtils.asyncCheck(done, () => {
+           expect(err).to.be.instanceOf(Error);
+           expect(err).to.have.property(
+@@ -133,9 +131,10 @@ describe('not before', function() {
+       {foo: 'bar'},
+     ].forEach((nbf) => {
+       it(`should error with with value ${util.inspect(nbf)}`, function (done) {
+-        const encodedPayload = base64UrlEncode(JSON.stringify({nbf}));
+-        const token = `${noneAlgorithmHeader}.${encodedPayload}.`;
+-        testUtils.verifyJWTHelper(token, undefined, {nbf}, (err) => {
++        const header = { alg: 'HS256' };
++        const payload = { nbf };
++        const token = jws.sign({ header, payload, secret: 'secret', encoding: 'utf8' });
++        testUtils.verifyJWTHelper(token, 'secret', {nbf}, (err) => {
+           testUtils.asyncCheck(done, () => {
+             expect(err).to.be.instanceOf(jwt.JsonWebTokenError);
+             expect(err).to.have.property('message', 'invalid nbf value');
+@@ -157,7 +156,7 @@ describe('not before', function() {
+ 
+     it('should set correct "nbf" with negative number of seconds', function (done) {
+       signWithNotBefore(-10, {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -170,7 +169,7 @@ describe('not before', function() {
+     it('should set correct "nbf" with positive number of seconds', function (done) {
+       signWithNotBefore(10, {}, (e1, token) => {
+         fakeClock.tick(10000);
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -182,7 +181,7 @@ describe('not before', function() {
+ 
+     it('should set correct "nbf" with zero seconds', function (done) {
+       signWithNotBefore(0, {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -194,7 +193,7 @@ describe('not before', function() {
+ 
+     it('should set correct "nbf" with negative string timespan', function (done) {
+       signWithNotBefore('-10 s', {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -207,7 +206,7 @@ describe('not before', function() {
+     it('should set correct "nbf" with positive string timespan', function (done) {
+       signWithNotBefore('10 s', {}, (e1, token) => {
+         fakeClock.tick(10000);
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -219,7 +218,7 @@ describe('not before', function() {
+ 
+     it('should set correct "nbf" with zero string timespan', function (done) {
+       signWithNotBefore('0 s', {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -264,7 +263,7 @@ describe('not before', function() {
+ 
+     it('should set correct "nbf" when "iat" is passed', function (done) {
+       signWithNotBefore(-10, {iat: 40}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -276,7 +275,7 @@ describe('not before', function() {
+ 
+     it('should verify "nbf" using "clockTimestamp"', function (done) {
+       signWithNotBefore(10, {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {clockTimestamp: 70}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {clockTimestamp: 70}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -289,7 +288,7 @@ describe('not before', function() {
+ 
+     it('should verify "nbf" using "clockTolerance"', function (done) {
+       signWithNotBefore(5, {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {clockTolerance: 6}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {clockTolerance: 6}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -302,7 +301,7 @@ describe('not before', function() {
+ 
+     it('should ignore a not active token when "ignoreNotBefore" is true', function (done) {
+       signWithNotBefore('10 s', {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {ignoreNotBefore: true}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {ignoreNotBefore: true}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -315,7 +314,7 @@ describe('not before', function() {
+ 
+     it('should error on verify if "nbf" is after current time', function (done) {
+       signWithNotBefore(undefined, {nbf: 61}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.instanceOf(jwt.NotBeforeError);
+@@ -327,7 +326,7 @@ describe('not before', function() {
+ 
+     it('should error on verify if "nbf" is after current time using clockTolerance', function (done) {
+       signWithNotBefore(5, {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {clockTolerance: 4}, (e2) => {
++        testUtils.verifyJWTHelper(token, 'secret', {clockTolerance: 4}, (e2) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.instanceOf(jwt.NotBeforeError);
+@@ -337,4 +336,4 @@ describe('not before', function() {
+       });
+     });
+   });
+-});
+\ No newline at end of file
++});
+diff --git a/test/claim-private.tests.js b/test/claim-private.tests.js
+index d21a7204..b7f03687 100644
+--- a/test/claim-private.tests.js
++++ b/test/claim-private.tests.js
+@@ -5,7 +5,7 @@ const util = require('util');
+ const testUtils = require('./test-utils');
+ 
+ function signWithPayload(payload, callback) {
+-  testUtils.signJWTHelper(payload, 'secret', {algorithm: 'none'}, callback);
++  testUtils.signJWTHelper(payload, 'secret', {algorithm: 'HS256'}, callback);
+ }
+ 
+ describe('with a private claim', function() {
+@@ -28,7 +28,7 @@ describe('with a private claim', function() {
+   ].forEach((privateClaim) => {
+     it(`should sign and verify with claim of ${util.inspect(privateClaim)}`, function (done) {
+       signWithPayload({privateClaim}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -47,7 +47,7 @@ describe('with a private claim', function() {
+   ].forEach((privateClaim) => {
+     it(`should sign and verify with claim of ${util.inspect(privateClaim)}`, function (done) {
+       signWithPayload({privateClaim}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -61,7 +61,7 @@ describe('with a private claim', function() {
+   // private claims with value undefined are not added to the payload
+   it(`should sign and verify with claim of undefined`, function (done) {
+     signWithPayload({privateClaim: undefined}, (e1, token) => {
+-      testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++      testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+         testUtils.asyncCheck(done, () => {
+           expect(e1).to.be.null;
+           expect(e2).to.be.null;
+diff --git a/test/claim-sub.tests.js b/test/claim-sub.tests.js
+index 5cd33790..a65b39ec 100644
+--- a/test/claim-sub.tests.js
++++ b/test/claim-sub.tests.js
+@@ -6,7 +6,7 @@ const util = require('util');
+ const testUtils = require('./test-utils');
+ 
+ function signWithSubject(subject, payload, callback) {
+-  const options = {algorithm: 'none'};
++  const options = {algorithm: 'HS256'};
+   if (subject !== undefined) {
+     options.subject = subject;
+   }
+@@ -44,7 +44,7 @@ describe('subject', function() {
+ 
+     // undefined needs special treatment because {} is not the same as {subject: undefined}
+     it('should error with with value undefined', function (done) {
+-      testUtils.signJWTHelper({}, undefined, {subject: undefined, algorithm: 'none'}, (err) => {
++      testUtils.signJWTHelper({}, 'secret', {subject: undefined, algorithm: 'HS256'}, (err) => {
+         testUtils.asyncCheck(done, () => {
+           expect(err).to.be.instanceOf(Error);
+           expect(err).to.have.property('message', '"subject" must be a string');
+@@ -92,7 +92,7 @@ describe('subject', function() {
+   describe('when signing and verifying a token with "subject" option', function () {
+     it('should verify with a string "subject"', function (done) {
+       signWithSubject('foo', {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {subject: 'foo'}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {subject: 'foo'}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -104,7 +104,7 @@ describe('subject', function() {
+ 
+     it('should verify with a string "sub"', function (done) {
+       signWithSubject(undefined, {sub: 'foo'}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {subject: 'foo'}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {subject: 'foo'}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -116,7 +116,7 @@ describe('subject', function() {
+ 
+     it('should not verify "sub" if verify "subject" option not provided', function(done) {
+       signWithSubject(undefined, {sub: 'foo'}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {}, (e2, decoded) => {
++        testUtils.verifyJWTHelper(token, 'secret', {}, (e2, decoded) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.null;
+@@ -128,7 +128,7 @@ describe('subject', function() {
+ 
+     it('should error if "sub" does not match verify "subject" option', function(done) {
+       signWithSubject(undefined, {sub: 'foo'}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {subject: 'bar'}, (e2) => {
++        testUtils.verifyJWTHelper(token, 'secret', {subject: 'bar'}, (e2) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.instanceOf(jwt.JsonWebTokenError);
+@@ -140,7 +140,7 @@ describe('subject', function() {
+ 
+     it('should error without "sub" and with verify "subject" option', function(done) {
+       signWithSubject(undefined, {}, (e1, token) => {
+-        testUtils.verifyJWTHelper(token, undefined, {subject: 'foo'}, (e2) => {
++        testUtils.verifyJWTHelper(token, 'secret', {subject: 'foo'}, (e2) => {
+           testUtils.asyncCheck(done, () => {
+             expect(e1).to.be.null;
+             expect(e2).to.be.instanceOf(jwt.JsonWebTokenError);
+diff --git a/test/header-kid.test.js b/test/header-kid.test.js
+index 42633ade..e419067a 100644
+--- a/test/header-kid.test.js
++++ b/test/header-kid.test.js
+@@ -6,7 +6,7 @@ const util = require('util');
+ const testUtils = require('./test-utils');
+ 
+ function signWithKeyId(keyid, payload, callback) {
+-  const options = {algorithm: 'none'};
++  const options = {algorithm: 'HS256'};
+   if (keyid !== undefined) {
+     options.keyid = keyid;
+   }
+@@ -44,7 +44,7 @@ describe('keyid', function() {
+ 
+     // undefined needs special treatment because {} is not the same as {keyid: undefined}
+     it('should error with with value undefined', function (done) {
+-      testUtils.signJWTHelper({}, undefined, {keyid: undefined, algorithm: 'none'}, (err) => {
++      testUtils.signJWTHelper({}, 'secret', {keyid: undefined, algorithm: 'HS256'}, (err) => {
+         testUtils.asyncCheck(done, () => {
+           expect(err).to.be.instanceOf(Error);
+           expect(err).to.have.property('message', '"keyid" must be a string');
+diff --git a/test/jwt.hs.tests.js b/test/jwt.hs.tests.js
+index 5c12a734..a7741ff1 100644
+--- a/test/jwt.hs.tests.js
++++ b/test/jwt.hs.tests.js
+@@ -1,7 +1,8 @@
+-var jwt = require('../index');
++const jwt = require('../index');
+ 
+-var expect = require('chai').expect;
+-var assert = require('chai').assert;
++const jws = require('jws');
++const expect = require('chai').expect;
++const assert = require('chai').assert;
+ 
+ describe('HS256', function() {
+ 
+@@ -42,19 +43,21 @@ describe('HS256', function() {
+     });
+ 
+     it('should throw with secret and token not signed', function(done) {
+-      var signed = jwt.sign({ foo: 'bar' }, secret, { algorithm: 'none' });
+-      var unsigned = signed.split('.')[0] + '.' + signed.split('.')[1] + '.';
+-      jwt.verify(unsigned, 'secret', function(err, decoded) {
++      const header = { alg: 'none' };
++      const payload = { foo: 'bar' };
++      const token = jws.sign({ header, payload, secret: 'secret', encoding: 'utf8' });
++      jwt.verify(token, 'secret', function(err, decoded) {
+         assert.isUndefined(decoded);
+         assert.isNotNull(err);
+         done();
+       });
+     });
+ 
+-    it('should work with falsy secret and token not signed', function(done) {
+-      var signed = jwt.sign({ foo: 'bar' }, null, { algorithm: 'none' });
+-      var unsigned = signed.split('.')[0] + '.' + signed.split('.')[1] + '.';
+-      jwt.verify(unsigned, 'secret', function(err, decoded) {
++    it('should throw with falsy secret and token not signed', function(done) {
++      const header = { alg: 'none' };
++      const payload = { foo: 'bar' };
++      const token = jws.sign({ header, payload, secret: null, encoding: 'utf8' });
++      jwt.verify(token, 'secret', function(err, decoded) {
+         assert.isUndefined(decoded);
+         assert.isNotNull(err);
+         done();
+diff --git a/test/option-maxAge.test.js b/test/option-maxAge.test.js
+index c76676fc..10340f46 100644
+--- a/test/option-maxAge.test.js
++++ b/test/option-maxAge.test.js
+@@ -11,7 +11,7 @@ describe('maxAge option', function() {
+   let fakeClock;
+   beforeEach(function() {
+     fakeClock = sinon.useFakeTimers({now: 60000});
+-    token = jwt.sign({iat: 70}, undefined, {algorithm: 'none'});
++    token = jwt.sign({iat: 70}, 'secret', {algorithm: 'HS256'});
+   });
+ 
+   afterEach(function() {
+@@ -37,8 +37,8 @@ describe('maxAge option', function() {
+     },
+   ].forEach((testCase) => {
+     it(testCase.description, function (done) {
+-      expect(jwt.verify(token, undefined, {maxAge: '3s'})).to.not.throw;
+-      jwt.verify(token, undefined, {maxAge: testCase.maxAge}, (err) => {
++      expect(jwt.verify(token, 'secret', {maxAge: '3s', algorithm: 'HS256'})).to.not.throw;
++      jwt.verify(token, 'secret', {maxAge: testCase.maxAge, algorithm: 'HS256'}, (err) => {
+         expect(err).to.be.null;
+         done();
+       })
+@@ -54,11 +54,11 @@ describe('maxAge option', function() {
+     {foo: 'bar'},
+   ].forEach((maxAge) => {
+     it(`should error with value ${util.inspect(maxAge)}`, function (done) {
+-      expect(() => jwt.verify(token, undefined, {maxAge})).to.throw(
++      expect(() => jwt.verify(token, 'secret', {maxAge, algorithm: 'HS256'})).to.throw(
+         jwt.JsonWebTokenError,
+         '"maxAge" should be a number of seconds or string representing a timespan eg: "1d", "20h", 60'
+       );
+-      jwt.verify(token, undefined, {maxAge}, (err) => {
++      jwt.verify(token, 'secret', {maxAge, algorithm: 'HS256'}, (err) => {
+         expect(err).to.be.instanceOf(jwt.JsonWebTokenError);
+         expect(err.message).to.equal(
+           '"maxAge" should be a number of seconds or string representing a timespan eg: "1d", "20h", 60'
+diff --git a/test/option-nonce.test.js b/test/option-nonce.test.js
+index 841bdc29..410c36b7 100644
+--- a/test/option-nonce.test.js
++++ b/test/option-nonce.test.js
+@@ -9,7 +9,7 @@ describe('nonce option', function () {
+   let token;
+ 
+   beforeEach(function () {
+-    token = jwt.sign({ nonce: 'abcde' }, undefined, { algorithm: 'none' });
++    token = jwt.sign({ nonce: 'abcde' }, 'secret', { algorithm: 'HS256' });
+   });
+   [
+     {
+@@ -18,7 +18,7 @@ describe('nonce option', function () {
+     },
+   ].forEach((testCase) => {
+     it(testCase.description, function (done) {
+-      testUtils.verifyJWTHelper(token, undefined, { nonce: testCase.nonce }, (err, decoded) => {
++      testUtils.verifyJWTHelper(token, 'secret', { nonce: testCase.nonce }, (err, decoded) => {
+         testUtils.asyncCheck(done, () => {
+           expect(err).to.be.null;
+           expect(decoded).to.have.property('nonce', 'abcde');
+@@ -46,7 +46,7 @@ describe('nonce option', function () {
+     { foo: 'bar' },
+   ].forEach((nonce) => {
+     it(`should error with value ${util.inspect(nonce)}`, function (done) {
+-      testUtils.verifyJWTHelper(token, undefined, { nonce }, (err) => {
++      testUtils.verifyJWTHelper(token, 'secret', { nonce }, (err) => {
+         testUtils.asyncCheck(done, () => {
+           expect(err).to.be.instanceOf(jwt.JsonWebTokenError);
+           expect(err).to.have.property('message', 'nonce must be a non-empty string')
+diff --git a/test/schema.tests.js b/test/schema.tests.js
+index 742d29e4..75a3b0f5 100644
+--- a/test/schema.tests.js
++++ b/test/schema.tests.js
+@@ -19,6 +19,7 @@ describe('schema', function() {
+       expect(function () {
+         sign({ algorithm: 'foo' });
+       }).to.throw(/"algorithm" must be a valid string enum value/);
++      sign({ algorithm: 'none' });
+       sign({algorithm: 'RS256'});
+       sign({algorithm: 'RS384'});
+       sign({algorithm: 'RS512'});
+@@ -33,7 +34,6 @@ describe('schema', function() {
+       sign({algorithm: 'HS256'});
+       sign({algorithm: 'HS384'});
+       sign({algorithm: 'HS512'});
+-      sign({algorithm: 'none'});
+     });
+ 
+     it('should validate header', function () {
+@@ -73,4 +73,4 @@ describe('schema', function() {
+ 
+   });
+ 
+-});
+\ No newline at end of file
++});
+diff --git a/test/verify.tests.js b/test/verify.tests.js
+index 29bbe104..9ef24e45 100644
+--- a/test/verify.tests.js
++++ b/test/verify.tests.js
+@@ -30,39 +30,68 @@ describe('verify', function() {
+     });
+   });
+ 
+-  it('should be able to validate unsigned token', function (done) {
++  it('should not be able to verify unsigned token', function () {
+     var header = { alg: 'none' };
+     var payload = { iat: Math.floor(Date.now() / 1000 ) };
+ 
+     var signed = jws.sign({
+       header: header,
+       payload: payload,
+-      secret: priv,
++      secret: 'secret',
+       encoding: 'utf8'
+     });
+ 
+-    jwt.verify(signed, null, {typ: 'JWT'}, function(err, p) {
+-      assert.isNull(err);
+-      assert.deepEqual(p, payload);
+-      done();
+-    });
++    expect(function () {
++      jwt.verify(signed, 'secret', {typ: 'JWT'});
++    }).to.throw(JsonWebTokenError, /jwt signature is required/);
+   });
+ 
+-  it('should not mutate options', function (done) {
++  it('should not be able to verify unsigned token', function () {
+     var header = { alg: 'none' };
+-
+     var payload = { iat: Math.floor(Date.now() / 1000 ) };
+ 
+-    var options = {typ: 'JWT'};
++    var signed = jws.sign({
++      header: header,
++      payload: payload,
++      secret: 'secret',
++      encoding: 'utf8'
++    });
++
++    expect(function () {
++      jwt.verify(signed, undefined, {typ: 'JWT'});
++    }).to.throw(JsonWebTokenError, /please specify "none" in "algorithms" to verify unsigned tokens/);
++  });
++
++  it('should be able to verify unsigned token when none is specified', function (done) {
++    var header = { alg: 'none' };
++    var payload = { iat: Math.floor(Date.now() / 1000 ) };
+ 
+     var signed = jws.sign({
+       header: header,
+       payload: payload,
+-      secret: priv,
++      secret: 'secret',
++      encoding: 'utf8'
++    });
++
++    jwt.verify(signed, null, {typ: 'JWT', algorithms: ['none']}, function(err, p) {
++      assert.isNull(err);
++      assert.deepEqual(p, payload);
++      done();
++    });
++  });
++
++  it('should not mutate options', function (done) {
++    const header = { alg: 'HS256' };
++    const payload = { iat: Math.floor(Date.now() / 1000 ) };
++    const  options = { typ: 'JWT' };
++    const signed = jws.sign({
++      header: header,
++      payload: payload,
++      secret: 'secret',
+       encoding: 'utf8'
+     });
+ 
+-    jwt.verify(signed, null, options, function(err) {
++    jwt.verify(signed, 'secret', options, function(err) {
+       assert.isNull(err);
+       assert.deepEqual(Object.keys(options).length, 1);
+       done();
+diff --git a/verify.js b/verify.js
+index 8687eb59..95fa3650 100644
+--- a/verify.js
++++ b/verify.js
+@@ -107,7 +107,7 @@ module.exports = function (jwtString, secretOrPublicKey, options, callback) {
+     }
+ 
+     if (!hasSignature && !options.algorithms) {
+-      options.algorithms = ['none'];
++      return done(new JsonWebTokenError('please specify "none" in "algorithms" to verify unsigned tokens'));
+     }
+ 
+     if (!options.algorithms) {

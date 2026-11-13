@@ -1,0 +1,13 @@
+diff --git a/dist/server/lib/router-server.js b/dist/server/lib/router-server.js
+--- a/dist/server/lib/router-server.js
++++ b/dist/server/lib/router-server.js
+@@ -162,6 +162,9 @@
+         if (!process.env.NEXT_PRIVATE_TEST_HEADERS) {
+             (0, _utils1.filterInternalHeaders)(req.headers);
+         }
++        if (!opts.minimalMode) {
++            delete req.headers['x-middleware-subrequest'];
++        }
+         if (!opts.minimalMode && config.i18n && config.i18n.localeDetection !== false) {
+             var _this;
+             const urlParts = (req.url || '').split('?', 1);

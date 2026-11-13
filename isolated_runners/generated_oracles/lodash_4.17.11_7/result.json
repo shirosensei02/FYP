@@ -1,0 +1,54 @@
+{
+  "package_name": "lodash",
+  "package_version": "4.17.11",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-jf85-cpcp-j695"
+  ],
+  "run_index": 7,
+  "run_cost": 0.01143275,
+  "oracle_attempt_count": 1,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "Object.prototype polluted via constructor.prototype path; fresh object inherited __oraclePolluted=yes",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "No prototype pollution observed on fresh object after malicious defaultsDeep call",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 1,
+    "explanation": "This oracle exercises lodash's public defaultsDeep API with a normal merge first, then attempts known prototype-pollution input through constructor.prototype. Vulnerable versions allow writing to Object.prototype, observable by checking a brand-new object's inherited marker property. Fixed versions block the dangerous path (or throw), preventing inherited pollution while still allowing the benign merge.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle exercises lodash's public defaultsDeep API with a normal merge first, then attempts known prototype-pollution input through constructor.prototype. Vulnerable versions allow writing to Object.prototype, observable by checking a brand-new object's inherited marker property. Fixed versions block the dangerous path (or throw), preventing inherited pollution while still allowing the benign merge.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

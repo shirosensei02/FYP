@@ -1,0 +1,153 @@
+{
+  "package_name": "minimatch",
+  "package_version": "3.0.4",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-f8q6-p94x-37v3"
+  ],
+  "run_index": 7,
+  "run_cost": 0.11568025,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "elapsed_ms=0;threshold_ms=40;payload_len=44001;threw=false",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "elapsed_ms=0;threshold_ms=40;payload_len=44001;threw=false",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "This oracle validates a normal brace expansion first, then measures runtime of a known ReDoS-style input against minimatch.braceExpand. Vulnerable versions (3.0.4) should take noticeably longer due to the old /\\{.*\\}/ check and not throw; patched versions should either return quickly or throw, making exploit_succeeded false. Any setup/module/benign failure reports operation_completed=false as required.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle targets CVE-2022-3517 / GHSA-f8q6-p94x-37v3 in minimatch 3.0.4 by exercising minimatch.braceExpand with a crafted unterminated-brace pattern containing many backslashes, which is known to trigger expensive regex behavior in vulnerable versions. It first runs a benign brace expansion to prove normal API functionality; only then is operation_completed set true. For the malicious call it measures elapsed time with bounded input and classifies exploitation as success when runtime exceeds a fixed threshold, avoiding timers/interrupts. If the malicious call throws after successful benign setup, that is treated as blocked (exploit_succeeded=false). Any setup/module/benign failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal operation via a benign brace expansion first, then measures performance of a crafted malicious pattern against minimatch.braceExpand. The malicious input follows the known ReDoS shape (an opening brace followed by many backslashes) that triggers expensive regex behavior in vulnerable versions. It uses bounded input and elapsed-time comparison (absolute and relative to benign work) so both versions complete quickly while still differentiating vulnerable slowdown from patched behavior. Any setup/module/benign failure reports operation_completed=false, and malicious exceptions after successful setup are treated as blocked.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal behavior first via minimatch.braceExpand on a simple brace pattern, then exercises a crafted malicious input that targets the historical catastrophic backtracking in brace detection used by vulnerable minimatch versions. It uses bounded input size and elapsed-time measurement (no interrupting timers). If malicious input throws after successful benign operation, that is treated as blocked. Otherwise, a sufficiently high elapsed time indicates exploit success (ReDoS) on vulnerable versions, while patched versions should complete quickly and be marked blocked.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal behavior first via a benign brace expansion call, then measures elapsed time for a bounded malicious input targeting the known ReDoS path in minimatch 3.0.4's brace detection. It avoids interrupts and process control, relying on runtime difference: vulnerable versions exhibit noticeable slowdown, patched versions should return quickly or reject safely. Any setup/module/benign failure reports operation_completed=false as required; exceptions from the malicious call after successful benign setup are treated as blocked.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal functionality with a benign braceExpand call, then exercises a known ReDoS trigger pattern for minimatch@3.0.4 using bounded repeated timing. Vulnerable versions spend noticeably more aggregate time in brace detection, while patched versions complete quickly. Any setup/module/benign failure reports operation_completed=false. If the malicious call throws after benign success, it is treated as blocked (exploit_succeeded=false).",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal behavior first via minimatch.braceExpand('a{b,c}d'). After that succeeds, it measures one malicious braceExpand call with a bounded ReDoS-shaped payload that historically stresses the vulnerable /\\{.*\\}/ check. It uses elapsed time as the success signal (slow => exploit_succeeded=true) and keeps input small enough to finish quickly. Any error before benign success reports operation_completed=false; errors during malicious execution are treated as blocked with operation_completed=true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal behavior with a benign brace expansion first, then measures runtime of a crafted malicious pattern against minimatch.braceExpand. The payload is chosen to stress the vulnerable /\\{.*\\}/ check in 3.0.4 (no '{' present, long run of backslashes), causing expensive backtracking. Patched versions use a safer brace-detection expression and should complete much faster. The oracle reports exploit_succeeded=true only when the malicious call is measurably slow after benign success.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "Exercises minimatch.braceExpand with a known-good brace pattern first, then measures runtime of a crafted malicious pattern that triggers catastrophic backtracking in vulnerable versions due to the old /\\{.*\\}/ check. Vulnerable versions should take noticeably longer and exceed the threshold; patched versions use a safer check and should stay below threshold (or throw), yielding exploit_succeeded=false while keeping operation_completed=true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "This oracle validates that minimatch.braceExpand works on a normal pattern first, then measures runtime of a crafted ReDoS-style payload targeting the vulnerable brace-detection regex path. It treats the exploit as successful only when the malicious call completes and takes noticeably long (>=150ms), which should occur on vulnerable 3.0.4 but not on patched 3.0.5 where brace detection was hardened. Any failure before benign success reports operation_completed=false; exceptions during malicious execution after successful setup are treated as blocked.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle validates a normal brace expansion first, then measures runtime of a known ReDoS-style input against minimatch.braceExpand. Vulnerable versions (3.0.4) should take noticeably longer due to the old /\\{.*\\}/ check and not throw; patched versions should either return quickly or throw, making exploit_succeeded false. Any setup/module/benign failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

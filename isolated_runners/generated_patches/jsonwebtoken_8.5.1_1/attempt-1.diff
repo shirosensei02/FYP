@@ -1,0 +1,22 @@
+diff --git a/verify.js b/verify.js
+--- a/verify.js
++++ b/verify.js
+@@ -111,10 +111,14 @@
+     }
+ 
+     if (!options.algorithms) {
+-      options.algorithms = ~secretOrPublicKey.toString().indexOf('BEGIN CERTIFICATE') ||
+-        ~secretOrPublicKey.toString().indexOf('BEGIN PUBLIC KEY') ? PUB_KEY_ALGS :
+-        ~secretOrPublicKey.toString().indexOf('BEGIN RSA PUBLIC KEY') ? RSA_KEY_ALGS : HS_ALGS;
+-
++      if (secretOrPublicKey.toString().indexOf('BEGIN CERTIFICATE') !== -1 ||
++        secretOrPublicKey.toString().indexOf('BEGIN PUBLIC KEY') !== -1) {
++        options.algorithms = PUB_KEY_ALGS;
++      } else if (secretOrPublicKey.toString().indexOf('BEGIN RSA PUBLIC KEY') !== -1) {
++        options.algorithms = RSA_KEY_ALGS;
++      } else {
++        options.algorithms = HS_ALGS;
++      }
+     }
+ 
+     if (!~options.algorithms.indexOf(decodedToken.header.alg)) {

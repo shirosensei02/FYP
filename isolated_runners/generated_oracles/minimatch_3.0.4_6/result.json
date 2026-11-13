@@ -1,0 +1,153 @@
+{
+  "package_name": "minimatch",
+  "package_version": "3.0.4",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-f8q6-p94x-37v3"
+  ],
+  "run_index": 6,
+  "run_cost": 0.13722099999999998,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=TIMEOUT and fixed=TIMEOUT.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "TIMEOUT",
+    "operation_completed": false,
+    "exploit_succeeded": null,
+    "evidence": "Oracle exceeded 30s timeout.",
+    "exit_code": null,
+    "failure_kind": "operation",
+    "timed_out": true
+  },
+  "fixed": {
+    "status": "TIMEOUT",
+    "operation_completed": false,
+    "exploit_succeeded": null,
+    "evidence": "Oracle exceeded 30s timeout.",
+    "exit_code": null,
+    "failure_kind": "operation",
+    "timed_out": true
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "This oracle validates normal minimatch behavior first, then measures a ReDoS-prone pattern on a short control input versus a bounded long malicious input. It reports exploit success only when the malicious call is significantly slower (absolute and relative thresholds), indicating regex backtracking behavior expected in vulnerable minimatch 3.0.4. Any setup/module/benign/control failure sets operation_completed=false as required; a malicious exception after successful benign setup is treated as blocked (exploit_succeeded=false).",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal minimatch behavior first, then measures execution time of a bounded ReDoS-shaped input. It marks operation_completed=true only after the benign checks succeed. For the malicious probe, slower-than-threshold execution indicates successful exploitation (catastrophic backtracking), while fast completion or exception after benign success indicates blocked behavior. Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal minimatch behavior first, then measures execution time of a known ReDoS-triggering pattern shape for minimatch 3.0.4 (`'{' + ','.repeat(60) + '}'`) against a bounded large input. If the malicious call is significantly slow (over 1200ms), it flags `exploit_succeeded=true`. Exceptions during malicious call are treated as blocked (`exploit_succeeded=false`) only after benign success. Any setup/module/benign failure reports `operation_completed=false`.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal minimatch behavior first, then exercises a known ReDoS-triggering pattern family using many commas inside braces. It measures elapsed time for the malicious call with bounded input. If runtime exceeds a threshold, it reports exploit_succeeded=true (vulnerable behavior). Fast completion indicates exploit_succeeded=false (patched behavior). Any setup/module/benign failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "This oracle verifies normal minimatch behavior first, then measures runtime for a known ReDoS-shaped pattern (`{` + many commas + `}`) against a tiny target string. It treats the exploit as succeeded only when the malicious call completes but takes longer than a calibrated threshold, which is expected on vulnerable 3.0.4 and expected not to happen on patched versions. Any setup/module/benign failure reports `operation_completed=false` as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal minimatch behavior first, then measures performance of a known problematic brace-comma pattern against an in-process baseline call. It flags exploit success only when the malicious call is both absolutely slow and much slower than baseline, which helps distinguish vulnerable 3.0.4 from patched versions without external timers or process control. Any setup/module/benign failure reports operation_completed=false, and malicious exceptions are treated as blocked only after successful setup and benign operation.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal minimatch behavior first, then measures execution time for a known ReDoS-triggering brace pattern ('{' + many commas + '}'). It uses a bounded, single malicious call and an absolute latency threshold to classify exploitation: vulnerable 3.0.4 should take significantly longer, while patched versions should complete faster. Any setup/module/benign failure reports operation_completed=false as required; malicious exceptions after successful setup are treated as blocked (exploit_succeeded=false).",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal minimatch behavior first, then measures runtime for a known ReDoS-style pathological brace pattern made of many commas. In vulnerable minimatch versions, processing this pattern is significantly slower; in patched versions, it is expected to complete quickly or throw due to input-length guards. The oracle treats malicious exceptions as blocked only after successful setup and benign call, and reports operation_completed=false for setup/benign failures.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "This oracle targets the minimatch 3.0.4 ReDoS by using a known pathological pattern shape (\"*(a|{1,2})\") and comparing runtime on a short control string versus a much longer malicious string. It first verifies normal minimatch behavior on simple benign glob matches; only then it sets operation_completed=true. It measures elapsed time with process.hrtime.bigint() and marks exploit_succeeded=true only when both absolute malicious latency and relative slowdown ratio exceed thresholds, which should distinguish vulnerable from patched behavior without external timers or process control. Any setup/module/benign failure reports operation_completed=false, while malicious-call exceptions after successful setup are treated as blocked (exploit_succeeded=false).",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal minimatch behavior first, then exercises the known ReDoS trigger pattern `*(a|{1,2})` using a short control string and a longer malicious string. It measures elapsed time with bounded input sizes and computes a slowdown ratio. A successful exploit is reported only when the malicious call is dramatically slower than control (ratio > 80 and >30ms absolute), which is expected on vulnerable 3.0.4 but not on patched versions. Any setup/module/benign/control failure sets `operation_completed=false` as required; malicious exceptions after successful benign setup are treated as blocked (`operation_completed=true`, `exploit_succeeded=false`).",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal minimatch behavior first, then measures a ReDoS-prone pattern on a short control input versus a bounded long malicious input. It reports exploit success only when the malicious call is significantly slower (absolute and relative thresholds), indicating regex backtracking behavior expected in vulnerable minimatch 3.0.4. Any setup/module/benign/control failure sets operation_completed=false as required; a malicious exception after successful benign setup is treated as blocked (exploit_succeeded=false).",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=TIMEOUT and fixed=TIMEOUT.",
+      "vulnerable_status": "TIMEOUT",
+      "fixed_status": "TIMEOUT"
+    }
+  ]
+}

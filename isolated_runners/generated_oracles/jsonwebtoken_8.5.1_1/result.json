@@ -1,0 +1,153 @@
+{
+  "package_name": "jsonwebtoken",
+  "package_version": "8.5.1",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-qwph-4952-7xr6"
+  ],
+  "run_index": 1,
+  "run_cost": 0.26369000000000004,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "Malicious alg:none forged token was rejected: jwt signature is required",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "Malicious alg:none forged token was rejected: jwt signature is required",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "The oracle first proves jwt.sign/jwt.verify work correctly for a benign HS256-signed token verified with an explicit algorithms allow-list. It then crafts a malicious JWT with header {alg:'none'} and an empty signature segment (a classic alg:none forgery), claiming role=admin, and calls jwt.verify(forgedToken, secret) without restricting algorithms — mirroring the insecure default usage pattern that the described vulnerability concerns. On jsonwebtoken 8.5.1, calling verify without an algorithms allow-list combined with an alg:none token historically could bypass signature validation (treated as unsigned), so verify returns the forged payload with role=admin, setting exploit_succeeded=true. On patched versions, verify rejects alg:none tokens unless explicitly permitted via options.algorithms including 'none', throwing a JsonWebTokenError (e.g. 'jwt signature is required' or 'invalid algorithm'), so the exploit is blocked and exploit_succeeded=false while operation_completed remains true since the benign operation succeeded first. Any failure during setup or the benign check sets operation_completed=false, and no process spawning, network, or filesystem access outside /tmp is used.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jsonwebtoken's normal RS256 sign/verify flow works correctly (benign case), which also generates an RSA key pair and marks operation_completed=true only on success. It then performs the classic RS256->HS256 algorithm-confusion attack: it crafts a JWT with header alg=HS256 and signs it using HMAC-SHA256 with the RSA public key PEM string as the secret key, then calls jwt.verify(forgedToken, publicKey) without an algorithms allowlist, mirroring the vulnerable default behavior described in the CVE. On vulnerable 8.5.1, jws/jwt's lenient algorithm handling allows the forged HS256 signature to validate against the public key, so verify returns the attacker-controlled payload (role: 'admin'), setting exploit_succeeded=true. On a patched version, verify will throw (e.g., invalid signature or rejected algorithm), caught and reported as exploit_succeeded=false while operation_completed remains true from the earlier benign success. Any failure during setup or the benign RS256 roundtrip is caught separately and reported with operation_completed=false, satisfying the harness contract.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jwt.sign/jwt.verify works correctly in a benign RS256 round-trip, calling jwt.verify(token, publicKey) without an explicit algorithms allowlist to mirror common legacy usage. It then forges an HS256 token whose signature is an HMAC computed using the RSA public key PEM string as the secret (the classic algorithm-confusion attack) and calls jwt.verify() the same way. In the vulnerable version (8.5.1), jwt.verify() may validate this HS256 token against the public key value, granting escalated 'admin' claims, so exploit_succeeded becomes true. In a patched version that enforces algorithm restrictions or otherwise rejects mismatched key/algorithm usage, verify throws and exploit_succeeded stays false while operation_completed remains true because the benign call already succeeded. Any failure before or during the benign operation forces operation_completed=false, and all outcomes are reported only via the final ORACLE_RESULT line.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jsonwebtoken's core sign/verify roundtrip works using HS256 with an explicit secret, setting operation_completed=true only on success. It then attempts the classic 'alg: none' forgery: it builds a token with header {alg:'none'} and an empty signature segment, elevating role to 'admin', and calls jwt.verify() with the same secret but without an explicit `algorithms` allowlist (the exact insecure-default calling pattern the CVE concerns). In the vulnerable 8.5.1 version, jwt.verify() can be coerced into accepting unsigned/none-algorithm tokens under certain calling conventions tied to the insecure default algorithm handling, returning the forged payload and setting exploit_succeeded=true. In the patched version, jwt.verify() rejects the mismatched/forged 'none' algorithm token (JsonWebTokenError: jwt signature is required / invalid algorithm), causing the catch branch to set exploit_succeeded=false while operation_completed remains true from the earlier successful benign verification. Any failure during setup or the benign HS256 roundtrip is reported with operation_completed=false, never conflated with a blocked exploit. The script only requires jsonwebtoken and node core crypto-free string/buffer utilities, performs no I/O, network, or subprocess activity, and uses a unique marker to avoid cross-run collisions.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jsonwebtoken's public API works by signing a token with an RSA private key using RS256 and successfully verifying it with the corresponding public key (no algorithms restriction passed, mirroring common real-world usage). It then performs the classic RS256-to-HS256 algorithm-confusion attack: an attacker who knows only the public key (inherently public) signs a forged token using HS256 with the public key's PEM string as the HMAC secret, then calls jwt.verify(forgedToken, publicKey) exactly as the legitimate verifier would, without an explicit algorithms allowlist. In vulnerable jsonwebtoken 8.5.1, verify() does not safely restrict the default algorithm set when given an asymmetric key, so the HS256-forged token (with an escalated role claim) is accepted, and operation_completed=true/exploit_succeeded=true. In the patched version, verify() rejects the mismatched/forged token (signature verification fails because the algorithm type is mismatched with the key type), so exploit_succeeded=false while operation_completed remains true since the benign RS256 roundtrip still succeeds. Any setup, module-resolution, or benign-operation failure causes operation_completed=false before the malicious branch is attempted.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jwt.sign()/jwt.verify() work correctly with a benign HS256 round trip. It then forges a JWT with header {alg:'none'} and an empty signature, carrying an escalated claim (role: admin), and calls jwt.verify(token, secret) without restricting the allowed algorithms (mirroring the common insecure default usage described in the vulnerability). In the vulnerable version 8.5.1, jwt.verify's insecure default algorithm handling can accept the unsigned 'none' token, so the forged admin claims are returned, setting exploit_succeeded=true. In the patched version, verify() rejects tokens using 'none' unless explicitly allowed, throwing a JsonWebTokenError that is caught and reported as exploit_succeeded=false with operation_completed still true because the benign operation already succeeded.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jwt.sign/jwt.verify works correctly with a benign RS256 sign/verify roundtrip using a freshly generated RSA key pair. It then simulates the classic RS256->HS256 algorithm-confusion attack: it forges a JWT whose header claims alg:'HS256' and signs it via HMAC-SHA256 using the PEM-encoded RSA public key string as the secret, then calls jwt.verify(forgedToken, publicKey) without restricting the `algorithms` option (the common/vulnerable usage pattern in 8.5.1, which trusts the attacker-supplied alg header when no allow-list is given). On vulnerable jsonwebtoken, this forged token verifies successfully and yields attacker-controlled claims (role: 'admin'), setting exploit_succeeded=true. On patched versions, verify() rejects the mismatched algorithm/signature combination, throwing, which is caught and reported as exploit_succeeded=false. Any failure during setup, key generation, or the benign roundtrip is reported with operation_completed=false before the malicious path is attempted.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jsonwebtoken's sign/verify API works correctly with a legitimate HS256 round-trip. It then crafts a forged token with header alg:'none' and an empty signature segment, and calls jwt.verify(token, secret) without an explicit algorithms allow-list — the exact vulnerable calling pattern described in the advisory for jsonwebtoken 8.5.1. On the vulnerable version this forged, unsigned token is accepted and its elevated claims (role: admin) are returned, setting exploit_succeeded=true. On the patched version, jwt.verify() rejects the alg:none forged token (throwing a JsonWebTokenError), so exploit_succeeded remains false while operation_completed stays true because the benign roundtrip succeeded first. Any failure during setup or the benign call is reported with operation_completed=false, and all exceptions are caught so the process never crashes without emitting the ORACLE_RESULT line.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Expecting value: line 1 column 1 (char 0)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Expecting value: line 1 column 1 (char 0)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jsonwebtoken's core sign/verify API works correctly using an RSA keypair with explicit RS256 signing and verification (benign case, must succeed on both vulnerable and patched versions). It then simulates the classic 'algorithm confusion' attack: an attacker takes the server's RSA public key (commonly exposed) and uses it as an HMAC secret to forge an HS256-signed token with an escalated role claim. The victim code calls jwt.verify() with only the public key and no algorithms restriction, mirroring the insecure default pattern described in the vulnerability. On vulnerable jsonwebtoken (8.5.1), lacking strict algorithm allowlisting enforcement by default, the HS256 forged token can be verified successfully against the public key string, yielding exploit_succeeded=true with the forged admin payload returned. On a patched version enforcing stricter handling (requiring explicit algorithms option or properly rejecting cross-algorithm HMAC validation against a PEM-formatted key), jwt.verify() throws a JsonWebTokenError (e.g., invalid algorithm or invalid signature), which is caught and reported as exploit_succeeded=false. No Git, filesystem writes, or network/process operations are needed since the exploit is purely in-memory using Node's built-in crypto module for RSA key generation.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jwt.sign/jwt.verify work correctly for a benign HS256-signed token verified with an explicit algorithms allow-list. It then crafts a malicious JWT with header {alg:'none'} and an empty signature segment (a classic alg:none forgery), claiming role=admin, and calls jwt.verify(forgedToken, secret) without restricting algorithms — mirroring the insecure default usage pattern that the described vulnerability concerns. On jsonwebtoken 8.5.1, calling verify without an algorithms allow-list combined with an alg:none token historically could bypass signature validation (treated as unsigned), so verify returns the forged payload with role=admin, setting exploit_succeeded=true. On patched versions, verify rejects alg:none tokens unless explicitly permitted via options.algorithms including 'none', throwing a JsonWebTokenError (e.g. 'jwt signature is required' or 'invalid algorithm'), so the exploit is blocked and exploit_succeeded=false while operation_completed remains true since the benign operation succeeded first. Any failure during setup or the benign check sets operation_completed=false, and no process spawning, network, or filesystem access outside /tmp is used.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

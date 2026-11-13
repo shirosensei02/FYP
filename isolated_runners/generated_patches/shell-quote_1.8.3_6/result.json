@@ -1,0 +1,39 @@
+{
+  "package_name": "shell-quote",
+  "package_version": "1.8.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-w7jw-789q-3m8p"
+  ],
+  "run_index": 6,
+  "run_cost": 0.067382,
+  "patch_attempt_count": 2,
+  "success_loop": 2,
+  "validation_status": "SECURITY_PASS",
+  "validation_reason": "Relevant operation completed and the exploit was blocked.",
+  "locked_oracle": {
+    "source_run": "shell-quote_1.8.3_1",
+    "attempt_number": 3
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\\\'\\n\\\\' 'echo SQ_MARKER_1_1794524932669_INJECTED'\""
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_PASS",
+      "reason": "Relevant operation completed and the exploit was blocked.",
+      "execution_status": "EXPLOIT_BLOCKED",
+      "evidence": "quote() output did not contain an unescaped literal newline; result: \"echo safe \\\\'\\\\'\\\\\\\\\\\\n\\\\' 'echo SQ_MARKER_1_1794524945722_INJECTED'\""
+    }
+  ]
+}

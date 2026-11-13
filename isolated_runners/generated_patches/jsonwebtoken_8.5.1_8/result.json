@@ -1,0 +1,30 @@
+{
+  "package_name": "jsonwebtoken",
+  "package_version": "8.5.1",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-qwph-4952-7xr6"
+  ],
+  "run_index": 8,
+  "run_cost": 0.01759275,
+  "patch_attempt_count": 1,
+  "success_loop": 1,
+  "validation_status": "SECURITY_PASS",
+  "validation_reason": "Relevant operation completed and the exploit was blocked.",
+  "locked_oracle": {
+    "source_run": "jsonwebtoken_8.5.1_2",
+    "attempt_number": 1
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_PASS",
+      "reason": "Relevant operation completed and the exploit was blocked.",
+      "execution_status": "EXPLOIT_BLOCKED",
+      "evidence": "jwt.verify() rejected the unsigned (alg=none) token when passed a falsy secret, as expected on patched versions."
+    }
+  ]
+}

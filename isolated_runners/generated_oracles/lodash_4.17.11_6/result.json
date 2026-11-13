@@ -1,0 +1,54 @@
+{
+  "package_name": "lodash",
+  "package_version": "4.17.11",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-jf85-cpcp-j695"
+  ],
+  "run_index": 6,
+  "run_cost": 0.01139775,
+  "oracle_attempt_count": 1,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "prototype flag before=undefined after=polluted",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "prototype flag before=undefined after=undefined",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 1,
+    "explanation": "This oracle validates lodash.defaultsDeep with a normal merge first, then attempts the known constructor.prototype prototype-pollution vector. It reports exploit success only when a fresh object gains the injected prototype property after the malicious call. If the malicious call throws after benign success, it is treated as blocked. Any setup/module/benign failure sets operation_completed=false.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle validates lodash.defaultsDeep with a normal merge first, then attempts the known constructor.prototype prototype-pollution vector. It reports exploit success only when a fresh object gains the injected prototype property after the malicious call. If the malicious call throws after benign success, it is treated as blocked. Any setup/module/benign failure sets operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "package_name": "lodash",
+  "package_version": "4.17.11",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-jf85-cpcp-j695"
+  ],
+  "run_index": 2,
+  "run_cost": 0.32761199999999996,
+  "patch_attempt_count": 10,
+  "success_loop": null,
+  "validation_status": "SECURITY_FAIL",
+  "validation_reason": "The accepted exploit still succeeds against the generated patch.",
+  "locked_oracle": {
+    "source_run": "lodash_4.17.11_1",
+    "attempt_number": 6
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Object.prototype.oracle_1_1794517266305 was set to \"polluted\" via lodash.defaultsDeep with constructor.prototype payload"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Object.prototype.oracle_1_1794517284329 was set to \"polluted\" via lodash.defaultsDeep with constructor.prototype payload"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Object.prototype.oracle_1_1794517300260 was set to \"polluted\" via lodash.defaultsDeep with constructor.prototype payload"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Object.prototype.oracle_1_1794517322023 was set to \"polluted\" via lodash.defaultsDeep with constructor.prototype payload"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Object.prototype.oracle_1_1794517342507 was set to \"polluted\" via lodash.defaultsDeep with constructor.prototype payload"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Object.prototype.oracle_1_1794517368475 was set to \"polluted\" via lodash.defaultsDeep with constructor.prototype payload"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Object.prototype.oracle_1_1794517384480 was set to \"polluted\" via lodash.defaultsDeep with constructor.prototype payload"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Object.prototype.oracle_1_1794517407906 was set to \"polluted\" via lodash.defaultsDeep with constructor.prototype payload"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Object.prototype.oracle_1_1794517424675 was set to \"polluted\" via lodash.defaultsDeep with constructor.prototype payload"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Object.prototype.oracle_1_1794517449510 was set to \"polluted\" via lodash.defaultsDeep with constructor.prototype payload"
+    }
+  ]
+}

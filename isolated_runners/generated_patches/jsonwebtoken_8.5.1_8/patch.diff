@@ -1,0 +1,20 @@
+diff --git a/verify.js b/verify.js
+--- a/verify.js
++++ b/verify.js
+@@ -106,11 +106,11 @@
+       return done(new JsonWebTokenError('secret or public key must be provided'));
+     }
+ 
+-    if (!hasSignature && !options.algorithms) {
+-      options.algorithms = ['none'];
+-    }
+-
+-    if (!options.algorithms) {
++    if (!hasSignature) {
++      if (!options.algorithms || options.algorithms.indexOf('none') === -1) {
++        return done(new JsonWebTokenError('jwt signature is required'));
++      }
++    } else if (!options.algorithms) {
+       options.algorithms = ~secretOrPublicKey.toString().indexOf('BEGIN CERTIFICATE') ||
+         ~secretOrPublicKey.toString().indexOf('BEGIN PUBLIC KEY') ? PUB_KEY_ALGS :
+         ~secretOrPublicKey.toString().indexOf('BEGIN RSA PUBLIC KEY') ? RSA_KEY_ALGS : HS_ALGS;

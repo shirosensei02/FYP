@@ -1,0 +1,54 @@
+{
+  "package_name": "jsonwebtoken",
+  "package_version": "8.5.1",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-qwph-4952-7xr6"
+  ],
+  "run_index": 2,
+  "run_cost": 0.077222,
+  "oracle_attempt_count": 1,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "jwt.verify() accepted an unsigned (alg=none) token with a falsy secret and no algorithms restriction, returning payload: {\"foo\":\"bar\",\"admin\":true,\"marker\":\"oracle-marker-1\"}",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "jwt.verify() rejected the unsigned (alg=none) token when passed a falsy secret, as expected on patched versions.",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 1,
+    "explanation": "The oracle first performs a benign, correct use of jsonwebtoken: it signs a payload with HS256 using a real secret and verifies it with jwt.verify(), confirming the round-trip works and that tampering with the secret is rejected. Only after this benign success does it set operation_completed=true. It then crafts a malicious unsigned JWT with header {alg:'none'} and an empty signature segment, and calls jwt.verify(token, null) without restricting the algorithms option — exactly the vulnerable pattern described in GHSA-qwph-4952-7xr6 / CVE-2022-23540 (falsy secret, no algorithms specified, unsigned token). On vulnerable jsonwebtoken 8.5.1, verify() defaults to allowing the 'none' algorithm and returns the forged payload (including admin:true), so exploit_succeeded is set true. On the patched version (9.0.0+), jwt.verify() no longer defaults to accepting unsigned tokens in this configuration and throws an error, which is caught and reported as exploit_succeeded=false, leaving operation_completed=true since setup/benign steps already succeeded. Any failure during setup or the benign operation is caught by the outer try/catch and reported as operation_completed=false, never conflated with a blocked exploit. The script only requires the jsonwebtoken package itself, performs no I/O, networking, or process spawning, and prints exactly one ORACLE_RESULT line with the required JSON fields.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle first performs a benign, correct use of jsonwebtoken: it signs a payload with HS256 using a real secret and verifies it with jwt.verify(), confirming the round-trip works and that tampering with the secret is rejected. Only after this benign success does it set operation_completed=true. It then crafts a malicious unsigned JWT with header {alg:'none'} and an empty signature segment, and calls jwt.verify(token, null) without restricting the algorithms option — exactly the vulnerable pattern described in GHSA-qwph-4952-7xr6 / CVE-2022-23540 (falsy secret, no algorithms specified, unsigned token). On vulnerable jsonwebtoken 8.5.1, verify() defaults to allowing the 'none' algorithm and returns the forged payload (including admin:true), so exploit_succeeded is set true. On the patched version (9.0.0+), jwt.verify() no longer defaults to accepting unsigned tokens in this configuration and throws an error, which is caught and reported as exploit_succeeded=false, leaving operation_completed=true since setup/benign steps already succeeded. Any failure during setup or the benign operation is caught by the outer try/catch and reported as operation_completed=false, never conflated with a blocked exploit. The script only requires the jsonwebtoken package itself, performs no I/O, networking, or process spawning, and prints exactly one ORACLE_RESULT line with the required JSON fields.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+diff --git a/dist/server/lib/server-ipc/utils.js b/dist/server/lib/server-ipc/utils.js
+--- a/dist/server/lib/server-ipc/utils.js
++++ b/dist/server/lib/server-ipc/utils.js
+@@ -75,6 +75,11 @@
+             delete headers[header];
+         }
+     }
++    for(const header of Object.keys(headers)){
++        if (header.toLowerCase() === 'x-middleware-subrequest') {
++            delete headers[header];
++        }
++    }
+ };
+ 
+ //# sourceMappingURL=utils.js.map

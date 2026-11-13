@@ -1,0 +1,11 @@
+{
+  "package_name": "jsonwebtoken",
+  "package_version": "8.5.1",
+  "source_run": "jsonwebtoken_8.5.1_2",
+  "attempt_number": 1,
+  "timeout_seconds": 30,
+  "requirements": [],
+  "vulnerability_ids": [
+    "GHSA-qwph-4952-7xr6"
+  ]
+}

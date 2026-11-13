@@ -1,0 +1,14 @@
+diff --git a/dist/server/lib/server-ipc/utils.js b/dist/server/lib/server-ipc/utils.js
+--- a/dist/server/lib/server-ipc/utils.js
++++ b/dist/server/lib/server-ipc/utils.js
+@@ -75,6 +75,10 @@
+             delete headers[header];
+         }
+     }
++    // CVE-2025-29927: a client must never be able to spoof the internal
++    // middleware subrequest marker, as that header is used to determine
++    // whether middleware (and its authorization logic) should be skipped.
++    delete headers['x-middleware-subrequest'];
+ };
+ 
+ //# sourceMappingURL=utils.js.map

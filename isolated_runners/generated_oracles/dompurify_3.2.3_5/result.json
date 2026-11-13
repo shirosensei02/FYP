@@ -1,0 +1,155 @@
+{
+  "package_name": "dompurify",
+  "package_version": "3.2.3",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-vhxf-7vqr-mrjg"
+  ],
+  "run_index": 5,
+  "run_cost": 0.20617065,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "exception:implementation.createDocument is not a function",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "exception:implementation.createDocument is not a function",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "This oracle initializes DOMPurify with a minimal in-memory DOM-like window/document stub so it can run in Node without external dependencies. It first verifies ordinary operation by sanitizing a benign HTML string and requiring a string result; only then does it set operation_completed=true. It then sanitizes a malicious MathML/SVG payload containing a script node and marks exploit_succeeded=true only if a <script> tag remains in output. Any exception before or during setup/benign phase reports operation_completed=false as required.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle loads dompurify, initializes it with a minimal in-memory fake window/document, verifies the public sanitize operation on a benign HTML string, and only then marks operation_completed=true. It then sanitizes a malicious XSS probe containing inline event handlers and a javascript: URL. If those dangerous constructs remain in sanitized output, exploit_succeeded=true; otherwise false. Any setup/module/benign failure yields operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle avoids constructing a fake DOM (which previously caused runtime failures) and instead exercises DOMPurify’s public `isValidAttribute` API directly from Node. It first validates a benign `href` (`https://...`) and only then sets `operation_completed=true`. It then tests a malicious `javascript:` URL. If that malicious value is accepted (`true`), the exploit is considered successful; if rejected (`false`) it is considered blocked. Any setup/module/API error keeps `operation_completed=false` as required.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "Uses the package's public sanitize API via its CommonJS factory, with a minimal in-process fake window/document to avoid extra dependencies. First runs a benign sanitize call and verifies expected safe markup remains; only then sets operation_completed=true. Next sanitizes malicious HTML containing common event-handler XSS payloads and marks exploit_succeeded=true only if dangerous patterns survive in output. Any setup/module/benign failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "Initializes DOMPurify with a minimal in-memory window-like object (including callable Node/Element constructors to avoid instanceof failures), verifies benign sanitize works, then sanitizes an XSS payload and reports exploit success if dangerous event-handler or javascript: patterns survive. Any setup/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "Initializes DOMPurify with a minimal in-memory fake window/document (no external deps), verifies a benign sanitize call succeeds, then sanitizes an XSS payload and treats survival of onerror/onload/javascript: patterns as exploit success. Any setup or benign-call failure reports operation_completed=false per requirements.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "Initializes DOMPurify with a fully in-process inert fake window/document (no external deps), verifies normal sanitize behavior on benign input, then sanitizes XSS-like HTML and treats retained dangerous patterns (event handlers or javascript: URL) as exploit success. Any setup or benign-call exception reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "This oracle initializes DOMPurify with a minimal in-process fake DOM window (no external dependencies), verifies a benign sanitize call succeeds first, then tests a MathML/annotation-xml/SVG script payload associated with DOMPurify XSS bypass classes. It marks exploit success if dangerous script content survives sanitization. Any setup or benign-call error yields operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "This oracle initializes DOMPurify with a minimal in-process DOM stub (no external dependencies), verifies normal sanitization with benign HTML, then tests an SVG/onload XSS payload. It marks exploit success only if dangerous scriptable content remains in the sanitized output (onload attribute or alert JavaScript marker). Any setup/module/benign failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "This oracle uses DOMPurify's documented public sanitize operation in a Node environment without a real DOM. In that mode, DOMPurify reports unsupported behavior by returning inputs unchanged. The benign call first verifies normal operation in this environment. Then a malicious XSS payload is sanitized; if returned unchanged, the XSS is considered to succeed (vulnerable). A patched package that blocks this issue should no longer return the payload unchanged, yielding exploit_succeeded=false while operation_completed remains true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle initializes DOMPurify with a minimal in-memory DOM-like window/document stub so it can run in Node without external dependencies. It first verifies ordinary operation by sanitizing a benign HTML string and requiring a string result; only then does it set operation_completed=true. It then sanitizes a malicious MathML/SVG payload containing a script node and marks exploit_succeeded=true only if a <script> tag remains in output. Any exception before or during setup/benign phase reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    }
+  ]
+}

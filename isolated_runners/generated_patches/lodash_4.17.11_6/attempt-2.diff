@@ -1,0 +1,32 @@
+diff --git a/lodash.js b/lodash.js
+--- a/lodash.js
++++ b/lodash.js
+@@ -2452,6 +2452,9 @@
+      * @param {*} value The value to assign.
+      */
+     function assignMergeValue(object, key, value) {
++      if (key == '__proto__' || key == 'constructor' || key == 'prototype') {
++        return;
++      }
+       if ((value !== undefined && !eq(object[key], value)) ||
+           (value === undefined && !(key in object))) {
+         baseAssignValue(object, key, value);
+@@ -3637,6 +3640,9 @@
+      *  counterparts.
+      */
+     function baseMergeDeep(object, source, key, srcIndex, mergeFunc, customizer, stack) {
++      if (key == '__proto__' || key == 'constructor' || key == 'prototype') {
++        return;
++      }
+       var objValue = safeGet(object, key),
+           srcValue = safeGet(source, key),
+           stacked = stack.get(srcValue);
+@@ -6613,7 +6619,7 @@
+      * @returns {*} Returns the property value.
+      */
+     function safeGet(object, key) {
+-      if (key == '__proto__') {
++      if (key == '__proto__' || key == 'constructor' || key == 'prototype') {
+         return;
+       }
+ 

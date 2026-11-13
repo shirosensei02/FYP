@@ -1,0 +1,12 @@
+diff --git a/dist/server/lib/server-ipc/utils.js b/dist/server/lib/server-ipc/utils.js
+--- a/dist/server/lib/server-ipc/utils.js
++++ b/dist/server/lib/server-ipc/utils.js
+@@ -71,7 +71,7 @@
+ ];
+ const filterInternalHeaders = (headers)=>{
+     for(const header in headers){
+-        if (INTERNAL_HEADERS.includes(header)) {
++        if (INTERNAL_HEADERS.includes(header) || header.toLowerCase() === 'x-middleware-subrequest') {
+             delete headers[header];
+         }
+     }

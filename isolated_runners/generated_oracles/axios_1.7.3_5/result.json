@@ -1,0 +1,155 @@
+{
+  "package_name": "axios",
+  "package_version": "1.7.3",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-8hc4-vh64-cxmj"
+  ],
+  "run_index": 5,
+  "run_cost": 0.17159415,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "benign=http://example.com/api/users?id=1;malicious=http://127.0.0.1:9/ssrf-probe;expected_blocked=http://example.com/api/http://127.0.0.1:9/ssrf-probe;vulnerable_behavior=true;blocked_behavior=false",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "benign=http://example.com/api/users?id=1;malicious=http://127.0.0.1:9/ssrf-probe;expected_blocked=http://example.com/api/http://127.0.0.1:9/ssrf-probe;vulnerable_behavior=true;blocked_behavior=false",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "This oracle validates axios URL construction behavior for the SSRF-related regression around `allowAbsoluteUrls:false`. It first confirms normal operation with a benign relative URL combined with `baseURL`. After that succeeds (`operation_completed=true`), it supplies an absolute attacker URL with `allowAbsoluteUrls:false`. Vulnerable behavior is that the absolute attacker URL is preserved unchanged; patched behavior is that it is forced under `baseURL` (or otherwise blocked via exception). The oracle marks exploit success only for the vulnerable-preserved-absolute case.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle validates Axios request URL handling around the SSRF-related absolute-URL behavior. It first performs a benign request using a relative URL plus baseURL and a custom adapter, confirming normal operation and expected URL resolution without external network access. Only after that succeeds does it set operation_completed=true. It then performs a malicious request using an absolute URL while allowAbsoluteUrls=false. The custom adapter captures the final computed config URL. If Axios still uses the attacker absolute URL (http://127.0.0.1:9/...), exploit_succeeded=true (vulnerable). If the call is rejected or the final URL is constrained away from the attacker absolute URL, exploit_succeeded=false (patched/blocked). Any setup or benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle validates axios request configuration behavior without external network activity by supplying a custom adapter. It first performs a benign request to confirm normal operation and expected config shape (relative url preserved with baseURL present). Only after that succeeds does it set operation_completed=true. It then performs a malicious request using an absolute attacker URL with allowAbsoluteUrls=false. In vulnerable versions, the absolute URL is still passed through in config.url (SSRF bypass), so exploit_succeeded=true. In patched versions, the request should be blocked/rejected or the absolute attacker URL should not survive, yielding exploit_succeeded=false.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle validates axios request URL handling with allowAbsoluteUrls=false using the public axios.get API and a custom adapter (so no real network is used). It first performs a benign relative-URL call to confirm normal operation; only then does it set operation_completed=true. It then performs a malicious absolute-URL call. The exploit is considered successful only if axios leaves the attacker absolute URL directly in config.url (vulnerable SSRF shape). If the call throws after benign success, or if the URL is neutralized by being combined under baseURL, exploit_succeeded is false. Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "This oracle validates axios URL resolution behavior via a custom adapter (no network). It first performs a benign request that must resolve '/ok' against baseURL into 'http://example.com/base/ok'; if this fails, operation_completed remains false. After benign success, it sends an absolute attacker URL with allowAbsoluteUrls:false. In vulnerable axios, config.url remains the attacker absolute URL, indicating SSRF bypass. In patched axios, config.url is no longer that raw attacker absolute URL (it is rewritten/combined), so exploit_succeeded is false. Any setup or benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "This oracle validates axios SSRF-related URL handling using a custom adapter to avoid network access. It first performs a benign request (`/ok` with `baseURL`) and requires that call to succeed before setting `operation_completed=true`. The benign expectation is aligned with axios internals: `config.url` remains the relative input (`/ok`) at adapter time. It then performs the malicious scenario: absolute URL input with `allowAbsoluteUrls:false` and a `baseURL`. On vulnerable versions, adapter config keeps the attacker absolute URL (`http://127.0.0.1:9/ssrf-probe`), so `exploit_succeeded=true`. On patched versions, axios rewrites away from direct absolute usage, so `exploit_succeeded=false`. Any setup/module/benign failure reports `operation_completed=false` as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "This oracle avoids real network activity and directly exercises Axios URL resolution behavior tied to the SSRF flaw. It first performs a benign axios.get call with a custom adapter to prove ordinary API operation works. Only after that succeeds does it set operation_completed=true. For the malicious case, it uses axios.getUri with baseURL plus an attacker absolute URL and allowAbsoluteUrls=false. Vulnerable behavior resolves to the attacker absolute URL unchanged (exploit_succeeded=true). Patched behavior resolves to a baseURL-prefixed/sanitized URL or otherwise rejects (exploit_succeeded=false). Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "This oracle validates axios handling of allowAbsoluteUrls=false using only public API (getUri) and no network. It first runs a benign relative-URL case that must resolve to baseURL+path; only then it marks operation_completed=true. It then tests a malicious absolute URL. Vulnerable behavior is that the absolute URL is returned directly (SSRF-prone), which sets exploit_succeeded=true. Patched behavior should reject or transform so it is not the direct attacker URL, yielding exploit_succeeded=false. Any setup/module/benign failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "This oracle validates Axios URL resolution behavior tied to the SSRF class of bug: when allowAbsoluteUrls is false, an attacker-supplied absolute URL should not be used directly. It first performs a benign getUri call that must succeed (proving API usability) before setting operation_completed=true. Then it runs the malicious case and marks exploit_succeeded=true only if Axios resolves to the attacker absolute URL unchanged. Exceptions in setup/module loading/benign path keep operation_completed=false; exceptions in malicious path after benign success are treated as blocked.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "This oracle validates axios URL resolution behavior tied to SSRF hardening for `allowAbsoluteUrls:false` using the public `axios.getUri` API only (no network/process side effects). It first verifies normal behavior with a benign relative URL joined to `baseURL`. Only after that succeeds does it set `operation_completed=true` and test malicious input: an attacker-controlled absolute URL with `allowAbsoluteUrls:false`. If the resulting URI still equals the attacker absolute URL, the exploit is considered successful (vulnerable behavior). If the call throws or produces a non-attacker absolute result, exploit is blocked (patched behavior).",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle validates axios URL construction behavior for the SSRF-related regression around `allowAbsoluteUrls:false`. It first confirms normal operation with a benign relative URL combined with `baseURL`. After that succeeds (`operation_completed=true`), it supplies an absolute attacker URL with `allowAbsoluteUrls:false`. Vulnerable behavior is that the absolute attacker URL is preserved unchanged; patched behavior is that it is forced under `baseURL` (or otherwise blocked via exception). The oracle marks exploit success only for the vulnerable-preserved-absolute case.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    }
+  ]
+}

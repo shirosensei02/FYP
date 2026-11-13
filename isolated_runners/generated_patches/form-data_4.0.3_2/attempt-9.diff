@@ -1,0 +1,20 @@
+diff --git a/lib/form_data.js b/lib/form_data.js
+--- a/lib/form_data.js
++++ b/lib/form_data.js
+@@ -344,11 +344,11 @@
+ FormData.prototype._generateBoundary = function () {
+   // This generates a 50 character boundary similar to those used by Firefox.
+ 
+-  // They are optimized for boyer-moore parsing.
+-  var boundary = '--------------------------';
+-  for (var i = 0; i < 24; i++) {
+-    boundary += Math.floor(Math.random() * 10).toString(16);
+-  }
++  // They are optimized for boyer-moore parsing, and use a CSPRNG
++  // (crypto.randomBytes) instead of Math.random() so the boundary cannot
++  // be predicted or forced by callers that tamper with Math.random.
++  var cryptoModule = require('crypto');
++  var boundary = '--------------------------' + cryptoModule.randomBytes(12).toString('hex');
+ 
+   this._boundary = boundary;
+ };

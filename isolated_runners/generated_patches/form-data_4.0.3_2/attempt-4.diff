@@ -1,0 +1,16 @@
+diff --git a/lib/form_data.js b/lib/form_data.js
+--- a/lib/form_data.js
++++ b/lib/form_data.js
+@@ -345,9 +345,11 @@
+   // This generates a 50 character boundary similar to those used by Firefox.
+ 
+   // They are optimized for boyer-moore parsing.
++  var crypto = require('crypto');
+   var boundary = '--------------------------';
++  var randomBytes = crypto.randomBytes(24);
+   for (var i = 0; i < 24; i++) {
+-    boundary += Math.floor(Math.random() * 10).toString(16);
++    boundary += (randomBytes[i] % 16).toString(16);
+   }
+ 
+   this._boundary = boundary;

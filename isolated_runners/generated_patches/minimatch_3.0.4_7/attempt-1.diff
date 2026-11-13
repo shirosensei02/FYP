@@ -1,0 +1,31 @@
+diff --git a/minimatch.js b/minimatch.js
+--- a/minimatch.js
++++ b/minimatch.js
+@@ -246,8 +246,25 @@
+     throw new TypeError('undefined pattern')
+   }
+ 
+-  if (options.nobrace ||
+-    !pattern.match(/\{.*\}/)) {
++  if (options.nobrace) {
++    // shortcut. no need to expand.
++    return [pattern]
++  }
++
++  var hasMagic = false
++  for (var i = 0; i < pattern.length; i++) {
++    var c = pattern.charAt(i)
++    if (c === '\\') {
++      i++
++      continue
++    }
++    if (c === '{') {
++      hasMagic = true
++      break
++    }
++  }
++
++  if (!hasMagic || pattern.indexOf('}') === -1) {
+     // shortcut. no need to expand.
+     return [pattern]
+   }

@@ -1,0 +1,11 @@
+diff --git a/dist/server/lib/server-ipc/utils.js b/dist/server/lib/server-ipc/utils.js
+--- a/dist/server/lib/server-ipc/utils.js
++++ b/dist/server/lib/server-ipc/utils.js
+@@ -70,6 +70,7 @@
+     'x-matched-path'
+ ];
+ const filterInternalHeaders = (headers)=>{
++    delete headers['x-middleware-subrequest'];
+     for(const header in headers){
+         if (INTERNAL_HEADERS.includes(header)) {
+             delete headers[header];

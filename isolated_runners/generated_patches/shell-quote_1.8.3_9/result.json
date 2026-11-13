@@ -1,0 +1,57 @@
+{
+  "package_name": "shell-quote",
+  "package_version": "1.8.3",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-w7jw-789q-3m8p"
+  ],
+  "run_index": 9,
+  "run_cost": 0.048522949999999995,
+  "patch_attempt_count": 4,
+  "success_loop": 4,
+  "validation_status": "SECURITY_PASS",
+  "validation_reason": "Relevant operation completed and the exploit was blocked.",
+  "locked_oracle": {
+    "source_run": "shell-quote_1.8.3_1",
+    "attempt_number": 3
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "failed",
+      "patch_applied": false,
+      "oracle_status": null,
+      "reason": "patch_generation: structured edit could not be applied after repair attempt: old_text must occur exactly once in 'quote.js'; found 0 occurrences",
+      "execution_status": null,
+      "evidence": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "failed",
+      "patch_applied": false,
+      "oracle_status": null,
+      "reason": "patch_generation: structured edit could not be applied after repair attempt: old_text must occur exactly once in 'quote.js'; found 0 occurrences",
+      "execution_status": null,
+      "evidence": null
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "quote() emitted an unescaped literal newline from object .op, enabling shell command injection: \"echo safe \\\\'\\n\\\\' 'echo SQ_MARKER_1_1794528451712_INJECTED'\""
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_PASS",
+      "reason": "Relevant operation completed and the exploit was blocked.",
+      "execution_status": "EXPLOIT_BLOCKED",
+      "evidence": "quote() output did not contain an unescaped literal newline; result: \"echo safe $'\\\\n' 'echo SQ_MARKER_1_1794528459074_INJECTED'\""
+    }
+  ]
+}

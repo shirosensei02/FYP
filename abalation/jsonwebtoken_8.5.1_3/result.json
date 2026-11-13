@@ -1,0 +1,38 @@
+{
+  "package_name": "jsonwebtoken",
+  "package_version": "8.5.1",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-qwph-4952-7xr6"
+  ],
+  "run_index": 3,
+  "run_cost": 0.0,
+  "oracle_attempt_count": 1,
+  "validation_status": "ERROR",
+  "validation_reason": "oracle generation request failed: PermissionDeniedError: Error code: 403 - {'error': {'message': 'Org member budget limit exceeded (daily limit). Contact your org admin. $10.08 of $10.00 used; resets 2026-11-13T00:00:00.000Z.', 'code': 403, 'metadata': {'limit_source': 'openrouter_guardrail_budget', 'remedy_hint': 'Wait for the budget window to reset (see metadata.resets_at), or ask your org admin to raise the guardrail budget.', 'scope': 'member', 'limit_usd': 10, 'spend_usd': 10.08162675, 'resets_at': '2026-11-13T00:00:00.000Z'}}}",
+  "guidance": [],
+  "vulnerable": null,
+  "fixed": null,
+  "oracle": {
+    "status": "failed",
+    "attempt_number": 1,
+    "explanation": "oracle generation request failed: PermissionDeniedError: Error code: 403 - {'error': {'message': 'Org member budget limit exceeded (daily limit). Contact your org admin. $10.08 of $10.00 used; resets 2026-11-13T00:00:00.000Z.', 'code': 403, 'metadata': {'limit_source': 'openrouter_guardrail_budget', 'remedy_hint': 'Wait for the budget window to reset (see metadata.resets_at), or ask your org admin to raise the guardrail budget.', 'scope': 'member', 'limit_usd': 10, 'spend_usd': 10.08162675, 'resets_at': '2026-11-13T00:00:00.000Z'}}}",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "failed",
+      "explanation": "oracle generation request failed: PermissionDeniedError: Error code: 403 - {'error': {'message': 'Org member budget limit exceeded (daily limit). Contact your org admin. $10.08 of $10.00 used; resets 2026-11-13T00:00:00.000Z.', 'code': 403, 'metadata': {'limit_source': 'openrouter_guardrail_budget', 'remedy_hint': 'Wait for the budget window to reset (see metadata.resets_at), or ask your org admin to raise the guardrail budget.', 'scope': 'member', 'limit_usd': 10, 'spend_usd': 10.08162675, 'resets_at': '2026-11-13T00:00:00.000Z'}}}",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "ERROR",
+      "validation_reason": "oracle generation request failed: PermissionDeniedError: Error code: 403 - {'error': {'message': 'Org member budget limit exceeded (daily limit). Contact your org admin. $10.08 of $10.00 used; resets 2026-11-13T00:00:00.000Z.', 'code': 403, 'metadata': {'limit_source': 'openrouter_guardrail_budget', 'remedy_hint': 'Wait for the budget window to reset (see metadata.resets_at), or ask your org admin to raise the guardrail budget.', 'scope': 'member', 'limit_usd': 10, 'spend_usd': 10.08162675, 'resets_at': '2026-11-13T00:00:00.000Z'}}}",
+      "vulnerable_status": null,
+      "fixed_status": null
+    }
+  ]
+}

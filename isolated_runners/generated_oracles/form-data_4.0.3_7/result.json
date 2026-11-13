@@ -1,0 +1,54 @@
+{
+  "package_name": "form-data",
+  "package_version": "4.0.3",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-fjxv-7rqg-78g4"
+  ],
+  "run_index": 7,
+  "run_cost": 0.01716575,
+  "oracle_attempt_count": 1,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "{\"sample_size\":400,\"unique\":400,\"duplicates\":0,\"weak_format_count\":400,\"weak_format_ratio\":1,\"benign_boundary_example\":\"--------------------------52240652284168\"}",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "{\"sample_size\":400,\"unique\":400,\"duplicates\":0,\"weak_format_count\":0,\"weak_format_ratio\":0,\"benign_boundary_example\":\"--------------------------0a2de96fef50a9\"}",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 1,
+    "explanation": "This oracle uses the package’s public boundary API (`new FormData().getBoundary()`). It first proves normal operation with a benign call. It then performs a bounded sampling run to detect the specific weak-randomness symptom of vulnerable form-data boundary generation: boundaries dominated by a decimal-digit-only random suffix derived from non-cryptographic randomness. The exploit observable is the persistent weak format signal across many samples (and reported duplicate count for context). A secure fix that uses cryptographically strong randomness should remove this weak-format signal, causing `exploit_succeeded` to be false while keeping `operation_completed` true.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle uses the package’s public boundary API (`new FormData().getBoundary()`). It first proves normal operation with a benign call. It then performs a bounded sampling run to detect the specific weak-randomness symptom of vulnerable form-data boundary generation: boundaries dominated by a decimal-digit-only random suffix derived from non-cryptographic randomness. The exploit observable is the persistent weak format signal across many samples (and reported duplicate count for context). A secure fix that uses cryptographically strong randomness should remove this weak-format signal, causing `exploit_succeeded` to be false while keeping `operation_completed` true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+diff --git a/lodash.js b/lodash.js
+--- a/lodash.js
++++ b/lodash.js
+@@ -3637,6 +3637,9 @@
+      *  counterparts.
+      */
+     function baseMergeDeep(object, source, key, srcIndex, mergeFunc, customizer, stack) {
++      if (key == '__proto__' || key == 'constructor' || key == 'prototype') {
++        return;
++      }
+       var objValue = safeGet(object, key),
+           srcValue = safeGet(source, key),
+           stacked = stack.get(srcValue);
+@@ -3983,6 +3986,10 @@
+         var key = toKey(path[index]),
+             newValue = value;
+ 
++        if (isUnsafeKey(key)) {
++          return object;
++        }
++
+         if (index != lastIndex) {
+           var objValue = nested[key];
+           newValue = customizer ? customizer(objValue, key, nested) : undefined;
+@@ -6613,11 +6620,24 @@
+      * @returns {*} Returns the property value.
+      */
+     function safeGet(object, key) {
+-      if (key == '__proto__') {
++      if (key == '__proto__' || key == 'constructor' || key == 'prototype') {
+         return;
+       }
+ 
+       return object[key];
++    }
++
++    /**
++     * Checks if `key` is an unsafe path component for assignment, which
++     * would allow prototype pollution (e.g. '__proto__', 'constructor',
++     * 'prototype').
++     *
++     * @private
++     * @param {*} key The key to check.
++     * @returns {boolean} Returns `true` if `key` is unsafe, else `false`.
++     */
++    function isUnsafeKey(key) {
++      return key == '__proto__' || key == 'constructor' || key == 'prototype';
+     }
+ 
+     /**

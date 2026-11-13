@@ -1,0 +1,21 @@
+Given the following GitHub problem description, localize the specific files, classes or functions, and lines of code that need modification or contain key information to resolve the issue in the '{{package_name}}' package.
+
+## Output Format for Final Results:
+Your final output should list the locations requiring modification, wrapped with triple backticks ```
+Each location should include the file path, class name (if applicable), function name, or line numbers, ordered by importance.
+Your answer would better include about 5 files.
+### Examples:
+```
+full_path1/file1.py
+line: 10
+class: MyClass1
+function: my_function1
+full_path2/file2.py
+line: 76
+function: MyClass2.my_function2
+full_path3/file3.py
+line: 24
+line: 156
+function: my_function3
+```
+Return just the location(s)

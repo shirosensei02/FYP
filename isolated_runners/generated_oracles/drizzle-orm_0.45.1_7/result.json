@@ -1,0 +1,153 @@
+{
+  "package_name": "drizzle-orm",
+  "package_version": "0.45.1",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-gpj5-g38j-94v9"
+  ],
+  "run_index": 7,
+  "run_cost": 0.441448,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "benign=select safe_column | malicious=select x\" , 1 as pwned --",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "benign=select safe_column | malicious=select x\" , 1 as pwned --",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "This oracle validates that normal identifier rendering works first, then checks whether attacker-controlled identifier content can break into SQL structure. It uses the package’s public `sql.identifier(...).toQuery(...)` path and marks exploit success only when clear injected SQL fragments appear in the rendered malicious query.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle checks identifier-escaping behavior directly in Drizzle's public SQL-construction API, without requiring a live database. It first proves normal operation by rendering a benign identifier path. Then it renders an identifier containing SQL-control content. A vulnerable build will leak a breakout pattern like `\"; DROP TABLE ...` into generated SQL text, showing identifier injection. A fixed build should either escape/neutralize that content or reject it, so exploit_succeeded becomes false while operation_completed remains true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle uses a direct public SQL-construction path that does not require a database driver: drizzle-orm's `sql` tag with `sql.identifier(...)`, then renders via `toQuery(config)`. It first verifies normal behavior with a safe identifier so `operation_completed` is only true after a successful ordinary call. It then supplies an identifier containing a quote/statement-break payload. The vulnerability is observed if the rendered SQL contains a raw breakout sequence (`\"; DROP TABLE audit_log; --`). In fixed versions, the payload is escaped or rejected, so no breakout sequence appears (or an exception is thrown after the benign step), resulting in `exploit_succeeded: false`.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle preserves the benign and malicious API flow and keeps the previously passing vulnerable behavior intact while tightening exploit detection so patched builds that still contain harmless escaped text do not get flagged as exploited. It marks completion only after benign rendering succeeds, treats malicious exceptions as blocked only after setup/benign success, and emits the required final ORACLE_RESULT line.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "Keeps the same public API and benign/malicious flow, but tightens exploit detection so fixed behavior that safely quotes attacker text is no longer treated as exploitation. It now requires unquoted executable `DROP TABLE audit_log` plus SQL comment marker context, while still marking thrown exceptions after successful benign setup as blocked.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "Keeps the same public API path and benign validation that already passes on vulnerable versions. The exploit detector is tightened to require the exact injected breakout pattern (`\"; DROP TABLE audit_log; --`) in rendered SQL, avoiding false positives when patched output still contains words like DROP/-- safely inside escaped identifier text. Exceptions during malicious handling are treated as blocked only after benign success.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "Keeps the same API path and benign/malicious flow as the previously passing vulnerable side. The only behavioral tightening is exploit detection: it now also requires malformed identifier quote structure, preventing false positives when a fixed build safely doubles quotes yet still contains textual substrings like `DROP TABLE` inside a quoted identifier.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "This oracle validates identifier rendering behavior via the public sql/sql.identifier API. It first proves normal operation with a benign identifier. It then uses a crafted identifier containing a double quote and SQL fragment that, if not escaped by drizzle before calling escapeName, escapes identifier context and injects `as pwned`. The observable is purely the rendered SQL text, requiring no database execution. In fixed versions, the payload is escaped/rejected so injection syntax does not emerge (or an exception is thrown after operation completion).",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "This keeps the same public API and attack shape, but updates escaping behavior in the oracle config so fixed packages are not falsely flagged. Benign call is executed and validated first; only then operation_completed becomes true. The exploit check is based on whether `as pwned` is emitted as SQL structure in the malicious rendering.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "This oracle keeps the same public API and vulnerable-path behavior, including the same malicious payload and rendering path. It still marks operation_completed only after benign rendering succeeds. The fix-side adjustment is in exploit detection: it now treats `as pwned` as exploitation only when it appears outside a quoted identifier token, avoiding false positives when a patched build safely keeps payload text inside identifier quotes. Malicious exceptions are still treated as blocked only after benign success.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle validates that normal identifier rendering works first, then checks whether attacker-controlled identifier content can break into SQL structure. It uses the package’s public `sql.identifier(...).toQuery(...)` path and marks exploit success only when clear injected SQL fragments appear in the rendered malicious query.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    }
+  ]
+}

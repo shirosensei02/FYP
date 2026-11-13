@@ -1,0 +1,155 @@
+{
+  "package_name": "axios",
+  "package_version": "1.7.3",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-8hc4-vh64-cxmj"
+  ],
+  "run_index": 6,
+  "run_cost": 0.1794275,
+  "oracle_attempt_count": 10,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "{\"marker\":\"ghsa-8hc4-vh64-cxmj\",\"benignCode\":\"ECONNREFUSED\",\"benignMsg\":\"connect ECONNREFUSED 127.0.0.1:9\",\"maliciousPath\":\"//127.0.0.1:9\",\"maliciousCode\":\"ECONNREFUSED\",\"maliciousMsg\":\"connect ECONNREFUSED 127.0.0.1:9\",\"maliciousConnected\":true}",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "{\"marker\":\"ghsa-8hc4-vh64-cxmj\",\"benignCode\":\"ECONNREFUSED\",\"benignMsg\":\"connect ECONNREFUSED 127.0.0.1:9\",\"maliciousPath\":\"//127.0.0.1:9\",\"maliciousCode\":\"ERR_INVALID_URL\",\"maliciousMsg\":\"Invalid URL\",\"maliciousConnected\":false}",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 10,
+    "explanation": "This oracle avoids forbidden modules by using only axios. It performs a benign request first to an unroutable local endpoint via a normal relative path and requires a connection-style network error, proving ordinary server-side request execution is functioning. After that succeeds, it sends a malicious protocol-relative path (`//127.0.0.1:9`). In vulnerable axios, this is treated as an absolute/protocol-relative URL and attempts a direct connection to that host, producing a connection error; patched axios blocks/parses it differently and does not yield that connection-style outcome. The oracle sets `operation_completed` true only after the benign phase passes, and treats any setup/benign anomaly as `operation_completed=false`.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "invalid",
+      "explanation": "oracle source contains forbidden capability: require('node:http'",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "oracle source contains forbidden capability: require('node:http'",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle avoids network/process primitives and uses Axios public URL-resolution behavior via `create(...).getUri(...)`. It first validates ordinary behavior (`/users` joins with `baseURL`). Then it supplies a protocol-relative style malicious payload (`////attacker.test/path`). In vulnerable versions, this is interpreted as escaping `baseURL` to attacker-controlled host (SSRF-prone resolution), so `exploit_succeeded=true`. In patched versions, server-side handling rejects this path form (throws) or otherwise prevents attacker-host resolution, yielding `exploit_succeeded=false` with `operation_completed=true`. Any exception before benign success reports `operation_completed=false` per requirements.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "invalid",
+      "explanation": "oracle source contains forbidden capability: require('node:http'",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "oracle source contains forbidden capability: require('node:http'",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "This oracle targets the Axios SSRF regression by using the same public behavior pattern as the upstream regression test ports (4666 good server, 4667 bad server), which the harness is expected to provide as fixture services. It first performs a benign GET against the baseURL host to prove normal operation. Only after that succeeds does it set operation_completed=true. It then sends a protocol-relative URL (`//127.0.0.1:4667/`) via `client.get(...)`. In vulnerable Axios versions, this is interpreted in Node as an absolute/protocol-relative destination and reaches the bad server, yielding body `bad` (exploit_succeeded=true). In patched versions, the malicious request is blocked or rejected in server-side mode, leading to exploit_succeeded=false with operation_completed remaining true.",
+      "requirements": [
+        "requires_fixture_files"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "invalid",
+      "explanation": "oracle source contains forbidden capability: require('node:http'",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "oracle source contains forbidden capability: require('node:http'",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "This oracle uses axios' public URL resolution behavior via `axios.create(...).getUri(...)` to avoid network/process/socket use. It first validates a benign relative path resolves under `baseURL` (`http://example.com/safe-path`). After that succeeds, it tests the malicious protocol-relative input (`//169.254.169.254/...`). In vulnerable versions, this is treated as absolute/protocol-relative and escapes the base, yielding a URI targeting 169.254.169.254 (SSRF primitive), so `exploit_succeeded=true`. In patched versions, this input is no longer allowed to escape server-side base URL composition and should not produce a URI rooted at 169.254.169.254, so `exploit_succeeded=false`. Any setup/module/benign failure sets `operation_completed=false`.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "invalid",
+      "explanation": "oracle source contains forbidden capability: require('node:http'",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "oracle source contains forbidden capability: require('node:http'",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "This oracle avoids networking and process spawning by exercising axios public URL-resolution behavior via axios.create() and getUri(). It first validates a benign relative path resolves correctly under baseURL; only then it marks operation_completed=true. It then supplies the SSRF-shaped payload where user-controlled '/attacker.local:9090' is prefixed to form '//attacker.local:9090'. Vulnerable versions resolve this to an attacker authority (exploit_succeeded=true). Patched versions block or no longer resolve to attacker authority (exploit_succeeded=false). Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "invalid",
+      "explanation": "oracle source contains forbidden capability: require('node:http'",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "oracle source contains forbidden capability: require('node:http'",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle avoids forbidden modules by using only axios. It performs a benign request first to an unroutable local endpoint via a normal relative path and requires a connection-style network error, proving ordinary server-side request execution is functioning. After that succeeds, it sends a malicious protocol-relative path (`//127.0.0.1:9`). In vulnerable axios, this is treated as an absolute/protocol-relative URL and attempts a direct connection to that host, producing a connection error; patched axios blocks/parses it differently and does not yield that connection-style outcome. The oracle sets `operation_completed` true only after the benign phase passes, and treats any setup/benign anomaly as `operation_completed=false`.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

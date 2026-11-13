@@ -1,0 +1,111 @@
+{
+  "package_name": "form-data",
+  "package_version": "4.0.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-fjxv-7rqg-78g4"
+  ],
+  "run_index": 1,
+  "run_cost": 0.050206,
+  "patch_attempt_count": 10,
+  "success_loop": null,
+  "validation_status": "SECURITY_FAIL",
+  "validation_reason": "The accepted exploit still succeeds against the generated patch.",
+  "locked_oracle": {
+    "source_run": "form-data_4.0.3_1",
+    "attempt_number": 1
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Boundary generation is fully deterministic when Math.random() is seeded/fixed (all 5 generated boundaries identical: --------------------------111111111111111111111111), confirming use of insecure Math.random() for boundary selection (CWE-338)."
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Boundary generation is fully deterministic when Math.random() is seeded/fixed (all 5 generated boundaries identical: --------------------------111111111111111111111111), confirming use of insecure Math.random() for boundary selection (CWE-338)."
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Boundary generation is fully deterministic when Math.random() is seeded/fixed (all 5 generated boundaries identical: --------------------------111111111111111111111111), confirming use of insecure Math.random() for boundary selection (CWE-338)."
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Boundary generation is fully deterministic when Math.random() is seeded/fixed (all 5 generated boundaries identical: --------------------------111111111111111111111111), confirming use of insecure Math.random() for boundary selection (CWE-338)."
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Boundary generation is fully deterministic when Math.random() is seeded/fixed (all 5 generated boundaries identical: --------------------------111111111111111111111111), confirming use of insecure Math.random() for boundary selection (CWE-338)."
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Boundary generation is fully deterministic when Math.random() is seeded/fixed (all 5 generated boundaries identical: --------------------------111111111111111111111111), confirming use of insecure Math.random() for boundary selection (CWE-338)."
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Boundary generation is fully deterministic when Math.random() is seeded/fixed (all 5 generated boundaries identical: --------------------------111111111111111111111111), confirming use of insecure Math.random() for boundary selection (CWE-338)."
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Boundary generation is fully deterministic when Math.random() is seeded/fixed (all 5 generated boundaries identical: --------------------------111111111111111111111111), confirming use of insecure Math.random() for boundary selection (CWE-338)."
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Boundary generation is fully deterministic when Math.random() is seeded/fixed (all 5 generated boundaries identical: --------------------------111111111111111111111111), confirming use of insecure Math.random() for boundary selection (CWE-338)."
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Boundary generation is fully deterministic when Math.random() is seeded/fixed (all 5 generated boundaries identical: --------------------------111111111111111111111111), confirming use of insecure Math.random() for boundary selection (CWE-338)."
+    }
+  ]
+}

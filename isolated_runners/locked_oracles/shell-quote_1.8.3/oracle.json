@@ -1,0 +1,12 @@
+{
+  "package_name": "shell-quote",
+  "package_version": "1.8.3",
+  "source_run": "shell-quote_1.8.3_1",
+  "attempt_number": 3,
+  "timeout_seconds": 30,
+  "requirements": [],
+  "vulnerability_ids": [
+    "GHSA-w7jw-789q-3m8p",
+    "GHSA-395f-4hp3-45gv"
+  ]
+}

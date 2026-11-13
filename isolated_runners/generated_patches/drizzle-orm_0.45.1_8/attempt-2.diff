@@ -1,0 +1,16 @@
+diff --git a/pg-core/dialect.js b/pg-core/dialect.js
+--- a/pg-core/dialect.js
++++ b/pg-core/dialect.js
+@@ -71,7 +71,11 @@
+     });
+   }
+   escapeName(name) {
+-    return `"${name}"`;
++    const identifier = String(name);
++    if (!/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(identifier)) {
++      throw new Error(`Invalid SQL identifier: ${identifier}`);
++    }
++    return `"${identifier}"`;
+   }
+   escapeParam(num) {
+     return `$${num + 1}`;

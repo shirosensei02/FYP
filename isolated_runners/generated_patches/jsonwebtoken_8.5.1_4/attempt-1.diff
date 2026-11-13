@@ -1,0 +1,12 @@
+diff --git a/verify.js b/verify.js
+--- a/verify.js
++++ b/verify.js
+@@ -102,7 +102,7 @@
+       return done(new JsonWebTokenError('jwt signature is required'));
+     }
+ 
+-    if (hasSignature && !secretOrPublicKey) {
++    if (!secretOrPublicKey) {
+       return done(new JsonWebTokenError('secret or public key must be provided'));
+     }
+ 

@@ -19,7 +19,7 @@ Prerequisites
 """
 
 import json
-import pytest
+import subprocess
 import sys
 import textwrap
 from pathlib import Path
@@ -172,6 +172,62 @@ def test_apply_patch_writes_files_without_running_package_tests(monkeypatch, tmp
     assert result["validation"] is None
     written = Path(result["patched_source_dir"]) / "index.js"
     assert written.read_text(encoding="utf-8") == "module.exports = 2\n"
+
+
+def test_unified_diff_applies_inside_parent_repository(tmp_path):
+    repo = tmp_path / "repo"
+    package = repo / "pkg"
+    source = package / "lib" / "form_data.js"
+    source.parent.mkdir(parents=True)
+    source.write_text("function boundary() {\n  return Math.random();\n}\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    # The hunk count is deliberately wrong so `patch` rejects it and the
+    # git apply --recount fallback is what writes the file.
+    diff = textwrap.dedent("""\
+        diff --git a/lib/form_data.js b/lib/form_data.js
+        --- a/lib/form_data.js
+        +++ b/lib/form_data.js
+        @@ -1,99 +1,99 @@
+         function boundary() {
+        -  return Math.random();
+        +  return crypto.randomBytes(1);
+         }
+        """)
+
+    assert patch_application_module._write_patched_package(
+        package, "demo", "1.0.0", {"diff": diff},
+    ) is True
+    written = source.read_text(encoding="utf-8")
+    assert "crypto.randomBytes" in written
+    assert "Math.random()" not in written
+
+
+def test_git_apply_rejects_a_skipped_patch(tmp_path, monkeypatch):
+    target = tmp_path / "lib" / "form_data.js"
+    target.parent.mkdir()
+    target.write_text("function boundary() {\n  return Math.random();\n}\n", encoding="utf-8")
+    diff_file = tmp_path / "edit.diff"
+    diff_file.write_text(textwrap.dedent("""\
+        diff --git a/lib/form_data.js b/lib/form_data.js
+        --- a/lib/form_data.js
+        +++ b/lib/form_data.js
+        @@ -1,3 +1,3 @@
+         function boundary() {
+        -  return Math.random();
+        +  return crypto.randomBytes(1);
+         }
+        """), encoding="utf-8")
+    monkeypatch.setattr(
+        patch_application_module,
+        "_run",
+        lambda *args, **kwargs: (0, "", "Skipped patch 'lib/form_data.js'.\n"),
+    )
+
+    rc, _out, err = patch_application_module._git_apply(diff_file, tmp_path)
+
+    assert rc != 0
+    assert "did not modify" in err
+    assert "Math.random()" in target.read_text(encoding="utf-8")
 
 
 def test_patch_application_compares_baseline_and_patched(monkeypatch, tmp_path):

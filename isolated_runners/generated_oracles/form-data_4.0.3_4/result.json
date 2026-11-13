@@ -1,0 +1,54 @@
+{
+  "package_name": "form-data",
+  "package_version": "4.0.3",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-fjxv-7rqg-78g4"
+  ],
+  "run_index": 4,
+  "run_cost": 0.0103565,
+  "oracle_attempt_count": 1,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "benign_boundary_len=50; b1=--------------------------000000000000000000000000; b2=--------------------------000000000000000000000000; equal_under_fixed_math_random=true",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "benign_boundary_len=50; b1=--------------------------6b3b9043feb657002f9b2126; b2=--------------------------b32fa739b13ef8732d99921a; equal_under_fixed_math_random=false",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 1,
+    "explanation": "This oracle validates normal FormData usage first, then tests whether multipart boundary generation is predictably controlled by Math.random. It monkey-patches Math.random to a constant and creates two new FormData instances. If boundaries are identical under the fixed RNG, the unsafe-random vulnerability is present (exploit_succeeded=true). Patched behavior should not depend on Math.random in this way, yielding different/unrelated boundaries and exploit_succeeded=false.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal FormData usage first, then tests whether multipart boundary generation is predictably controlled by Math.random. It monkey-patches Math.random to a constant and creates two new FormData instances. If boundaries are identical under the fixed RNG, the unsafe-random vulnerability is present (exploit_succeeded=true). Patched behavior should not depend on Math.random in this way, yielding different/unrelated boundaries and exploit_succeeded=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

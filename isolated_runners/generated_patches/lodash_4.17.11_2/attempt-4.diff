@@ -1,0 +1,21 @@
+diff --git a/lodash.js b/lodash.js
+--- a/lodash.js
++++ b/lodash.js
+@@ -3637,9 +3637,17 @@
+      *  counterparts.
+      */
+     function baseMergeDeep(object, source, key, srcIndex, mergeFunc, customizer, stack) {
++      if (key == '__proto__' || key == 'constructor' || key == 'prototype') {
++        return;
++      }
+       var objValue = safeGet(object, key),
+           srcValue = safeGet(source, key),
+           stacked = stack.get(srcValue);
++
++      if ((objValue === objectProto || objValue === funcProto) ||
++          (srcValue === objectProto || srcValue === funcProto)) {
++        return;
++      }
+ 
+       if (stacked) {
+         assignMergeValue(object, key, stacked);

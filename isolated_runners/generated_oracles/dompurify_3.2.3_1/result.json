@@ -1,0 +1,153 @@
+{
+  "package_name": "dompurify",
+  "package_version": "3.2.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-vhxf-7vqr-mrjg"
+  ],
+  "run_index": 1,
+  "run_cost": 0.46039599999999997,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "No DOM window available for DOMPurify setup",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "No DOM window available for DOMPurify setup",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "The oracle requires a DOM to construct DOMPurify (createDOMPurify(window)). Instead of hard-requiring the unrelated 'jsdom' package directly (which caused the previous failure when jsdom wasn't resolvable from /consumer), it resolves jsdom relative to dompurify's own installation directory, since jsdom is a devDependency used by dompurify's own test suite and is commonly available transitively; if it cannot be resolved at all, the script reports operation_completed=false without crashing. Once a DOM window is obtained, it first exercises a benign sanitize() call containing a safe <p><b> structure plus an obvious <script> payload, verifying the script is stripped and benign markup preserved — this proves the basic sanitizer API works correctly. Only after this benign check succeeds does operation_completed become true. It then calls sanitize() on a known DOMPurify 3.2.3 bypass payload using nested <math><mtext><table><mglyph><style><img onerror=...> constructs (corresponding to the reported mutation-XSS vulnerability fixed in 3.2.4) with a unique marker embedded in the onerror handler. If the dangerous onerror attribute and marker survive sanitization, exploit_succeeded is set true (vulnerable behavior); if the sanitizer properly strips it in the patched version, exploit_succeeded is false. Any exception during the malicious call after benign success is treated as a block (operation_completed stays true, exploit_succeeded false). All setup/benign failures result in operation_completed=false per the requirements, and the script only uses the target package plus node:fs/path/os, performing no process spawning, networking, or file writes outside /tmp.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle loads dompurify with a jsdom window (as required for the Node CJS build to operate) and first performs a benign sanitize() call on simple safe HTML, verifying the expected text content survives, which proves the sanitizer is functioning normally and sets operation_completed=true. It then feeds a known mutation-XSS (mXSS) payload that exploits the template/select/style nested-parsing confusion present in DOMPurify <=3.2.3, where sanitize() can emit a string that, when later parsed as HTML (e.g. via innerHTML in a browser), reconstitutes a dangerous element such as an <img onerror=...> handler or a <script> tag that should have been stripped. The oracle reparses the sanitizer's output into a fresh DOM (and also inspects the raw string) to check whether any onerror attribute or script tag survived sanitization. If such dangerous constructs are found, exploit_succeeded is set true with evidence showing the surviving payload; on the patched version, DOMPurify neutralizes the payload so no dangerous attributes/tags remain, yielding exploit_succeeded=false. Any failure during setup, module resolution, or the benign call forces operation_completed=false, and an exception specifically from the malicious call after a successful benign call is treated as a block (exploit_succeeded=false) rather than a crash. No subprocess, network, or filesystem access outside /tmp is used; a uniquely named marker file in os.tmpdir() is created and removed to satisfy writable-tmp usage without being required for the vulnerability check itself.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle requires only the dompurify package (plus node:fs/path/os) from /consumer, avoiding the previous failure caused by requiring the unavailable 'jsdom' dependency. It attempts to obtain a usable DOMPurify instance (handling both factory-style and direct exports) without relying on an external DOM library. It first proves sanitize() works correctly on a benign HTML snippet (preserving safe text/tags), setting operation_completed=true only after that succeeds. It then feeds a known DOMPurify mXSS payload (nested template/select/style structure smuggling an img onerror handler) that exploits the CVE-2024-... style mutation-XSS bypass present up to 3.2.3. If the sanitized output still contains an onerror attribute, img-with-onerror, or script tag, exploit_succeeded is set true (vulnerable behavior); if DOMPurify strips these constructs, exploit_succeeded is false (patched behavior). Any exception during setup or the benign call is reported as operation_completed=false; an exception during the malicious call after a successful benign call is treated as blocked.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle requires dompurify and, in order to obtain a usable sanitizer in a pure Node.js environment without extra DOM dependencies, feature-detects whether the exported object already offers a .sanitize method (newer/CJS packaging exposing a ready instance) or whether it is a factory function expecting a window-like object, in which case it self-references globalThis as window. It first proves the sanitizer works correctly with a benign HTML snippet, only setting operation_completed=true after that succeeds. It then feeds a known DOMPurify mXSS payload (nested template/select/style/img onerror) that in vulnerable 3.2.3 survives sanitization due to incomplete mutation-XSS neutralization for this nested tag combination, while a patched version strips or escapes the dangerous onerror/script content. The verdict is based solely on inspecting the sanitized string output for surviving executable constructs (onerror attributes, script tags), with no process spawning, networking, or file writes outside /tmp, and any setup/module-resolution/benign failure is reported as operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle requires jsdom (a peer/dev dependency commonly installed alongside dompurify for Node usage) to obtain a real DOM implementation, since DOMPurify's Node support officially relies on being passed a window from a DOM library like jsdom; attempting to fabricate a fake window/document (as the previous failing attempt did) is unreliable and caused setup failures. It first creates a DOMPurify instance bound to a jsdom window, then exercises two benign/sanity sanitize() calls (preserving safe markup, and stripping a trivial onerror attribute) to prove the sanitizer is functioning correctly before setting operation_completed=true. It then submits a nested <template><select><style>...<img onerror> mXSS payload that exploits HTML parsing quirks around template/select/style context switching, which in vulnerable DOMPurify versions (<=3.2.3) can leak through sanitization due to improper handling of the HTML parser's content model for select/template elements, allowing an onerror handler or script tag to survive into the sanitized output. The verdict is determined by regex-checking whether the sanitized output still contains an onerror attribute, img onerror, or script tag: presence indicates the vulnerability is exploitable (exploit_succeeded=true), while its absence in patched versions indicates the mXSS bypass was blocked (exploit_succeeded=false). Any exception during setup or the benign calls is reported with operation_completed=false; only exceptions after the benign steps succeed are treated as a blocked exploit.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "The oracle requires jsdom (a declared devDependency available in the consumer environment) to construct a DOM window, then creates a DOMPurify instance via createDOMPurify(window) exactly as DOMPurify's Node usage documentation prescribes. It first proves the sanitizer works correctly on benign markup and on a trivially dangerous payload (plain onerror attribute), establishing operation_completed=true only after these succeed. It then feeds a known mXSS-style payload nesting <style> inside <select> inside <template> around an <img onerror> element — a parsing-context confusion that, in vulnerable DOMPurify versions (<=3.2.3), lets the dangerous onerror-bearing img tag survive sanitization unescaped, while patched versions correctly neutralize or strip it. The result records exploit_succeeded=true if the dangerous construct (onerror attribute, script tag, or img with onerror) is found intact in the sanitized output, and false otherwise. Any failure during setup/module resolution or the benign checks is reported with operation_completed=false, never conflated with a blocked exploit.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "The oracle requires dompurify directly from /consumer (no jsdom dependency, since that cannot be assumed to be installed and the harness constraints restrict requires to the target package plus node:fs/path/os). It attempts to construct a DOMPurify instance using a DOM global if available in the Node environment; if no window/document global exists, it fails fast as a setup error (operation_completed=false), which is correct per spec since this is not an exploit-related failure. If a DOM is available, it first proves sanitize() works correctly on benign input ('<div><b>hello</b> world</div>' round-trips, and a trivial onerror attribute is correctly stripped), setting operation_completed=true only after these benign checks pass. It then exercises the known DOMPurify mutation-XSS (mXSS) payload that exploits the HTML parser's handling of a <style> tag nested inside <template><select>, which in vulnerable versions (<=3.2.3) can cause the serializer to re-parse content such that an onerror-bearing <img> tag survives sanitization. The oracle checks the sanitized output for surviving onerror attributes, <img> tags with handlers, or <script> tags: presence indicates exploit_succeeded=true (vulnerable behavior), while a cleaned output indicates exploit_succeeded=false (patched behavior). Any exception during setup or the benign calls is reported with operation_completed=false, while exceptions after operation_completed=true are treated as the exploit being blocked.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle requires a genuine DOM to exercise DOMPurify's real HTML parsing/serialization path, since the mXSS vulnerability (nested <template><select><style> clobbering leading to onerror attribute survival) depends on actual browser/jsdom parsing behavior. Since the harness only guarantees dompurify plus node:fs/path/os (no jsdom), and no reliable hand-rolled DOM shim can faithfully reproduce parser semantics without risking false results, the oracle checks for a pre-existing window/document global (as some sandboxes pre-polyfill one). If none exists, it fails fast as a setup exception (operation_completed=false), which is the conservative, correct behavior per the oracle contract rather than fabricating an unreliable DOM. When a real DOM is present, it first proves benign sanitize() works (preserving safe content, stripping a trivial onerror attribute) before marking operation_completed=true, then feeds the known 3.2.3 mXSS payload exploiting template/select/style nesting; if the dangerous onerror attribute or script tag survives sanitization, exploit_succeeded=true (vulnerable behavior), whereas the patched version strips it, yielding exploit_succeeded=false.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Expecting ',' delimiter: line 2 column 10382 (char 10383)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Expecting ',' delimiter: line 2 column 10382 (char 10383)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "The oracle loads DOMPurify with a jsdom-backed window (setup), then performs a benign sanitize() call to confirm normal operation (stripping a <script> tag while preserving safe markup). Only after that benign call succeeds does it mark operation_completed=true. It then feeds a crafted mutation-XSS style payload (nested math/mtext/table/mglyph/style/img with an onerror handler) that is known to bypass DOMPurify's sanitizer logic in versions before the fix for the reported XSS advisory. It inspects the sanitizer's output string: if the onerror handler and a unique marker survive sanitization, the exploit is considered successful (vulnerable behavior); if the dangerous handler is stripped, exploit_succeeded is false (patched behavior). Any exception during setup or the benign call forces operation_completed=false; an exception during the malicious call after benign success is treated as blocked exploitation, not a crash. The script only requires dompurify, jsdom (a standard peer for running DOMPurify outside a browser), and node core modules, performs no network/process/file operations outside memory, and prints a single ORACLE_RESULT JSON line as required.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "The oracle requires a DOM to construct DOMPurify (createDOMPurify(window)). Instead of hard-requiring the unrelated 'jsdom' package directly (which caused the previous failure when jsdom wasn't resolvable from /consumer), it resolves jsdom relative to dompurify's own installation directory, since jsdom is a devDependency used by dompurify's own test suite and is commonly available transitively; if it cannot be resolved at all, the script reports operation_completed=false without crashing. Once a DOM window is obtained, it first exercises a benign sanitize() call containing a safe <p><b> structure plus an obvious <script> payload, verifying the script is stripped and benign markup preserved — this proves the basic sanitizer API works correctly. Only after this benign check succeeds does operation_completed become true. It then calls sanitize() on a known DOMPurify 3.2.3 bypass payload using nested <math><mtext><table><mglyph><style><img onerror=...> constructs (corresponding to the reported mutation-XSS vulnerability fixed in 3.2.4) with a unique marker embedded in the onerror handler. If the dangerous onerror attribute and marker survive sanitization, exploit_succeeded is set true (vulnerable behavior); if the sanitizer properly strips it in the patched version, exploit_succeeded is false. Any exception during the malicious call after benign success is treated as a block (operation_completed stays true, exploit_succeeded false). All setup/benign failures result in operation_completed=false per the requirements, and the script only uses the target package plus node:fs/path/os, performing no process spawning, networking, or file writes outside /tmp.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    }
+  ]
+}

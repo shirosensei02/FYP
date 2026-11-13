@@ -1,0 +1,20 @@
+diff --git a/dist/server/lib/server-ipc/utils.js b/dist/server/lib/server-ipc/utils.js
+--- a/dist/server/lib/server-ipc/utils.js
++++ b/dist/server/lib/server-ipc/utils.js
+@@ -75,6 +75,16 @@
+             delete headers[header];
+         }
+     }
++    // CVE-2025-29927: strip any client-supplied x-middleware-subrequest
++    // header unconditionally. This header is only meant to be set
++    // internally by Next.js itself to signal an already-processed
++    // middleware subrequest; if a client can forge it, middleware
++    // (and any authorization logic it performs) can be bypassed.
++    for(const header in headers){
++        if (header.toLowerCase() === 'x-middleware-subrequest') {
++            delete headers[header];
++        }
++    }
+ };
+ 
+ //# sourceMappingURL=utils.js.map

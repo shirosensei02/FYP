@@ -1,0 +1,19 @@
+diff --git a/minimatch.js b/minimatch.js
+--- a/minimatch.js
++++ b/minimatch.js
+@@ -246,8 +246,13 @@
+     throw new TypeError('undefined pattern')
+   }
+ 
+-  if (options.nobrace ||
+-    !pattern.match(/\{.*\}/)) {
++  if (options.nobrace) {
++    // shortcut. no need to expand.
++    return [pattern]
++  }
++
++  var hasOpen = pattern.indexOf('{')
++  if (hasOpen === -1 || pattern.indexOf('}', hasOpen + 1) === -1) {
+     // shortcut. no need to expand.
+     return [pattern]
+   }

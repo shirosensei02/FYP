@@ -1,0 +1,15 @@
+diff --git a/lib/form_data.js b/lib/form_data.js
+--- a/lib/form_data.js
++++ b/lib/form_data.js
+@@ -346,9 +346,8 @@
+ 
+   // They are optimized for boyer-moore parsing.
+   var boundary = '--------------------------';
+-  for (var i = 0; i < 24; i++) {
+-    boundary += Math.floor(Math.random() * 10).toString(16);
+-  }
++  var randomBytes = require('crypto').randomBytes(16);
++  boundary += randomBytes.toString('hex');
+ 
+   this._boundary = boundary;
+ };

@@ -1,0 +1,66 @@
+{
+  "package_name": "jsonwebtoken",
+  "package_version": "8.5.1",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-qwph-4952-7xr6"
+  ],
+  "run_index": 3,
+  "run_cost": 0.142236,
+  "patch_attempt_count": 5,
+  "success_loop": null,
+  "validation_status": "SECURITY_FAIL",
+  "validation_reason": "The accepted exploit still succeeds against the generated patch.",
+  "locked_oracle": {
+    "source_run": "jsonwebtoken_8.5.1_2",
+    "attempt_number": 1
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "jwt.verify() accepted an unsigned (alg=none) token with a falsy secret and no algorithms restriction, returning payload: {\"foo\":\"bar\",\"admin\":true,\"marker\":\"oracle-marker-1\"}"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "jwt.verify() accepted an unsigned (alg=none) token with a falsy secret and no algorithms restriction, returning payload: {\"foo\":\"bar\",\"admin\":true,\"marker\":\"oracle-marker-1\"}"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "jwt.verify() accepted an unsigned (alg=none) token with a falsy secret and no algorithms restriction, returning payload: {\"foo\":\"bar\",\"admin\":true,\"marker\":\"oracle-marker-1\"}"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "jwt.verify() accepted an unsigned (alg=none) token with a falsy secret and no algorithms restriction, returning payload: {\"foo\":\"bar\",\"admin\":true,\"marker\":\"oracle-marker-1\"}"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "jwt.verify() accepted an unsigned (alg=none) token with a falsy secret and no algorithms restriction, returning payload: {\"foo\":\"bar\",\"admin\":true,\"marker\":\"oracle-marker-1\"}"
+    }
+  ]
+}

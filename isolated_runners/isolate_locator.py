@@ -25,10 +25,88 @@ from locator import locator_node, route_after_locator
 from model_catalog import patch_evaluator_models
 from og_patch_resolution import og_patch_resolution
 from package_input import package_input
+from prompt_variant import apply_run_config
 from repo_graph import repo_graph_node, route_after_repo_graph
 from vulnerability_detection import vulnerability_detection
 
 MAX_TURNS = 48
+
+
+class _Stop(Exception):
+    def __init__(self, message: str, state: dict | None = None):
+        self.message = message
+        self.state = state or {}
+
+
+def run(config: dict) -> dict:
+    """Run one locator package. A failed package returns instead of exiting."""
+    try:
+        return _run(config)
+    except _Stop as exc:
+        print(exc.message, flush=True)
+        return {"ok": False, "error": exc.message, "state": exc.state, "saved": None}
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    result = run(_load_config())
+    if not result["ok"]:
+        sys.exit(1)
+
+
+def _run(config: dict) -> dict:
+    state: dict = {
+        "package_name": config["package_name"],
+        "package_version": config["package_version"],
+        "model_provider": config.get("model_provider") or "openrouter",
+        "patch_scope": "single",
+        "retry_count": 0,
+        "errors": [],
+    }
+    if config.get("model_name"):
+        state["model_name"] = config["model_name"]
+    apply_run_config(state, config)
+
+    source_dir = str(config.get("source_dir") or "").strip()
+    if source_dir:
+        source = Path(source_dir).resolve()
+        if not source.is_dir():
+            raise _Stop(f"ERROR: source_dir does not exist: {source}", state)
+        state["source_dir"] = str(source)
+        state["package_manifest_path"] = str(source / "package.json")
+    else:
+        state.update(package_input(state))
+        if state.get("errors"):
+            raise _Stop("ERROR: package input failed:\n" + "\n".join(state["errors"]), state)
+    print(f"source_dir: {state.get('source_dir')}", flush=True)
+
+    state.update(vulnerability_detection(state))
+    findings = list(state.get("current_vulnerabilities") or [])
+    print(f"findings: {len(findings)}", flush=True)
+    for error in state.get("errors") or []:
+        print(f"detection: {error}", flush=True)
+    vulnerability_id = str(config.get("vulnerability_id") or "").strip()
+    if vulnerability_id:
+        selected = _find_vulnerability(findings, vulnerability_id)
+        if selected is None:
+            raise _Stop(f"ERROR: vulnerability not detected: {vulnerability_id}", state)
+        findings = [selected]
+        state["current_vulnerabilities"] = findings
+    if not findings:
+        raise _Stop("ERROR: no target vulnerability detected", state)
+    for finding in findings:
+        print(f"  - {finding.get('id')} ({finding.get('severity')})", flush=True)
+
+    state.update(og_patch_resolution(state))
+    answer = state.get("answer_key") or {}
+    print(
+        f"resolution: {answer.get('status')} {answer.get('ghsa_id') or answer.get('cve_id') or ''}".rstrip(),
+        flush=True,
+    )
+
+    state.update(localize(state))
+    _print_final(state)
+    return {"ok": True, "error": None, "state": state}
 
 
 def localize(state: dict) -> dict:
@@ -56,61 +134,6 @@ def localize(state: dict) -> dict:
             continue
         break
     return state
-
-
-def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    config = _load_config()
-    state: dict = {
-        "package_name": config["package_name"],
-        "package_version": config["package_version"],
-        "model_provider": config.get("model_provider") or "openrouter",
-        "patch_scope": "single",
-        "retry_count": 0,
-        "errors": [],
-    }
-    if config.get("model_name"):
-        state["model_name"] = config["model_name"]
-
-    source_dir = str(config.get("source_dir") or "").strip()
-    if source_dir:
-        source = Path(source_dir).resolve()
-        if not source.is_dir():
-            sys.exit(f"ERROR: source_dir does not exist: {source}")
-        state["source_dir"] = str(source)
-        state["package_manifest_path"] = str(source / "package.json")
-    else:
-        state.update(package_input(state))
-        if state.get("errors"):
-            sys.exit("ERROR: package input failed:\n" + "\n".join(state["errors"]))
-    print(f"source_dir: {state.get('source_dir')}", flush=True)
-
-    state.update(vulnerability_detection(state))
-    findings = list(state.get("current_vulnerabilities") or [])
-    print(f"findings: {len(findings)}", flush=True)
-    for error in state.get("errors") or []:
-        print(f"detection: {error}", flush=True)
-    vulnerability_id = str(config.get("vulnerability_id") or "").strip()
-    if vulnerability_id:
-        selected = _find_vulnerability(findings, vulnerability_id)
-        if selected is None:
-            sys.exit(f"ERROR: vulnerability not detected: {vulnerability_id}")
-        findings = [selected]
-        state["current_vulnerabilities"] = findings
-    if not findings:
-        sys.exit("ERROR: no target vulnerability detected")
-    for finding in findings:
-        print(f"  - {finding.get('id')} ({finding.get('severity')})", flush=True)
-
-    state.update(og_patch_resolution(state))
-    answer = state.get("answer_key") or {}
-    print(
-        f"resolution: {answer.get('status')} {answer.get('ghsa_id') or answer.get('cve_id') or ''}".rstrip(),
-        flush=True,
-    )
-
-    state.update(localize(state))
-    _print_final(state)
 
 
 def _print_final(state: dict) -> None:

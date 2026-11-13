@@ -1,0 +1,153 @@
+{
+  "package_name": "minimatch",
+  "package_version": "3.0.4",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-f8q6-p94x-37v3"
+  ],
+  "run_index": 8,
+  "run_cost": 0.1477,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "no_material_slowdown:control_samples_ms=0,0,0,0,0,0,0,attack_samples_ms=0,0,0,0,0,0,0,control_avg_tophalf_ms=0.000,attack_avg_tophalf_ms=0.000,ratio=1.00,delta_ms=0.000",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "no_material_slowdown:control_samples_ms=0,0,0,0,0,1,0,attack_samples_ms=0,0,0,0,0,0,0,control_avg_tophalf_ms=0.250,attack_avg_tophalf_ms=0.000,ratio=0.00,delta_ms=-0.250",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "This oracle first verifies ordinary API behavior with a benign glob match, then measures per-call elapsed time for a known ReDoS-triggering pattern versus a simple control pattern on the same near-miss input. It uses bounded sample counts and no external timers/interrupts, then flags exploitation only when slowdown is materially large. Setup/benign errors force operation_completed=false as required.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle exercises minimatch's documented top-level matching function with a normal glob first, then with a malformed pattern known to hit vulnerable regex handling paths in affected releases. It marks success only if benign usage worked and the malformed input then triggers the vulnerable observable (a propagated exception). Patched behavior should keep operation_completed=true while making exploit_succeeded=false by avoiding that throw path.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal API behavior with a benign call, then probes ReDoS by comparing elapsed time of a known problematic regex-like pattern against a safe baseline on the same input. It uses bounded rounds and input size so execution remains finite. A substantial slowdown indicates exploitation on vulnerable versions; patched versions should not show that slowdown.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal behavior first with a simple glob match, then measures timing difference between a control pattern and a known problematic extglob-style pattern on a near-miss input. It reports success only when the malicious case is materially slower, which is the ReDoS symptom for vulnerable minimatch.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "This oracle keeps the same public API call pattern and malicious test case that already succeeded on the vulnerable package, but raises exploit thresholds to avoid false positives on the fixed package. It still performs a benign minimatch call first and only then marks operation_completed=true. It then compares bounded repeated timings between a control and malicious pattern; only very large slowdown is treated as exploitation.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "This oracle first validates normal package behavior with a benign minimatch call, then measures repeated runtime of a known ReDoS-triggering extglob pattern versus a simple control pattern on the same input. It keeps the same exploit shape and bounded workload, but raises the exploit threshold substantially so the previously observed vulnerable slowdown (very large ratio and multi-second delta) still qualifies, while the fixed package’s smaller relative slowdown is classified as blocked.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "This oracle first validates normal behavior with a benign glob match. It then compares bounded repeated runtime of a known ReDoS-triggering extglob pattern against a simple control pattern over the same input string. The vulnerable version should show a large absolute and relative slowdown; patched versions should not cross the chosen thresholds.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "This oracle keeps the same public API usage and malicious test shape that already succeeds on the vulnerable package, but tightens exploit detection thresholds so the fixed package's observed slowdown (previously ratio ~2609, delta ~2608ms) is no longer classified as exploited unless both a very large absolute delta and an extreme ratio are present. The benign call is executed first and must succeed before operation_completed is set true. Any setup/module/benign failure reports operation_completed=false. The malicious phase is bounded and timer-free (no interrupts), relying on comparative elapsed time between control and attack workloads.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "This oracle uses minimatch’s public function directly. It first proves normal behavior with a simple successful glob. Then it measures bounded repeated execution time of a ReDoS-prone pattern versus a safe control pattern on the same input. The vulnerable version should show a large slowdown gap; a fixed version should not. Any setup or benign-call failure reports operation_completed=false per harness rules.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "This oracle uses the public minimatch(path, pattern) API. It first verifies normal behavior with a benign glob match. Then it measures bounded execution time of a known catastrophic-backtracking style regex payload pattern versus a control pattern on similar input, using per-call normalization (different round counts) to amplify signal while keeping runtime short. Vulnerable 3.0.4 should show a large per-call slowdown for the malicious pattern; patched versions should not.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle first verifies ordinary API behavior with a benign glob match, then measures per-call elapsed time for a known ReDoS-triggering pattern versus a simple control pattern on the same near-miss input. It uses bounded sample counts and no external timers/interrupts, then flags exploitation only when slowdown is materially large. Setup/benign errors force operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

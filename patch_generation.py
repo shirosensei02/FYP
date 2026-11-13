@@ -335,13 +335,25 @@ def _build_messages(
     ]
 
 
+def _format_present(template: str, values: dict[str, Any]) -> str:
+    """Fill the placeholders that the template actually contains."""
+    from string import Formatter
+
+    needed = {name for _, name, _, _ in Formatter().parse(template) if name}
+    return template.format(**{key: values.get(key, "") for key in needed})
+
+
 def _build_openrouter_prompt(
     state: GraphState,
     vulnerabilities: list[Vulnerability],
     context_files: list[dict[str, str]],
     repair_feedback: str | None = None,
 ) -> str:
-    if not OPENROUTER_PROMPT_PATH.is_file():
+    from prompt_variant import prompt_path
+
+    suffix = str(state.get("prompt_suffix") or "").strip()
+    template_path = prompt_path("patch", suffix) if suffix else OPENROUTER_PROMPT_PATH
+    if not template_path.is_file():
         return "\n\n".join(
             message["content"]
             for message in _build_messages(state, vulnerabilities, context_files, repair_feedback)
@@ -352,15 +364,27 @@ def _build_openrouter_prompt(
         f"--- {file['path']} ---\n{file['content']}" for file in context_files
     )
     relevant_source_code = relevant_source_code[:MAX_OPENROUTER_CONTEXT_CHARS]
-    template = OPENROUTER_PROMPT_PATH.read_text(encoding="utf-8")
-    prompt = template.format(
-        vulnerability_id=vulnerability.get("id", "unknown"),
-        vulnerability_class=vulnerability.get("severity", "unknown"),
-        vulnerability_description=vulnerability.get("description", ""),
-        scanner_finding=json.dumps(vulnerability),
-        relevant_source_code=relevant_source_code,
-        relevant_tests="Tests are included in the repository context. Do not modify them.",
-    )
+    template = template_path.read_text(encoding="utf-8")
+    if suffix:
+        prompt = _format_present(template, {
+            "vulnerability_id": vulnerability.get("id", "unknown"),
+            "vulnerability_description": vulnerability.get("description", ""),
+            "scanner_finding": json.dumps(vulnerability),
+            "relevant_source_code": relevant_source_code,
+            "cwe_id": state.get("cwe_id") or "",
+            "cwe_name": state.get("cwe_name") or "",
+            "cwe_description": state.get("cwe_description") or "",
+            "typical_control": state.get("typical_control") or "",
+        })
+    else:
+        prompt = template.format(
+            vulnerability_id=vulnerability.get("id", "unknown"),
+            vulnerability_class=vulnerability.get("severity", "unknown"),
+            vulnerability_description=vulnerability.get("description", ""),
+            scanner_finding=json.dumps(vulnerability),
+            relevant_source_code=relevant_source_code,
+            relevant_tests="Tests are included in the repository context. Do not modify them.",
+        )
     history = load_feedback(state)
     if history:
         prompt += "\n\n" + history

@@ -1,0 +1,24 @@
+diff --git a/pg-core/dialect.js b/pg-core/dialect.js
+--- a/pg-core/dialect.js
++++ b/pg-core/dialect.js
+@@ -71,7 +71,7 @@
+     });
+   }
+   escapeName(name) {
+-    return `"${name}"`;
++    return name;
+   }
+   escapeParam(num) {
+     return `$${num + 1}`;
+diff --git a/sqlite-core/dialect.js b/sqlite-core/dialect.js
+--- a/sqlite-core/dialect.js
++++ b/sqlite-core/dialect.js
+@@ -27,7 +27,7 @@
+     this.casing = new CasingCache(config?.casing);
+   }
+   escapeName(name) {
+-    return `"${name}"`;
++    return name;
+   }
+   escapeParam(_num) {
+     return "?";

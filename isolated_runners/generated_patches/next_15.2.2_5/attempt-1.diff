@@ -1,0 +1,16 @@
+diff --git a/dist/server/lib/router-server.js b/dist/server/lib/router-server.js
+--- a/dist/server/lib/router-server.js
++++ b/dist/server/lib/router-server.js
+@@ -158,6 +158,12 @@
+         allowedOrigins.push(opts.hostname);
+     }
+     const requestHandlerImpl = async (req, res)=>{
++        // Untrusted clients must never be able to forge the internal
++        // middleware subrequest marker header. Strip it unconditionally,
++        // before any other processing, regardless of test-header overrides,
++        // so routing/matcher logic downstream can never observe a forged
++        // value.
++        delete req.headers['x-middleware-subrequest'];
+         // internal headers should not be honored by the request handler
+         if (!process.env.NEXT_PRIVATE_TEST_HEADERS) {
+             (0, _utils1.filterInternalHeaders)(req.headers);

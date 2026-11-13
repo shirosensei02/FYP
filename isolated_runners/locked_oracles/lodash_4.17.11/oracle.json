@@ -1,0 +1,11 @@
+{
+  "package_name": "lodash",
+  "package_version": "4.17.11",
+  "source_run": "lodash_4.17.11_1",
+  "attempt_number": 6,
+  "timeout_seconds": 30,
+  "requirements": [],
+  "vulnerability_ids": [
+    "GHSA-jf85-cpcp-j695"
+  ]
+}

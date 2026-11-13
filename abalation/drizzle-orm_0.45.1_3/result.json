@@ -1,0 +1,51 @@
+{
+  "package_name": "drizzle-orm",
+  "package_version": "0.45.1",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-gpj5-g38j-94v9"
+  ],
+  "run_index": 3,
+  "run_cost": 0.097518,
+  "oracle_attempt_count": 2,
+  "validation_status": "ERROR",
+  "validation_reason": "oracle generation request failed: PermissionDeniedError: Error code: 403 - {'error': {'message': 'Org member budget limit exceeded (daily limit). Contact your org admin. $10.08 of $10.00 used; resets 2026-11-13T00:00:00.000Z.', 'code': 403, 'metadata': {'limit_source': 'openrouter_guardrail_budget', 'remedy_hint': 'Wait for the budget window to reset (see metadata.resets_at), or ask your org admin to raise the guardrail budget.', 'scope': 'member', 'limit_usd': 10, 'spend_usd': 10.08162675, 'resets_at': '2026-11-13T00:00:00.000Z'}}}",
+  "guidance": [],
+  "vulnerable": null,
+  "fixed": null,
+  "oracle": {
+    "status": "failed",
+    "attempt_number": 2,
+    "explanation": "oracle generation request failed: PermissionDeniedError: Error code: 403 - {'error': {'message': 'Org member budget limit exceeded (daily limit). Contact your org admin. $10.08 of $10.00 used; resets 2026-11-13T00:00:00.000Z.', 'code': 403, 'metadata': {'limit_source': 'openrouter_guardrail_budget', 'remedy_hint': 'Wait for the budget window to reset (see metadata.resets_at), or ask your org admin to raise the guardrail budget.', 'scope': 'member', 'limit_usd': 10, 'spend_usd': 10.08162675, 'resets_at': '2026-11-13T00:00:00.000Z'}}}",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle exercises drizzle-orm's pg-core SQL identifier rendering path. First it builds a benign pgTable with an innocuous name/columns and uses the `sql` template tag together with `PgDialect.sqlToQuery` (falling back to `query.toQuery()`) to confirm that normal identifier rendering produces well-formed SQL text containing the table name — this proves the public API works end-to-end without any database connection (pure SQL string building, no network/process/filesystem side effects beyond a throwaway /tmp marker file used only to prove writable-tmp access). Only after this benign call succeeds does operation_completed become eligible to be true. The oracle then creates a second pgTable whose name is a malicious string containing an embedded double-quote followed by a SQL statement-injection fragment (`evil\" ; DROP TABLE users; --`). It renders this table through the same `sql` template tag and dialect SQL-builder. In the vulnerable version (0.45.1), the identifier escaping logic fails to double embedded quotes, so the generated SQL string contains the raw, unescaped payload verbatim, meaning the injected fragment breaks out of the quoted identifier context — this is the observable exploit signal. In the patched version, the identifier-escaping routine doubles the embedded double-quote characters per standard SQL identifier escaping rules, so the output SQL contains the safely escaped form instead, and the raw unescaped injection pattern is never found. The oracle only sets exploit_succeeded=true when the raw unescaped pattern is present and the safely-escaped form is absent, which cleanly distinguishes vulnerable from fixed behavior. Any exception during setup or the benign operation causes operation_completed=false; exceptions during the malicious step (e.g. if the fixed dialect throws on invalid identifiers) are treated as a blocked outcome, not a crash, since they occur strictly after the benign proof-of-work succeeded.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "failed",
+      "explanation": "oracle generation request failed: PermissionDeniedError: Error code: 403 - {'error': {'message': 'Org member budget limit exceeded (daily limit). Contact your org admin. $10.08 of $10.00 used; resets 2026-11-13T00:00:00.000Z.', 'code': 403, 'metadata': {'limit_source': 'openrouter_guardrail_budget', 'remedy_hint': 'Wait for the budget window to reset (see metadata.resets_at), or ask your org admin to raise the guardrail budget.', 'scope': 'member', 'limit_usd': 10, 'spend_usd': 10.08162675, 'resets_at': '2026-11-13T00:00:00.000Z'}}}",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "ERROR",
+      "validation_reason": "oracle generation request failed: PermissionDeniedError: Error code: 403 - {'error': {'message': 'Org member budget limit exceeded (daily limit). Contact your org admin. $10.08 of $10.00 used; resets 2026-11-13T00:00:00.000Z.', 'code': 403, 'metadata': {'limit_source': 'openrouter_guardrail_budget', 'remedy_hint': 'Wait for the budget window to reset (see metadata.resets_at), or ask your org admin to raise the guardrail budget.', 'scope': 'member', 'limit_usd': 10, 'spend_usd': 10.08162675, 'resets_at': '2026-11-13T00:00:00.000Z'}}}",
+      "vulnerable_status": null,
+      "fixed_status": null
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "package_name": "minimatch",
+  "package_version": "3.0.4",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-f8q6-p94x-37v3"
+  ],
+  "run_index": 4,
+  "run_cost": 0.40968599999999994,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "model response was not JSON: Expecting value: line 1 column 1 (char 0)",
+  "guidance": [],
+  "vulnerable": null,
+  "fixed": null,
+  "oracle": {
+    "status": "invalid",
+    "attempt_number": 10,
+    "explanation": "model response was not JSON: Expecting value: line 1 column 1 (char 0)",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves minimatch's core API works by matching an identical literal path against itself (benign_input), which must return true. Only after this succeeds is operation_completed set to true. It then times a single bounded-size call using a crafted pattern (nested extglob-like negated/plus groups combined with a moderately long literal subject) known to trigger catastrophic backtracking in minimatch's regex-generation logic prior to the ReDoS fix. The subject length (28 repeated characters) is small enough that even the vulnerable exponential-time regex engine finishes within a few seconds, but large enough to produce a measurable, dramatic slowdown relative to a trivial baseline call ('x' vs 'x'). Success is determined purely by comparing elapsed wall-clock time against both an absolute threshold and a relative-to-baseline factor, avoiding reliance on interrupting timers. On the vulnerable 3.0.4 version, the crafted call takes drastically longer (seconds vs microseconds), setting exploit_succeeded=true. On the patched version, the rewritten regex-generation avoids the pathological backtracking, so the same call completes quickly, yielding exploit_succeeded=false while operation_completed remains true because the benign call still succeeded. Any crash during setup, module resolution, or the benign call forces operation_completed=false, and any unexpected crash outside the deliberate malicious-call try/catch is never misreported as a successful exploit block.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves minimatch's core matching API works via a trivial literal path/pattern comparison that must return true. It then times a bounded-size (n=34) crafted pattern built from many repeated bracket-negation groups ('[!!...!]' sequences) matched against a deliberately non-matching subject string. In minimatch 3.0.4, makeRe() compiles such patterns into a regex containing nested quantifier structures that trigger catastrophic backtracking in the JS regex engine, causing the match call to take vastly longer (seconds) than a cheap baseline call measured immediately before it. The comparison uses both an absolute time threshold and a relative-slowdown factor against the just-measured baseline, avoiding reliance on an interrupting timer. In the patched minimatch versions, the regex construction was fixed to avoid this backtracking blowup, so the same call completes quickly, yielding exploit_succeeded=false while operation_completed remains true because the benign call already succeeded.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves minimatch's public API works correctly with a cheap, benign extglob match (`*(a)` against `aaaaaaaaaa`), which must return true before any exploit attempt is scored. It then times a baseline trivial call, followed by a crafted malicious pattern consisting of N (14000) nested/repeated `!(...)` extglob groups matched against a deliberately non-matching subject of similar length. In vulnerable minimatch 3.0.4, the extglob-to-regex conversion produces a regex with exponential backtracking behavior on this adversarial input, causing the call to take on the order of seconds — far exceeding both an absolute threshold and a large multiple of the baseline timing — which is reported as exploit_succeeded=true. In the patched version, the same call resolves in a similarly small number of milliseconds as the baseline, so none of the timing thresholds are crossed and exploit_succeeded=false is reported, with operation_completed=true in both cases since the benign call and the malicious call setup both completed without crashing. N was chosen conservatively so the vulnerable path still completes within a few seconds rather than hanging indefinitely, satisfying the bounded-input DoS measurement requirement.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle first calls minimatch with a benign extglob pattern ('*(a)' against 'aaaaaaaaaa') and confirms it returns true, proving the API functions correctly and setting operation_completed=true. It then measures, via process.hrtime (no interrupting timer), the wall-clock time of a baseline small pattern match versus a bounded-size malicious pattern ('*' repeated 28 times followed by '!') matched against a deliberately non-matching subject of similar length plus one extra character. On vulnerable minimatch 3.0.4, the star-group-to-regex conversion produces a regex vulnerable to catastrophic backtracking, so matching the non-matching subject takes vastly longer (orders of magnitude, confirmed against both an absolute millisecond threshold and a relative slowdown factor versus the baseline) even though N=28 is small enough to still complete within a few seconds, avoiding the heap-exhaustion crash seen with excessively large N in the prior attempt. On the patched version, the regex construction avoids the exponential blowup, so the malicious call completes quickly, comparable to the baseline, yielding exploit_succeeded=false. Any exception during setup or the benign call is reported as operation_completed=false, while an exception thrown only on the malicious call after a successful benign call is treated as blocked (exploit_succeeded=false, operation_completed=true).",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=TIMEOUT and fixed=TIMEOUT.",
+      "vulnerable_status": "TIMEOUT",
+      "fixed_status": "TIMEOUT"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "The oracle first calls minimatch() with a trivial extglob pattern '*(a)' against 'aaaaaaaaaa' to confirm the library loads and functions correctly, setting operation_completed=true only after this succeeds. It then builds a deeply nested extglob pattern (nested '*(...)' groups, depth 14) matched against a deliberately non-matching subject, which is a known catastrophic-backtracking trigger in minimatch 3.0.4's regex conversion logic. Elapsed time is measured directly via process.hrtime for both this malicious call and a much shallower (depth 4) baseline call of the same shape, avoiding any reliance on an interrupting timer. If the malicious call's elapsed time both exceeds an absolute threshold (1.5s) and is at least 100x slower than the baseline, the regex engine is considered to have suffered catastrophic backtracking, and exploit_succeeded=true is reported. The patched minimatch version resolves the backtracking issue in its pattern-to-regexp conversion, so the same nested pattern completes quickly and comparably to the baseline, yielding exploit_succeeded=false. The nesting depth (14) was chosen so that even the vulnerable version completes within a few seconds, keeping the whole oracle well under typical harness timeouts while still producing an easily measurable, deterministic slowdown.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=TIMEOUT and fixed=TIMEOUT.",
+      "vulnerable_status": "TIMEOUT",
+      "fixed_status": "TIMEOUT"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves minimatch's public matching API works correctly with a trivial extglob pattern ('*(a)' against 'aaaaaaaaaa'), setting operation_completed=true only after that benign call returns the expected result. It then times a baseline call using a small nested '+(x|x)' extglob pattern (depth 6) and a malicious call using a moderately deeper nested pattern of the same shape (depth 11) matched against a non-matching subject, which is the classic catastrophic-backtracking shape affected by the minimatch 3.0.4 ReDoS (GHSA-f8q6-p94x-37v3). The nesting depth is bounded so that even the vulnerable regex engine finishes within a few seconds (avoiding the prior TIMEOUT failure), while still growing the alternation search space enough to show a clear, measurable superlinear slowdown relative to the baseline. Elapsed time is compared against both an absolute threshold and a baseline-relative multiplier to robustly flag catastrophic backtracking without relying on an interrupting timer. On the patched version, the fixed regex-generation logic avoids this exponential blowup, so the malicious call's elapsed time stays close to the scaled baseline, yielding exploit_succeeded=false. Any setup, module resolution, or benign-operation failure short-circuits with operation_completed=false before the exploit phase runs.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=TIMEOUT and fixed=TIMEOUT.",
+      "vulnerable_status": "TIMEOUT",
+      "fixed_status": "TIMEOUT"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves minimatch's basic extglob matching works via a trivial benign call ('*(a)' against 'aaaaaaaaaa'). It then builds a known ReDoS-triggering pattern for minimatch <=3.0.4 consisting of a long run of '[' characters (GHSA-f8q6-p94x-37v3), run against a matching-length string of 'a' characters. A small baseline case of the same shape (500 chars) is timed first, then a larger case (6000 chars, 12x larger) is timed. On the vulnerable version, the regex-based matching exhibits catastrophic backtracking causing the elapsed time to blow up far beyond what linear scaling would predict (exceeding both an absolute threshold and a large multiple of the baseline time), while the patched version handles the same input near-linearly and completes quickly, well below the thresholds. Both the baseline and malicious sizes are bounded so that even the vulnerable call finishes within a few seconds, avoiding reliance on an interrupting timer. Any exception during setup or the benign call marks operation_completed=false; only exceptions from the malicious call after a successful benign call are treated as 'blocked' (exploit_succeeded=false, operation_completed=true).",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "The previous attempt used an input size (6000 '[' characters) that caused unbounded memory allocation in brace-expansion, leading to an OOM crash on both vulnerable and fixed versions before any timing measurement could be made. This revised oracle instead uses a small, bounded-depth nested extglob pattern (!(!(!(...a...)))) which is a well-known catastrophic-backtracking trigger for minimatch 3.0.4's extglob-to-regex conversion. Depth 24 is small enough that memory usage stays trivial (short strings, no large brace expansion) but the regex engine's backtracking blows up exponentially with nesting depth in the vulnerable version, producing a clear, bounded-but-severe slowdown (well under the few-second budget) compared to a depth-12 baseline of the same shape. The fixed version's non-backtracking-prone conversion scales close to linearly with depth, so the same malicious input completes quickly relative to the baseline, yielding exploit_succeeded=false. Benign operation uses a trivial extglob match to confirm the API works before any timing-sensitive malicious call is attempted, and all exceptions during setup/benign phases are correctly reported as operation_completed=false.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=INCONCLUSIVE and fixed=INCONCLUSIVE.",
+      "vulnerable_status": "INCONCLUSIVE",
+      "fixed_status": "INCONCLUSIVE"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves the public minimatch(path, pattern) API works correctly with a benign small extglob pattern ('*(a)' against 'aaaaaaaaaa'), setting operation_completed=true only on success. It then exercises the well-known minimatch <=3.0.4 ReDoS (GHSA-f8q6-p94x-37v3) by building a bounded-depth nested extglob pattern of the form '!(!(!( ... a ... )))' and matching it against a same-length non-matching string. To avoid relying on an interrupting timer or risking OOM/timeout kills (as happened previously with depth 24), the depths were reduced to a safe baseline of 12 and a malicious depth of 20, both of which complete quickly even on the vulnerable engine while still exhibiting catastrophic, highly disproportionate slowdown relative to the baseline due to exponential backtracking in the nested quantified regex groups. The comparison uses wall-clock elapsed time measured via process.hrtime.bigint() against both an absolute threshold and a relative multiplicative factor versus the baseline, so no external timer interrupts execution — the call is allowed to run to completion. On the vulnerable version this blowup is observed (exploit_succeeded=true); on the patched version (>=3.0.5), the extglob-to-regex conversion no longer nests quantified groups pathologically, so the malicious call completes quickly and close to baseline, yielding exploit_succeeded=false. Any crash, module-resolution failure, or failed benign call results in operation_completed=false per the harness contract.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Expecting value: line 1 column 1 (char 0)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Expecting value: line 1 column 1 (char 0)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    }
+  ]
+}

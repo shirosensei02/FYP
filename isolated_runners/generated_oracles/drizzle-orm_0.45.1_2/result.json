@@ -1,0 +1,153 @@
+{
+  "package_name": "drizzle-orm",
+  "package_version": "0.45.1",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-gpj5-g38j-94v9"
+  ],
+  "run_index": 2,
+  "run_cost": 0.937518,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "benign operation failed: sql2.toQuery is not a function",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "benign operation failed: sql2.toQuery is not a function",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "The oracle loads drizzle-orm's `sql` tagged-template helper and the SQLite dialect's identifier renderer directly (no DB connection needed). It first proves the benign path works: `sql.identifier('normal_column_name_<marker>')` rendered through the dialect's internal SQL-building method (trying sqlToQuery/buildSQL/buildQuery across versions) must yield a correctly double-quoted identifier. Only after that benign check succeeds does operation_completed become eligible to be true. It then exercises the malicious input: an identifier string containing an embedded double-quote delimiter (`id\" , (SELECT 1) AS \"x`) representing the advisory's dynamic-sort injection scenario. In the vulnerable 0.45.1 version, escapeName() fails to double the embedded `\"`, so the rendered SQL breaks out of the quoted identifier and splices in extra SQL syntax, matching the literal vulnerable pattern `\"id\" , (SELECT 1) AS \"x\"` (exploit_succeeded=true). In the patched version, the embedded quote is doubled to `\"\"`, producing `\"id\"\" , (SELECT 1) AS \"\"x\"`, which keeps the whole string as a single safely-quoted identifier (exploit_succeeded=false). A heuristic fallback handles minor formatting differences in the rendered SQL string across versions while still distinguishing the two outcomes. Any setup, module-resolution, or benign-operation failure (e.g., missing export, wrong rendering API) is caught and reported as operation_completed=false without ever claiming exploit success. An exception thrown during the malicious call itself is treated as the exploit being blocked, since it only occurs after the benign path already succeeded. No Git, filesystem writes, process spawning, or network access is used, satisfying the sandboxing constraints.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm's `sql.identifier()` helper together with the SQLite dialect's `sqlToQuery` renderer (purely in-process, no DB connection, no process spawning, no filesystem writes). It first proves the benign path works by rendering a normal identifier and asserting it comes back correctly double-quoted (e.g. `\"normal_column_name_...\"`); any failure here is reported as operation_completed=false. Only after that benign call succeeds does it set operation_completed=true and proceed to the malicious case: an attacker-controlled identifier string containing an embedded double-quote delimiter followed by injected SQL tokens (`id\" , (SELECT 1) AS \"x`), mirroring the advisory's dynamic-sort/alias injection scenario. It renders this through the same `sqlToQuery` path and inspects the resulting SQL text. In the vulnerable version (0.45.1), `escapeName()` does not double embedded `\"` characters, so the rendered SQL terminates the quoted identifier early and exposes the injected `, (SELECT 1) AS` clause as raw, unquoted SQL syntax -- detected via the known vulnerable rendering pattern, which is reported as exploit_succeeded=true. In the patched version (>=0.45.2), the embedded quote is doubled, keeping the entire malicious string as one opaque identifier with no syntactic breakout, so exploit_succeeded=false. Any exception thrown by the malicious call (after setup/benign success) is treated as blocked (exploit_succeeded=false, operation_completed remains true). No Git repository, writable tmp directory, or external fixture files are required since this exercises pure in-memory SQL-building logic.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm's `sql.identifier()` helper along with the SQLite-core dialect's `SQLiteSyncDialect`, which exposes `sqlToQuery()` to render a SQL chunk into its final SQL text using the dialect's `escapeName()` logic (the function patched in this advisory). First it renders a benign identifier and confirms it is correctly wrapped in double quotes, proving the API works end-to-end. Only after that benign call succeeds does it render a malicious identifier containing an embedded double-quote delimiter (`id\" , (SELECT 1) AS \"x`), which in the vulnerable version is not escaped, allowing the quoted identifier to be terminated early and extra SQL tokens (`, (SELECT 1) AS`) to appear outside quoting — a direct SQL injection primitive matching the advisory's description for sql.identifier()/alias construction. In the patched version, the embedded quote is doubled (`\"\"`), keeping the whole string as one opaque identifier with no syntactic breakout. The oracle inspects the rendered SQL text to decide exploit_succeeded, treating any exception from the malicious call (which only happens after benign success) as blocked, and never copies the patch's internal error strings. No filesystem, process, or network operations are performed, and no git/tmp/fixture requirements are needed since the whole exercise is in-memory SQL string construction.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm's sql.identifier() helper and the SQLiteSyncDialect used to render SQL chunks into query strings via dialect.sqlToQuery(). It first proves the benign path works: a normal identifier is wrapped correctly in double quotes with no alteration, confirming the API functions as expected (operation_completed only becomes true after this succeeds). It then constructs a malicious identifier string containing an embedded double-quote delimiter designed to break out of the quoted identifier and append extra SQL syntax (mirroring the advisory's dynamic-sort injection scenario). On drizzle-orm 0.45.1 (vulnerable), escapeName() fails to double the embedded quote, so the rendered SQL contains the raw, unescaped breakout sequence (`\"id\" , (SELECT 1) AS \"x\"`), which the oracle detects and reports as exploit_succeeded=true. On the patched version (>=0.45.2), the embedded quote is doubled, producing a safely escaped identifier string (`\"id\"\" , (SELECT 1) AS \"\"x\"`) that does not form a working SQL breakout, so exploit_succeeded=false. The check only looks at string content, performs no process spawning, network I/O, or filesystem writes outside normal module loading, and does not depend on Git or temp fixtures.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm and drizzle-orm/sqlite-core, constructs a SQLiteSyncDialect, and defines a resilient render() helper that tries sqlToQuery (the primary API used across 0.4x releases), falling back to buildSQL or chunk.toQuery() for compatibility. It first exercises a benign input by building sql.identifier('normal_column_name_<marker>') and verifying it renders to the expected simply double-quoted identifier, proving the identifier-escaping path works end-to-end. Only after that benign check succeeds does operation_completed become true. It then exercises the malicious input: an identifier containing an embedded double-quote delimiter designed to break out of the quoted SQL identifier (mirroring the advisory's dynamic-sort injection scenario using sql.identifier(untrustedInput)). On the vulnerable version (0.45.1), escapeName() fails to double the embedded quote, so the rendered SQL contains an unescaped breakout sequence matching the vulnerable pattern, and exploit_succeeded is set to true. On the patched version (0.45.2+), the quote is correctly doubled, producing the safe escaped pattern, so exploit_succeeded is false. Any exception during setup or the benign call reports operation_completed=false without claiming exploit success; an exception during the malicious call (after benign success) is treated as blocked (exploit_succeeded=false, operation_completed=true). No filesystem, process, or network operations are performed beyond requiring the target package.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "Loads drizzle-orm's sql.identifier and SQLiteSyncDialect, both of which are present in the installed package (no database driver needed since we only need to render the SQL identifier chunk via the dialect's internal query builder). First exercises a benign identifier to confirm the dialect correctly wraps a normal column name in double quotes (proving the API works end-to-end). Only after that benign check succeeds does it attempt the malicious identifier containing an embedded double-quote delimiter designed to break out of the quoted identifier (mirroring the advisory's dynamic sort/alias injection pattern via sql.identifier()). It renders the result with sqlToQuery/buildSQL/toQuery (trying whichever API is available) and compares the exact rendered SQL string against the known vulnerable (unescaped double-quote breakout) and safe (doubled double-quote escaping) patterns, with a heuristic fallback for minor formatting differences. On the vulnerable 0.45.1 release the quote is not doubled so the identifier string breaks out of its quotes, producing injected SQL syntax, setting exploit_succeeded=true; on the patched 0.45.2+ release the embedded quote is doubled, keeping the injected text inert inside the quoted identifier, so exploit_succeeded=false. Any setup or benign-operation failure sets operation_completed=false and never claims exploit_succeeded on failure.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm and drizzle-orm/sqlite-core, constructing a SQLiteSyncDialect instance. It first renders a benign identifier via sql.identifier() and dialect.sqlToQuery() (with fallbacks to buildSQL/getSQL/toQuery for resilience across minor API shapes), confirming it is correctly wrapped in double quotes, which proves the identifier-escaping pipeline works end-to-end. Only after that benign check succeeds does operation_completed become true. It then feeds an attacker-controlled identifier containing an embedded double-quote delimiter (the dialect-specific SQLite/Postgres/Gel identifier delimiter named in the advisory) designed to break out of the quoted identifier and inject extra SQL syntax, mirroring the dynamic-sort pattern from the advisory. On the vulnerable 0.45.1 version, escapeName() fails to double the embedded quote, so the rendered SQL text contains the unescaped breakout sequence, which is detected and marked as exploit_succeeded=true. On the patched 0.45.2+ version, the embedded quote is doubled, so the breakout sequence does not appear unescaped and exploit_succeeded is false. Any setup, module-resolution, or benign-operation exception short-circuits to operation_completed=false; any exception during the malicious call after a successful benign call is treated as blocked (exploit_succeeded=false) without claiming success. The oracle only requires the installed package and node:fs/path/os (unused here beyond requirement, but kept minimal) and performs no file, process, or network operations outside permitted bounds.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm's `sql` tag and the `SQLiteSyncDialect` class from `drizzle-orm/sqlite-core`, then renders SQL chunks via `dialect.sqlToQuery(...)` (falling back to `buildSQL`/`getSQL` for resilience). First it exercises the benign case: `sql.identifier('normal_column_name_<marker>')` must render to a correctly double-quoted identifier, proving the API works end-to-end (operation_completed only becomes true after this succeeds). It then exercises the malicious case: an attacker-controlled identifier containing an embedded double-quote delimiter (`id\" , (SELECT 1) AS \"x`), mirroring the advisory's dynamic-sort injection scenario (`sql.identifier(sortField)`). In the vulnerable version (0.45.1), `escapeName()` does not double the embedded `\"`, so the rendered SQL breaks out of the quoted identifier, producing `\"id\" , (SELECT 1) AS \"x\"` — detected as exploit_succeeded=true. In the patched version (0.45.2+), the embedded quote is doubled to `\"\"`, producing a single safely-escaped identifier string (`\"id\"\" , (SELECT 1) AS \"\"x\"`), which keeps the payload inert as one quoted identifier — detected as exploit_succeeded=false. Any setup, module-resolution, or benign-operation failure (e.g., missing APIs) is reported with operation_completed=false before the malicious input is attempted, and any exception thrown by the malicious call is treated as blocked only because it necessarily occurs after the benign check succeeded. The test is fully offline/in-process: it never spawns processes, opens sockets, touches the filesystem beyond nothing at all, or needs Git, so no fixture requirements apply.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm's sql.identifier() helper and the SQLiteSyncDialect, constructing a dialect instance and rendering SQL chunks via the dialect's sqlToQuery() method (falling back to buildSQL if needed), which is the real public rendering entry point that internally calls escapeName(). First it exercises a benign identifier to prove the API resolves and renders normal identifiers with correct double-quote wrapping, only setting operation_completed=true after that succeeds. It then exercises a malicious identifier containing an embedded double-quote delimiter designed to break out of the quoted SQL identifier (the exact pattern described in the advisory for dynamic sorting/alias injection). On the vulnerable version, escapeName() fails to double the embedded quote, so the rendered SQL contains an unescaped breakout (`\"id\" , (SELECT 1) AS \"x\"`), which is detected and reported as exploit_succeeded=true. On the patched version, the embedded quote is correctly doubled (`\"id\"\" , (SELECT 1) AS \"\"x\"`), so the breakout does not occur and exploit_succeeded=false. Any setup, module-resolution, or benign-operation failure short-circuits with operation_completed=false before the malicious path is reached, and any exception thrown during the malicious call is treated as blocked only after the benign check already succeeded. No child processes, network connections, or filesystem writes outside the allowed scope are used.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm's `sql.identifier()` helper and the SQLite dialect's rendering logic (trying several known method names such as sqlToQuery/buildSQL/buildQuery across versions, since the exact API surface differs between versions) to convert a SQL template chunk into a raw SQL string. It first exercises a benign identifier to prove the escaping path works end-to-end (quoted correctly with no embedded delimiter), only then setting operation_completed=true. It then supplies a malicious identifier containing an embedded double-quote delimiter designed to break out of the quoted identifier context (mirroring the advisory's dynamic-sort injection pattern). On the vulnerable version, the embedded quote is not doubled, so the rendered SQL literally terminates the quoted identifier and injects extra SQL syntax, which is detected by exact/heuristic string matching and reported as exploit_succeeded=true. On the patched version, escapeName() doubles the embedded quote, producing a fully quoted, syntactically contained identifier, so no injection pattern is found and exploit_succeeded=false. Any setup or benign-call exception is reported with operation_completed=false; an exception on the malicious call is treated as blocked. The oracle performs no I/O, networking, or process spawning and only requires the installed drizzle-orm package plus node core modules.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm's `sql` tagged-template helper and the SQLite dialect's identifier renderer directly (no DB connection needed). It first proves the benign path works: `sql.identifier('normal_column_name_<marker>')` rendered through the dialect's internal SQL-building method (trying sqlToQuery/buildSQL/buildQuery across versions) must yield a correctly double-quoted identifier. Only after that benign check succeeds does operation_completed become eligible to be true. It then exercises the malicious input: an identifier string containing an embedded double-quote delimiter (`id\" , (SELECT 1) AS \"x`) representing the advisory's dynamic-sort injection scenario. In the vulnerable 0.45.1 version, escapeName() fails to double the embedded `\"`, so the rendered SQL breaks out of the quoted identifier and splices in extra SQL syntax, matching the literal vulnerable pattern `\"id\" , (SELECT 1) AS \"x\"` (exploit_succeeded=true). In the patched version, the embedded quote is doubled to `\"\"`, producing `\"id\"\" , (SELECT 1) AS \"\"x\"`, which keeps the whole string as a single safely-quoted identifier (exploit_succeeded=false). A heuristic fallback handles minor formatting differences in the rendered SQL string across versions while still distinguishing the two outcomes. Any setup, module-resolution, or benign-operation failure (e.g., missing export, wrong rendering API) is caught and reported as operation_completed=false without ever claiming exploit success. An exception thrown during the malicious call itself is treated as the exploit being blocked, since it only occurs after the benign path already succeeded. No Git, filesystem writes, process spawning, or network access is used, satisfying the sandboxing constraints.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    }
+  ]
+}

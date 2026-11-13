@@ -1,0 +1,30 @@
+diff --git a/dist/server/lib/server-ipc/utils.js b/dist/server/lib/server-ipc/utils.js
+--- a/dist/server/lib/server-ipc/utils.js
++++ b/dist/server/lib/server-ipc/utils.js
+@@ -70,6 +70,7 @@
+     'x-matched-path'
+ ];
+ const filterInternalHeaders = (headers)=>{
++    delete headers['x-middleware-subrequest'];
+     for(const header in headers){
+         if (INTERNAL_HEADERS.includes(header)) {
+             delete headers[header];
+diff --git a/dist/server/lib/router-server.js b/dist/server/lib/router-server.js
+--- a/dist/server/lib/router-server.js
++++ b/dist/server/lib/router-server.js
+@@ -162,6 +162,7 @@
+         if (!process.env.NEXT_PRIVATE_TEST_HEADERS) {
+             (0, _utils1.filterInternalHeaders)(req.headers);
+         }
++        delete req.headers['x-middleware-subrequest'];
+         if (!opts.minimalMode && config.i18n && config.i18n.localeDetection !== false) {
+             var _this;
+             const urlParts = (req.url || '').split('?', 1);
+@@ -228,6 +229,7 @@
+                     configurable: true
+                 });
+             }
++            delete req.headers['x-middleware-subrequest'];
+             (0, _requestmeta.addRequestMeta)(req, 'invokePath', invokePath);
+             (0, _requestmeta.addRequestMeta)(req, 'invokeQuery', parsedUrl.query);
+             (0, _requestmeta.addRequestMeta)(req, 'middlewareInvoke', false);

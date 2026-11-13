@@ -1,0 +1,161 @@
+{
+  "package_name": "vite",
+  "package_version": "8.0.4",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-4w7w-66w2-5vf9"
+  ],
+  "run_index": 6,
+  "run_cost": 0.17667439999999998,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "outside sourcemap marker not observed in response",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "outside sourcemap marker not observed in response",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "This oracle creates a temporary Vite project under /tmp, starts the dev server with fs.strict enabled, verifies normal behavior via a benign transformRequest('/src/main.js'), then issues a crafted optimized-deps sourcemap URL using encoded traversal segments to target an external /tmp/unsafe.map file containing a unique marker. It reports exploit_succeeded=true only if that marker is returned in the middleware response body after benign setup has succeeded.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "Starts a Vite dev server rooted in a temporary project, verifies a benign public operation (`transformRequest('/')`) works, then attempts a traversal-style optimized-deps `.map` request that points to a `.map` file outside the project root. The outside file contains a unique marker; if that marker is returned in transformed code, the exploit is considered successful. Exceptions during the malicious step are treated as blocked only after benign success.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "Starts a Vite dev server rooted in a temp project, verifies normal transformRequest behavior with /src/main.js, then requests an optimized-deps .map path containing traversal to a .map file outside root. Vulnerable versions return parsed map content (including a unique marker), while patched versions block or fail to return the marker. Any setup or benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "Starts a Vite dev server rooted in a temp project, verifies normal transformRequest behavior on /src/main.js, then issues the traversal-shaped optimized-deps .map request using /@fs/.../node_modules/.vite/deps/../../../unsafe.map where unsafe.map is outside the project root but inside the temp base. Vulnerable versions return the map content (marker leak), while patched versions reject or ignore it.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "Starts a real Vite dev server in a temporary project, validates normal operation with a benign transformRequest, then requests an optimized-deps-style sourcemap URL containing ../../../ to reach a .map file outside project root. The outside file contains a unique marker; vulnerable versions leak that marker, patched versions deny or avoid returning it. Any setup/benign failure reports operation_completed=false.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "Creates a temporary Vite project under /tmp, verifies normal transformRequest behavior on a benign module, then probes the dev-server middleware with an optimized-deps sourcemap traversal path targeting an out-of-root .map file containing a unique marker. The oracle reports exploit success only when the middleware responds with status 200 and includes the marker, indicating unintended file disclosure.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "Creates a temporary Vite project under /tmp, starts a dev server with fs.strict enabled, verifies normal behavior using transformRequest on /src/main.js, then issues a crafted /@fs/.../node_modules/.vite/deps/../../../unsafe.map request through Vite's middleware. The target file unsafe.map is outside project root and contains a unique marker. If response body contains that marker, traversal succeeded (vulnerable); otherwise blocked (patched). Any setup/benign/runtime failure before successful benign call reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "Creates a temporary Vite project under /tmp, starts a dev server with fs.strict enabled, verifies a benign transformRequest works first, then requests an optimized-deps sourcemap path using ../../../ to target an external /tmp/unsafe.map file. The oracle reports exploit success only if the response body contains a unique marker stored in that outside .map file. Any setup/benign/runtime failure sets operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "Starts a Vite dev server rooted in a unique /tmp project, verifies normal behavior with transformRequest('/src/main.js'), then directly invokes the public middleware with an optimized-deps .map traversal URL targeting a .map file outside the project root. The outside file contains a unique marker and valid sourcemap-like JSON. If that marker is reflected in the response body, traversal succeeded (vulnerable); otherwise it is blocked (patched). Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "Creates a Vite dev server in /tmp with fs.strict enabled, verifies normal behavior using transformRequest on a local source file, then directly exercises the middleware with a crafted optimized-deps sourcemap URL containing ../../../ to target an external /tmp/unsafe.map file. The oracle reports exploit success only if the unique marker from that outside .map file is returned in the middleware response body. Any setup or benign-operation failure sets operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle creates a temporary Vite project under /tmp, starts the dev server with fs.strict enabled, verifies normal behavior via a benign transformRequest('/src/main.js'), then issues a crafted optimized-deps sourcemap URL using encoded traversal segments to target an external /tmp/unsafe.map file containing a unique marker. It reports exploit_succeeded=true only if that marker is returned in the middleware response body after benign setup has succeeded.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

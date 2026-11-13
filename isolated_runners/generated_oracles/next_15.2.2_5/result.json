@@ -1,0 +1,157 @@
+{
+  "package_name": "next",
+  "package_version": "15.2.2",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-f82v-jwr5-mffw"
+  ],
+  "run_index": 5,
+  "run_cost": 0.17338090000000003,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "tmp_marker=/tmp/next-authz-bypass-oracle|benign_matched=1|malicious_matched=1",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "tmp_marker=/tmp/next-authz-bypass-oracle|benign_matched=1|malicious_matched=1",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "This oracle uses Next.js public/server runtime request handling primitives available from installed package paths that resolve in consumer environments. It first verifies normal matcher behavior on a protected path (benign request must match), then tests a crafted request carrying x-middleware-subrequest intended to trigger middleware authorization bypass behavior. If the malicious request is incorrectly treated as non-matching while the benign request matched, exploit_succeeded is true (vulnerable). If malicious request still matches or throws after successful benign setup, exploit_succeeded is false (patched/blocked). Any setup/module/benign failure keeps operation_completed=false per harness contract.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle uses a stable Next.js runtime-exported module (`next/dist/server/web/spec-extension/cookies`) to ensure the package loads and performs a benign, ordinary operation first. Only after that success does it set `operation_completed=true`. It then exercises malicious header spoofing relevant to middleware authorization-bypass class issues by supplying internal middleware-control headers (`x-middleware-subrequest`, `x-middleware-next`) and checking whether they remain usable/preserved. Preserved spoofed internal headers are treated as vulnerability present (`exploit_succeeded=true`); rejection/sanitization or exception after successful setup is treated as blocked (`exploit_succeeded=false`). Any setup/module/benign failure reports `operation_completed=false` as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle uses Next.js’s public server API (`next/server`, specifically `NextRequest`) to validate middleware-header trust behavior directly at request construction time. It first performs a benign request/header read to prove ordinary operation works; only then does it set `operation_completed=true`. It then sends malicious input by forging `x-middleware-subrequest`, an internal middleware control header tied to the authorization-bypass class. The exploit is considered successful only if that forged header remains visible on the resulting request object. Patched behavior should strip/ignore this untrusted internal header, yielding `exploit_succeeded=false`. Any setup/module/benign failure reports `operation_completed=false` per contract.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle targets the middleware authorization bypass behavior by exercising Next.js internal middleware route matching logic directly. It first performs a benign match for a protected path with no forged internal headers and requires that to succeed. It then sends a malicious request context containing a forged x-middleware-subrequest header value shaped to trigger the historical bypass logic. If the protected route is incorrectly treated as non-matching (attack result false), the bypass is considered successful. In patched versions, the protected route should still match (true) or the malicious input should be rejected, yielding exploit_succeeded=false while operation_completed remains true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "This oracle exercises Next.js middleware route matching with a realistic request shape (including nextUrl via NextURL) so the vulnerable x-middleware-subrequest handling is reached. It first verifies benign behavior: /protected/dashboard must match (true). Only then it marks operation_completed=true and sends a malicious request carrying a crafted x-middleware-subrequest chain intended to trigger the authorization bypass path in vulnerable versions, where matching can be skipped (false). The oracle reports exploit_succeeded=true only when that bypass outcome occurs after successful setup and benign execution.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "This oracle targets the Next.js middleware authorization-bypass behavior by exercising the public middleware execution path in-process. It first runs a benign request to /protected/dashboard with no attacker header and requires that middleware performs a redirect (proving normal protection is active). Only then it sets operation_completed=true and sends a malicious request containing x-middleware-subrequest with repeated middleware tokens. The exploit is considered successful when the protected-path redirect disappears (middleware bypass), and blocked when redirect behavior remains or malicious input throws after benign success. Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "Builds a minimal Next middleware artifact under /tmp/distDir/server/middleware.js so sandbox.run can load it from the expected filesystem location. First validates normal protected-route behavior (redirect to /login). Only after that succeeds does it send a crafted x-middleware-subrequest header associated with the bypass class and checks whether redirect disappears (bypass => exploit_succeeded=true). Any setup or benign failure reports operation_completed=false as required.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "This oracle uses Next.js internal middleware adapter directly, avoiding filesystem-based middleware loading that caused prior ENOENT failures. It first verifies normal protected-route behavior (redirect to /login) using a benign request. Only after that succeeds does it set operation_completed=true and send a malicious request with x-middleware-subrequest containing repeated middleware tokens, which is the known bypass vector class for this vulnerability. If the malicious request loses the redirect, exploit_succeeded=true (bypass). If redirect remains or an exception occurs during malicious phase, exploit_succeeded=false (blocked). Any setup/module/benign failure keeps operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "Builds a minimal Next app under /tmp with middleware that should redirect /protected/* to /login. It verifies a benign protected request redirects (proving middleware runs), then sends the same request with forged x-middleware-subrequest header used in the bypass class. If malicious request lacks redirect while benign redirected, exploit_succeeded=true. Any setup/module/benign failure keeps operation_completed=false.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "This oracle avoids starting a Next.js server/build and instead exercises Next's middleware route matching internals directly via installed package exports. It first proves normal behavior by matching a protected path with a benign request. Only after that succeeds does it test a malicious request carrying x-middleware-subrequest. If that malicious request is treated as not matching the middleware, it indicates an authorization-bypass condition (middleware skipped), so exploit_succeeded=true. If it still matches (or throws), exploit is considered blocked. Any setup/module/benign failure keeps operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle uses Next.js public/server runtime request handling primitives available from installed package paths that resolve in consumer environments. It first verifies normal matcher behavior on a protected path (benign request must match), then tests a crafted request carrying x-middleware-subrequest intended to trigger middleware authorization bypass behavior. If the malicious request is incorrectly treated as non-matching while the benign request matched, exploit_succeeded is true (vulnerable). If malicious request still matches or throws after successful benign setup, exploit_succeeded is false (patched/blocked). Any setup/module/benign failure keeps operation_completed=false per harness contract.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

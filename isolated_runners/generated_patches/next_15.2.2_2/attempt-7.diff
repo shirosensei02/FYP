@@ -1,0 +1,20 @@
+diff --git a/dist/server/lib/router-server.js b/dist/server/lib/router-server.js
+--- a/dist/server/lib/router-server.js
++++ b/dist/server/lib/router-server.js
+@@ -162,6 +162,16 @@
+         if (!process.env.NEXT_PRIVATE_TEST_HEADERS) {
+             (0, _utils1.filterInternalHeaders)(req.headers);
+         }
++        // Always strip any client-supplied middleware subrequest marker so
++        // external requests cannot forge it to bypass middleware execution
++        // (CVE-2025-29927). This must happen unconditionally, independent of
++        // NEXT_PRIVATE_TEST_HEADERS and independent of the internal header
++        // filter list, and before any routing decisions are made.
++        for (const headerName of Object.keys(req.headers)) {
++            if (headerName.toLowerCase() === 'x-middleware-subrequest') {
++                delete req.headers[headerName];
++            }
++        }
+         if (!opts.minimalMode && config.i18n && config.i18n.localeDetection !== false) {
+             var _this;
+             const urlParts = (req.url || '').split('?', 1);

@@ -1,0 +1,109 @@
+{
+  "package_name": "drizzle-orm",
+  "package_version": "0.45.1",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-gpj5-g38j-94v9"
+  ],
+  "run_index": 6,
+  "run_cost": 0.11722550000000001,
+  "oracle_attempt_count": 6,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "{\"benign_sql\":\"\\\"safe_col\\\"\",\"malicious_sql\":\"\\\"x\\\";select 1--\\\"\",\"expected_safe\":\"\\\"x\\\"\\\";select 1--\\\"\"}",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "{\"benign_sql\":\"\\\"safe_col\\\"\",\"malicious_sql\":\"\\\"x\\\"\\\";select 1--\\\"\",\"expected_safe\":\"\\\"x\\\"\\\";select 1--\\\"\"}",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 6,
+    "explanation": "This oracle exercises drizzle-orm’s public identifier-construction path with the actual PostgreSQL dialect escapeName implementation (PgDialect.escapeName), rather than a test-provided escape function. It first verifies benign identifier rendering succeeds, then submits a crafted identifier containing a quote delimiter. On vulnerable versions, the embedded quote is not escaped (not doubled), so rendered SQL differs from the safely escaped expected string and exploit_succeeded becomes true. On patched versions, the output should match safe escaping (or the call may reject), yielding exploit_succeeded false while operation_completed remains true.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle exercises drizzle-orm's public sql.identifier() path via template SQL composition. It first performs a benign identifier interpolation to confirm normal operation. After that succeeds, it interpolates a malicious identifier containing a double quote and SQL suffix. The oracle inspects the composed query representation and treats the exploit as successful when injected SQL sequence appears while expected quote-doubling escape is absent. If patched, embedded quotes should be escaped (e.g., doubled), preventing breakout; exploit_succeeded becomes false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle uses the public `sql.identifier()` API directly and validates two phases: a benign identifier first, then a malicious identifier containing an embedded quote and SQL suffix. The benign call must succeed before `operation_completed` is set true. For the malicious call, patched versions should either throw or return a safely escaped identifier; vulnerable versions are expected to render the payload unsafely (raw payload or unescaped injected clause). The oracle avoids relying on exact maintainer error text and reports a single final `ORACLE_RESULT` line.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle uses drizzle-orm’s public sql and sql.identifier APIs to build a benign ORDER BY fragment first, then a malicious one containing an embedded identifier quote and injected SQL tokens. It compiles the SQL object by reading queryChunks (instead of String(obj), which only yields [object Object]). Vulnerable versions are expected to leave the embedded quote unescaped, so the output still contains raw injected clause markers (; DROP TABLE ... --) without doubled identifier quotes. Patched versions should escape internal quotes (e.g., \"\"), preventing breakout and thus failing the exploit predicate. Any setup or benign-call failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "This oracle directly exercises the public sql.identifier() API and inspects its rendered SQL fragment. It first verifies a benign identifier is correctly quoted (operation_completed becomes true only after that succeeds). Then it supplies an identifier containing an embedded double quote and SQL control characters. Vulnerable versions render a breakout form (e.g., \"x\";select 1--\"), while fixed versions should escape the embedded quote (or otherwise block), preventing that exact breakout pattern. Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "This oracle exercises drizzle-orm's public identifier API via sql.identifier(), first with a benign identifier and then with a malicious identifier containing an embedded double quote. It renders SQL through the package's SQL object .toQuery() path using a standard double-quote identifier wrapper. The vulnerable version fails to escape embedded quotes and produces SQL different from the safe expected form (\"x\"\";select 1--\"), so exploit_succeeded becomes true. The patched version should escape correctly (or throw), making exploit_succeeded false while operation_completed remains true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "This oracle exercises drizzle-orm’s public identifier-construction path with the actual PostgreSQL dialect escapeName implementation (PgDialect.escapeName), rather than a test-provided escape function. It first verifies benign identifier rendering succeeds, then submits a crafted identifier containing a quote delimiter. On vulnerable versions, the embedded quote is not escaped (not doubled), so rendered SQL differs from the safely escaped expected string and exploit_succeeded becomes true. On patched versions, the output should match safe escaping (or the call may reject), yielding exploit_succeeded false while operation_completed remains true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

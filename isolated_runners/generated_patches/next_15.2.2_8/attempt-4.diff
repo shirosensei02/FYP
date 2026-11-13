@@ -1,0 +1,15 @@
+diff --git a/dist/server/lib/server-ipc/utils.js b/dist/server/lib/server-ipc/utils.js
+--- a/dist/server/lib/server-ipc/utils.js
++++ b/dist/server/lib/server-ipc/utils.js
+@@ -71,8 +71,10 @@
+ ];
+ const filterInternalHeaders = (headers)=>{
+     for(const header in headers){
+-        if (INTERNAL_HEADERS.includes(header)) {
++        const normalizedHeader = header.toLowerCase();
++        if (INTERNAL_HEADERS.includes(normalizedHeader)) {
+             delete headers[header];
++            delete headers[normalizedHeader];
+         }
+     }
+ };

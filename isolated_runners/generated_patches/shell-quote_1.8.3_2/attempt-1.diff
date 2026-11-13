@@ -1,0 +1,12 @@
+diff --git a/quote.js b/quote.js
+--- a/quote.js
++++ b/quote.js
+@@ -6,7 +6,7 @@
+ 			return '\'\'';
+ 		}
+ 		if (s && typeof s === 'object') {
+-			return s.op.replace(/(.)/g, '\\$1');
++			return String(s.op).replace(/[\r\n]+/g, ' ').replace(/(.)/g, '\\$1');
+ 		}
+ 		if ((/["\s\\]/).test(s) && !(/'/).test(s)) {
+ 			return "'" + s.replace(/(['])/g, '\\$1') + "'";

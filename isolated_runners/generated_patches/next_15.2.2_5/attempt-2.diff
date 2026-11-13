@@ -1,0 +1,14 @@
+diff --git a/dist/server/lib/server-ipc/utils.js b/dist/server/lib/server-ipc/utils.js
+--- a/dist/server/lib/server-ipc/utils.js
++++ b/dist/server/lib/server-ipc/utils.js
+@@ -70,6 +70,10 @@
+     'x-matched-path'
+ ];
+ const filterInternalHeaders = (headers)=>{
++    // Always strip the middleware subrequest marker from externally
++    // reachable headers, even if NEXT_PRIVATE_TEST_HEADERS is set, so a
++    // forged header can never be used to bypass middleware/auth checks.
++    delete headers['x-middleware-subrequest'];
+     for(const header in headers){
+         if (INTERNAL_HEADERS.includes(header)) {
+             delete headers[header];

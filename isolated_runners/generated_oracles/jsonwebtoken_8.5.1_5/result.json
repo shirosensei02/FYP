@@ -1,0 +1,111 @@
+{
+  "package_name": "jsonwebtoken",
+  "package_version": "8.5.1",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-qwph-4952-7xr6"
+  ],
+  "run_index": 5,
+  "run_cost": 0.0866838,
+  "oracle_attempt_count": 6,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "unsigned none-alg token accepted by verify(forged, null)",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "malicious verify rejected: please specify \"none\" in \"algorithms\" to verify unsigned tokens",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 6,
+    "explanation": "This oracle validates jwt.sign/jwt.verify normal behavior first, then tests the insecure default verification path associated with accepting an unsigned JWT using alg=none when verify is called with a falsy key. In vulnerable jsonwebtoken versions this can succeed; in patched versions it should be rejected unless explicitly allowed. Any setup or benign failure reports operation_completed=false as required.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle validates normal jwt.sign/jwt.verify behavior first, then attempts an algorithm-confusion style bypass by verifying an attacker-controlled HS256 token with RSA-like key material while omitting explicit algorithm restrictions. Vulnerable behavior is acceptance of the malicious token; patched behavior rejects it. Any setup or benign-path failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "Exercises jsonwebtoken.verify() with a successful benign verification first, then attempts the classic algorithm-confusion bypass by signing HS256 with an RSA public key string and verifying without algorithms restriction. Vulnerable behavior is acceptance of forged token; patched behavior is rejection.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle first proves normal library behavior by successfully performing an HS256 sign/verify round trip. Only after that succeeds does it mark operation_completed=true. It then attempts the signature-validation-bypass pattern relevant to jsonwebtoken 8.5.1 by using asymmetric public-key bytes as an HMAC secret to forge an HS256 token and verifying without an explicit algorithms allowlist. Vulnerable behavior is acceptance of the forged token (exploit_succeeded=true). Patched behavior is rejection via exception (exploit_succeeded=false) while still keeping operation_completed=true.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "This oracle validates that normal jwt.sign/jwt.verify behavior works first, then attempts a classic signature-bypass probe: a forged JWT using header {\"alg\":\"none\"} and no signature, verified without an explicit algorithms allowlist. Vulnerable behavior is acceptance of attacker-controlled claims; patched behavior is rejection (throw). It follows the required state handling: operation_completed is set true only after benign success, and any setup/benign failure reports operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "This oracle first proves normal jwt.sign/jwt.verify functionality with HS256. After successful benign verification, it attempts an HS/RS algorithm confusion scenario relevant to jsonwebtoken 8.5.1: an attacker-controlled token is signed with HS256 using RSA public-key PEM text as the HMAC secret, then verified with that same public key and no explicit algorithms allowlist. Vulnerable behavior accepts the forged token payload; patched behavior rejects it. Any setup/module/benign failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "This oracle validates jwt.sign/jwt.verify normal behavior first, then tests the insecure default verification path associated with accepting an unsigned JWT using alg=none when verify is called with a falsy key. In vulnerable jsonwebtoken versions this can succeed; in patched versions it should be rejected unless explicitly allowed. Any setup or benign failure reports operation_completed=false as required.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

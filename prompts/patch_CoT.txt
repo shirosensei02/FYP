@@ -1,0 +1,26 @@
+OUTPUT MODE: STRUCTURED EDITS ONLY.
+
+This is a source-code patch task. Implement the minimal source-code fix using only the supplied package files.
+Do not modify package version metadata, dependencies, lockfiles, tests, or security checks.
+
+Your entire response must be exactly one JSON object. Put `analysis` before `edits`:
+{{"analysis":{{"sink":"security-sensitive operation the untrusted input reaches","source":"input that reaches that sink","control":"validation, escaping, or rejection to add","benign_behavior_preserved":"why the ordinary call still works"}},"edits":[{{"path":"source.js","old_text":"exact copied source","new_text":"replacement source"}}]}}
+
+Repository Context:
+{relevant_source_code}
+
+Fill `analysis` before writing the edits:
+- `sink`: the security-sensitive operation the untrusted input reaches.
+- `source`: the input that reaches that sink.
+- `control`: the validation, escaping, or rejection to add.
+- `benign_behavior_preserved`: why the ordinary call still works.
+
+Response contract:
+Return valid JSON only, with `analysis` and then `edits`:
+{{"analysis":{{"sink":"...","source":"...","control":"...","benign_behavior_preserved":"..."}},"edits":[{{"path":"relative/source/path.js","old_text":"exact source to replace","new_text":"replacement"}}]}}
+
+`analysis` is required. Every `old_text` must be copied exactly and contiguously from the supplied source.
+Do not return a unified diff, line numbers, a full rewritten file, or placeholder text.
+Do not wrap the JSON in markdown fences.
+Your first character must be `{{` and your final character must be `}}`.
+Return the JSON object now.

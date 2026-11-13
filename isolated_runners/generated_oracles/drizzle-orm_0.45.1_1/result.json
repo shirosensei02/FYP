@@ -1,0 +1,87 @@
+{
+  "package_name": "drizzle-orm",
+  "package_version": "0.45.1",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-gpj5-g38j-94v9"
+  ],
+  "run_index": 1,
+  "run_cost": 0.357704,
+  "oracle_attempt_count": 4,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "Embedded quote in identifier was NOT escaped, breaking out of quoting; compiled SQL: SELECT \"name\" ; DROP TABLE users; --\" FROM \"users\" WHERE \"users\".\"id\" = 1",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "Embedded quote in identifier was safely escaped (doubled); compiled SQL: SELECT \"name\"\" ; DROP TABLE users; --\" FROM \"users\" WHERE \"users\".\"id\" = 1",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 4,
+    "explanation": "The oracle requires drizzle-orm's `sql` tagged-template helper and the pg-core dialect. It first performs a benign operation: building a tiny `users` table schema and compiling a SELECT query that uses `sql.identifier('name')` for a safe, non-attacker-controlled identifier, verifying the compiled SQL text contains the expected quoted identifiers (`operation_completed` becomes true only after this succeeds). It then exercises the vulnerable code path by calling `sql.identifier()` with a malicious string containing an embedded double-quote followed by a SQL injection payload (`name\" ; DROP TABLE users; --`). Proper identifier escaping (as in the patched version) doubles the embedded quote (`\"\"`) so the payload remains inert text inside the quoted identifier, whereas the vulnerable version emits a single, unescaped quote directly before the injected SQL text, letting it break out of the identifier quoting. The oracle inspects the compiled SQL string returned by `PgDialect.sqlToQuery` for the doubled-quote (safe) versus single-quote (vulnerable) pattern immediately preceding the injected fragment to decide `exploit_succeeded`. Any setup, module-resolution, or benign-operation failure short-circuits with `operation_completed=false` before the malicious call is ever attempted, and an exception thrown by the malicious call itself is treated as the exploit being blocked. The oracle only touches the required package APIs (no filesystem, network, or process operations), so none of the trusted fixtures are needed.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm's SQLite integration (better-sqlite3 driver) and sets up a small in-memory-like temp SQLite database with a `users` table containing a `secret` column that should never be exposed by the benign query. First it proves the public `sql` tagged-template API together with `sql.identifier()` works correctly by requesting a benign, safe column identifier (`name`) and verifying the expected row is returned — only after this succeeds does `operation_completed` become true. It then issues the same style of query but passes an attacker-controlled identifier string crafted to break out of identifier quoting (embedded quote, SQL keywords, and a trailing comment) attempting a UNION-based read of the `secret` column. In the vulnerable version (0.45.1), `sql.identifier()` does not escape embedded double-quote characters correctly, allowing the injected SQL to execute and leak the `secret` value, which the oracle detects by checking if the forbidden `TOP_SECRET_VALUE` string appears in the malicious query's result set — setting `exploit_succeeded=true`. In a patched version, the identifier escaping should properly quote/escape the malicious string so either the query throws a SQL syntax error (caught and treated as blocked) or it executes without leaking the secret column, both of which set `exploit_succeeded=false`. Any setup, module-resolution, or benign-operation failure causes an early return with `operation_completed=false`, and all exceptions are funneled through controlled try/catch blocks so a crash never gets misreported as a successful block.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle requires drizzle-orm and drizzle-orm/pg-core only (no external DB driver needed, avoiding the previous better-sqlite3 missing-dependency failure). It defines a pg-core table and uses the PgDialect to compile sql-tagged queries into SQL text without ever opening a real database connection. First it builds a benign query using sql.identifier('name') and compiles it via dialect.sqlToQuery, confirming the identifier-escaping/compilation pipeline works (operation_completed only becomes true after this succeeds). It then builds a malicious identifier containing an embedded double quote and an injected SQL fragment ('DROP TABLE users; --'). In the vulnerable version, sql.identifier() fails to double internal double-quote characters when quoting identifiers, so the injected fragment appears verbatim/unescaped in the compiled SQL output, which the oracle detects by checking that the injected fragment text appears in the compiled query while no doubled-quote escape sequence exists ('exploit_succeeded = true'). In the patched version, the identifier is properly quoted (the embedded quote is doubled to \"\") so the injected fragment never appears as live SQL outside of an inert quoted string, or the call throws — either case is reported as exploit_succeeded = false. All setup, module-resolution, and benign-operation failures short-circuit with operation_completed = false before any exploit attempt, and no process spawning, network, or filesystem writes occur outside of the unused tmp marker.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm's pg-core, defines a simple users table, and first performs a benign operation: building a SELECT query referencing a safe column (usersTable.name) and compiling it via PgDialect.sqlToQuery, confirming the basic query-building/compilation path works before marking operation_completed. It then crafts a malicious identifier string containing an embedded double-quote followed by an injected SQL fragment ('DROP TABLE users; --') and passes it through sql.identifier(), compiling the resulting query. Correct (patched) identifier escaping doubles any embedded double-quote (producing \"\" immediately before the fragment), neutralizing the break-out; the oracle detects this safe pattern and reports exploit_succeeded=false. In the vulnerable version, the embedded quote is not doubled, so the compiled SQL text contains a single unescaped quote directly before the injected fragment, letting it appear as if it were outside the quoted identifier context — the oracle detects this unsafe pattern and reports exploit_succeeded=true. A thrown exception during the malicious call (after setup/benign success) is also treated as blocked. No external processes, git, or filesystem fixtures are required since this exercises the pure in-memory SQL-building/identifier-escaping API.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle requires drizzle-orm's `sql` tagged-template helper and the pg-core dialect. It first performs a benign operation: building a tiny `users` table schema and compiling a SELECT query that uses `sql.identifier('name')` for a safe, non-attacker-controlled identifier, verifying the compiled SQL text contains the expected quoted identifiers (`operation_completed` becomes true only after this succeeds). It then exercises the vulnerable code path by calling `sql.identifier()` with a malicious string containing an embedded double-quote followed by a SQL injection payload (`name\" ; DROP TABLE users; --`). Proper identifier escaping (as in the patched version) doubles the embedded quote (`\"\"`) so the payload remains inert text inside the quoted identifier, whereas the vulnerable version emits a single, unescaped quote directly before the injected SQL text, letting it break out of the identifier quoting. The oracle inspects the compiled SQL string returned by `PgDialect.sqlToQuery` for the doubled-quote (safe) versus single-quote (vulnerable) pattern immediately preceding the injected fragment to decide `exploit_succeeded`. Any setup, module-resolution, or benign-operation failure short-circuits with `operation_completed=false` before the malicious call is ever attempted, and an exception thrown by the malicious call itself is treated as the exploit being blocked. The oracle only touches the required package APIs (no filesystem, network, or process operations), so none of the trusted fixtures are needed.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

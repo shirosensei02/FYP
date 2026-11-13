@@ -1,0 +1,65 @@
+{
+  "package_name": "shell-quote",
+  "package_version": "1.8.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-w7jw-789q-3m8p"
+  ],
+  "run_index": 2,
+  "run_cost": 0.048322000000000004,
+  "oracle_attempt_count": 2,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "quote() output contains an unescaped literal newline from .op value: \"\\\\e\\\\c\\\\h\\\\o\\\\ \\\\p\\\\w\\\\n\\\\e\\\\d\\\\_\\\\S\\\\Q\\\\_\\\\M\\\\A\\\\R\\\\K\\\\E\\\\R\\\\_\\\\1\\\\_\\\\1\\\\7\\\\9\\\\4\\\\4\\\\7\\\\9\\\\7\\\\1\\\\9\\\\0\\\\2\\\\0\\n\\\\e\\\\c\\\\h\\\\o\\\\ \\\\s\\\\e\\\\c\\\\o\\\\n\\\\d\\\\_\\\\S\\\\Q\\\\_\\\\M\\\\A\\\\R\\\\K\\\\E\\\\R\\\\_\\\\1\\\\_\\\\1\\\\7\\\\9\\\\4\\\\4\\\\7\\\\9\\\\7\\\\1\\\\9\\\\0\\\\2\\\\0\"",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "quote() threw on malicious .op input (treated as blocked): invalid `op` value: \"echo pwned_SQ_MARKER_1_1794479726981\\necho second_SQ_MARKER_1_1794479726981\"",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 2,
+    "explanation": "The oracle first proves shell-quote's quote() works correctly on benign plain-string arguments and on a normal object with a safe .op value, setting operation_completed=true only after both succeed. It then calls quote() with a malicious input: a single object whose .op property contains an embedded newline character followed by a second shell command. In vulnerable shell-quote 1.8.3, quote() does not escape newline characters found in .op values, so the returned string contains a literal '\\n' character, which would allow command injection if the quoted string were later passed to a shell (since the shell would interpret the text after the newline as a new command). The oracle detects this by checking whether the returned string contains a raw newline character: if so, exploit_succeeded=true (vulnerable); if the newline was properly escaped (e.g., turned into an escaped sequence with no literal newline character), exploit_succeeded=false (patched). Any exception thrown by the malicious call is treated as blocked (exploit_succeeded=false) since it only occurs after the benign checks already passed. Any exception during setup or the benign calls causes operation_completed=false. The script only requires shell-quote and node:os/path, performs no I/O, spawns no process, and uses a unique marker string embedded in the quoted commands for clarity.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 2 column 2872 (char 2873)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 2872 (char 2873)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves shell-quote's quote() works correctly on benign plain-string arguments and on a normal object with a safe .op value, setting operation_completed=true only after both succeed. It then calls quote() with a malicious input: a single object whose .op property contains an embedded newline character followed by a second shell command. In vulnerable shell-quote 1.8.3, quote() does not escape newline characters found in .op values, so the returned string contains a literal '\\n' character, which would allow command injection if the quoted string were later passed to a shell (since the shell would interpret the text after the newline as a new command). The oracle detects this by checking whether the returned string contains a raw newline character: if so, exploit_succeeded=true (vulnerable); if the newline was properly escaped (e.g., turned into an escaped sequence with no literal newline character), exploit_succeeded=false (patched). Any exception thrown by the malicious call is treated as blocked (exploit_succeeded=false) since it only occurs after the benign checks already passed. Any exception during setup or the benign calls causes operation_completed=false. The script only requires shell-quote and node:os/path, performs no I/O, spawns no process, and uses a unique marker string embedded in the quoted commands for clarity.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "package_name": "next",
+  "package_version": "15.2.2",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-f82v-jwr5-mffw"
+  ],
+  "run_index": 7,
+  "run_cost": 0.03475955,
+  "patch_attempt_count": 3,
+  "success_loop": 3,
+  "validation_status": "SECURITY_PASS",
+  "validation_reason": "Relevant operation completed and the exploit was blocked.",
+  "locked_oracle": {
+    "source_run": "next_15.2.2_2",
+    "attempt_number": 2
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Forged x-middleware-subrequest header survived filterInternalHeaders without a valid subrequest id, allowing middleware authorization bypass"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "INCONCLUSIVE",
+      "reason": "Oracle execution ended as TIMEOUT.",
+      "execution_status": "TIMEOUT",
+      "evidence": "Oracle exceeded 30s timeout."
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_PASS",
+      "reason": "Relevant operation completed and the exploit was blocked.",
+      "execution_status": "EXPLOIT_BLOCKED",
+      "evidence": "Forged x-middleware-subrequest header was stripped because the subrequest id did not match the server secret, blocking the bypass"
+    }
+  ]
+}

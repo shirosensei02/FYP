@@ -1,0 +1,54 @@
+{
+  "package_name": "shell-quote",
+  "package_version": "1.8.3",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-w7jw-789q-3m8p"
+  ],
+  "run_index": 9,
+  "run_cost": 0.013643,
+  "oracle_attempt_count": 1,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "benign_out=\"echo hello \\\\&\\\\& printf ok\"; malicious_out=\"safe \\n\\\\I\\\\N\\\\J\\\\E\\\\C\\\\T\\n cmd\"; has_raw_newline=true",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "malicious input blocked with exception: invalid `op` value: \"\\nINJECT\\n\"",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 1,
+    "explanation": "This oracle exercises the public quote() API with a normal token list first, then with an operator object whose .op contains newlines. The vulnerability is specifically that newline characters in .op are not escaped in vulnerable versions, so the quoted output includes literal line breaks. The oracle marks exploit success only when the benign call succeeded and the malicious output contains raw '\\n'. If patched behavior throws on invalid operator input or sanitizes/escapes it so no raw newline appears, exploit_succeeded is false while operation_completed remains true.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle exercises the public quote() API with a normal token list first, then with an operator object whose .op contains newlines. The vulnerability is specifically that newline characters in .op are not escaped in vulnerable versions, so the quoted output includes literal line breaks. The oracle marks exploit success only when the benign call succeeded and the malicious output contains raw '\\n'. If patched behavior throws on invalid operator input or sanitizes/escapes it so no raw newline appears, exploit_succeeded is false while operation_completed remains true.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

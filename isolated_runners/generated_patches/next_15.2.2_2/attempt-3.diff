@@ -1,0 +1,21 @@
+diff --git a/dist/server/lib/router-server.js b/dist/server/lib/router-server.js
+--- a/dist/server/lib/router-server.js
++++ b/dist/server/lib/router-server.js
+@@ -162,6 +162,17 @@
+         if (!process.env.NEXT_PRIVATE_TEST_HEADERS) {
+             (0, _utils1.filterInternalHeaders)(req.headers);
+         }
++        // The x-middleware-subrequest header is an internal signal used to
++        // detect middleware self-invocation and must never be trusted when
++        // supplied by an external client, as it can be forged to bypass
++        // middleware-based authorization checks. Strip it unconditionally,
++        // independent of NEXT_PRIVATE_TEST_HEADERS, before any further
++        // routing or middleware logic can observe it.
++        for(const headerName in req.headers){
++            if (typeof headerName === 'string' && headerName.toLowerCase() === 'x-middleware-subrequest') {
++                delete req.headers[headerName];
++            }
++        }
+         if (!opts.minimalMode && config.i18n && config.i18n.localeDetection !== false) {
+             var _this;
+             const urlParts = (req.url || '').split('?', 1);

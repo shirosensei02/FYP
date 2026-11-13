@@ -1,0 +1,153 @@
+{
+  "package_name": "jsonwebtoken",
+  "package_version": "8.5.1",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-qwph-4952-7xr6"
+  ],
+  "run_index": 3,
+  "run_cost": 0.344498,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "forged HS256-via-public-key token was rejected by jwt.verify (blocked): invalid algorithm",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "forged HS256-via-public-key token was rejected by jwt.verify (blocked): invalid algorithm",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "This oracle exercises jsonwebtoken's public sign/verify API. The benign path performs a legitimate RS256 sign (with an RSA private key) and verify (with the corresponding public key), proving normal operation works before any exploit attempt. The malicious path performs the classic RS256/HS256 key-confusion attack enabled by jsonwebtoken's insecure default algorithm handling in 8.5.1: an attacker who only knows the server's public key forges a token whose header declares alg:'HS256', then computes an HMAC-SHA256 signature using the public key PEM text as the HMAC secret. When the vulnerable verify() is called with just the public key and no explicit `algorithms` allow-list, it honors the attacker-supplied header algorithm and successfully validates the forged signature, returning attacker-controlled claims (role:'admin'). This is the concrete, deterministic manifestation of jsonwebtoken's algorithm-confusion vulnerability class; it does not depend on jws's unconditional rejection of empty signatures (which made the earlier alg:'none' empty-signature variant ineffective as a regression test in both vulnerable and fixed versions). On the patched release this call throws (e.g. 'invalid algorithm' / signature verification failure), so exploit_succeeded is false while operation_completed remains true because the benign RS256 round-trip still succeeded.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 9 column 4075 (char 5550)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 9 column 4075 (char 5550)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves normal HS256 sign/verify works with a shared secret (benign path), establishing operation_completed=true only after that success. It then simulates the classic jsonwebtoken algorithm-confusion attack: an attacker forges a JWT whose header declares alg: HS256 and signs it using the server's RSA public key PEM bytes as the HMAC secret. When the server calls the vulnerable jwt.verify(token, publicKeyPem) without an explicit algorithms allow-list, the library (in 8.5.1) will happily use HMAC-SHA256 verification keyed on the public key string, matching the attacker's forged signature and returning a trusted-looking payload with admin:true. In the patched version, verification either requires an explicit, restrictive algorithms option or otherwise rejects using a PEM/public key as an HMAC secret for an HS256-labeled token, causing jwt.verify to throw a JsonWebTokenError (invalid signature) and setting exploit_succeeded=false. The oracle treats any setup or benign-step failure as operation_completed=false, and only measures exploit_succeeded on the post-benign malicious call, per the required contract.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Expecting value: line 1 column 1 (char 0)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Expecting value: line 1 column 1 (char 0)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jsonwebtoken's core sign/verify operation works correctly by signing a payload with HS256 and a known secret, then verifying it with the algorithms explicitly restricted to HS256 — this must succeed to set operation_completed=true. It then attempts the classic alg:none forgery attack: constructing a JWT whose header declares alg:none and whose signature segment is empty, carrying a payload claiming role:'admin'. It calls jwt.verify() on this forged token without restricting the algorithms option (mirroring common vulnerable usage patterns), which is exactly the insecure-default scenario described in the vulnerability. On vulnerable jsonwebtoken 8.5.1, jwt.verify() may accept the none-algorithm token and return the decoded (forged, privilege-escalated) payload, which the oracle detects as exploit_succeeded=true. On the patched version, verify() rejects alg:none by default (throwing JsonWebTokenError) unless 'none' is explicitly included in algorithms, so the call throws and exploit_succeeded is set to false while operation_completed remains true because the benign check already passed. No process spawning, networking, or filesystem writes outside /tmp are performed; no external fixtures or git repository are required since jsonwebtoken's sign/verify API is purely in-memory cryptographic logic.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves normal HMAC sign/verify works (benign path) and also confirms a legitimate RS256 sign/verify round-trip succeeds, establishing that the public-key verification path itself works before probing for the vulnerability. It then performs the classic RS256-to-HS256 'algorithm confusion' attack: since the RSA public key is not secret, an attacker can compute an HMAC-SHA256 signature over a forged header/payload using the PEM text of the public key as the HMAC key. If the call site (matching common vulnerable real-world usage) calls jwt.verify(token, publicKeyPem) without restricting `algorithms`, the vulnerable jsonwebtoken 8.5.1 will honor the attacker-chosen `alg: HS256` header and successfully verify the forged signature using HMAC against the public key material, returning a forged payload with elevated privileges (role: admin) — demonstrating the signature validation bypass tied to insecure default algorithm handling in jwt.verify(). The patched version enforces algorithm pinning/behavior that rejects this mismatched algorithm usage, causing verify() to throw and the exploit observable (admin payload returned) to never occur, yielding exploit_succeeded=false while operation_completed remains true because the benign and legitimate operations already succeeded.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Expecting value: line 1 column 1 (char 0)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Expecting value: line 1 column 1 (char 0)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves normal operation by signing a token with an RSA private key using RS256 and verifying it with the corresponding RS256 public key, restricted to the RS256 algorithm via the `algorithms` option - this is the benign, expected asymmetric-key workflow. It then demonstrates the classic jsonwebtoken algorithm-confusion / signature-bypass vulnerability (CVE-2022-23529-adjacent class, matching 'insecure default algorithm' behavior in 8.5.1): it crafts a JWT with header `alg: HS256` and computes its signature as an HMAC-SHA256 using the RSA *public key* PEM string as the HMAC secret (something any attacker who has the public key - which is, by design, public - can do). It then calls `jwt.verify(forgedToken, publicKey)` without specifying an `algorithms` allowlist, mirroring code that trusts the default/unrestricted algorithm negotiation. On the vulnerable version, jsonwebtoken (via the jws dependency algorithm handling present in 8.5.1) accepts the HS256 signature computed over the public key bytes and returns the forged payload (role: admin), proving a full authentication bypass. On a patched version, verify will throw (invalid signature / invalid algorithm) because algorithm confusion between asymmetric public keys and symmetric secret usage is no longer permitted implicitly, so `exploit_succeeded` becomes false while `operation_completed` remains true since the benign RS256 round-trip already succeeded. All file I/O stays under a unique directory inside /tmp, cleaned up afterward, and no external processes, sockets, or git operations are required.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jsonwebtoken's core sign/verify round-trip works using a proper non-empty HMAC secret, setting operation_completed=true only after that succeeds. It then attempts to sign and verify a forged 'admin' token using an empty string ('') as the HMAC secret -- a known insecure-default scenario where an application accidentally computes an empty/falsy secret (e.g., from a missing config value) yet the vulnerable library still happily performs HS256 signing and verification with it, allowing anyone who notices the misconfiguration to forge valid tokens with arbitrary claims. In vulnerable jsonwebtoken 8.5.1, jwt.sign and jwt.verify do not reject the empty-string secret for HS256, so the forged admin payload round-trips successfully, and exploit_succeeded is set to true with the decoded forged payload as evidence. In the patched version, the library validates that a non-empty secret/key must be provided for HMAC algorithms and throws (e.g. 'secret or public key must be provided' or similar validation error) either at sign time or verify time, causing the forged token round-trip to fail and exploit_succeeded to remain false. Any failure during module load, key setup, or the benign round-trip is reported as operation_completed=false so it can never be conflated with a legitimate 'blocked' verdict.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves jsonwebtoken works correctly by signing and verifying a normal HS256 token with a real secret (benign operation), setting operation_completed=true only after that round-trip succeeds and returns the expected payload. It then crafts a classic 'alg confusion' forged token: a JWT header declaring alg:'none' with a payload claiming role:'admin' and an empty signature segment, built manually without ever using the server secret. This forged token is passed to jwt.verify(forgedToken, serverSecret) with no explicit `algorithms` option — exactly how naive application code commonly calls verify. In vulnerable jsonwebtoken 8.5.1, the default algorithm handling does not safely exclude 'none', so verify() accepts the unsigned token and returns the attacker's forged admin payload, which is reported as exploit_succeeded=true. In the patched version, jwt.verify() rejects the alg:'none' token (throwing a JsonWebTokenError) because a secret/key was supplied, so the catch branch reports exploit_succeeded=false while operation_completed remains true from the earlier successful benign round trip. Any failure during module load, tmp setup, or the benign sign/verify causes an early finish with operation_completed=false, satisfying the harness's strict completion semantics.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "This oracle exercises jsonwebtoken's public sign/verify API. The benign path performs a legitimate RS256 sign (with an RSA private key) and verify (with the corresponding public key), proving normal operation works before any exploit attempt. The malicious path performs the classic RS256/HS256 key-confusion attack enabled by jsonwebtoken's insecure default algorithm handling in 8.5.1: an attacker who only knows the server's public key forges a token whose header declares alg:'HS256', then computes an HMAC-SHA256 signature using the public key PEM text as the HMAC secret. When the vulnerable verify() is called with just the public key and no explicit `algorithms` allow-list, it honors the attacker-supplied header algorithm and successfully validates the forged signature, returning attacker-controlled claims (role:'admin'). This is the concrete, deterministic manifestation of jsonwebtoken's algorithm-confusion vulnerability class; it does not depend on jws's unconditional rejection of empty signatures (which made the earlier alg:'none' empty-signature variant ineffective as a regression test in both vulnerable and fixed versions). On the patched release this call throws (e.g. 'invalid algorithm' / signature verification failure), so exploit_succeeded is false while operation_completed remains true because the benign RS256 round-trip still succeeded.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

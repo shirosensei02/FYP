@@ -1,0 +1,14 @@
+diff --git a/minimatch.js b/minimatch.js
+--- a/minimatch.js
++++ b/minimatch.js
+@@ -244,6 +244,10 @@
+ 
+   if (typeof pattern === 'undefined') {
+     throw new TypeError('undefined pattern')
++  }
++
++  if (pattern.length >= 1024) {
++    throw new TypeError('pattern is too long')
+   }
+ 
+   if (options.nobrace ||

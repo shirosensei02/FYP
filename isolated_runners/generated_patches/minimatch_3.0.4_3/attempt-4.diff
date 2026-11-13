@@ -1,0 +1,14 @@
+diff --git a/minimatch.js b/minimatch.js
+--- a/minimatch.js
++++ b/minimatch.js
+@@ -250,6 +250,10 @@
+     !pattern.match(/\{.*\}/)) {
+     // shortcut. no need to expand.
+     return [pattern]
++  }
++
++  if (pattern.length > 10000) {
++    throw new TypeError('pattern is too long')
+   }
+ 
+   return expand(pattern)

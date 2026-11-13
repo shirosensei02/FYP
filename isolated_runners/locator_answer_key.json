@@ -1,0 +1,15 @@
+{
+  "location_fields": "path, function, and lines. Do not store diff bodies. Locations are the vulnerable statements in the listed package version.",
+  "packages": [
+    {"package_name": "shell-quote", "package_version": "1.8.3", "vulnerability_id": "CVE-2026-9277", "locations": [{"path": "quote.js", "function": "quote", "lines": [8, 9]}]},
+    {"package_name": "minimatch", "package_version": "3.0.4", "vulnerability_id": "CVE-2022-3517", "locations": [{"path": "minimatch.js", "function": "braceExpand", "lines": [249, 250]}]},
+    {"package_name": "lodash", "package_version": "4.17.11", "vulnerability_id": "CVE-2019-10744", "locations": [{"path": "lodash.js", "function": "safeGet", "lines": [6616, 6617]}]},
+    {"package_name": "dompurify", "package_version": "3.2.3", "vulnerability_id": "CVE-2025-26791", "locations": [{"path": "dist/purify.cjs.js", "function": "TMPLIT_EXPR", "lines": [199]}]},
+    {"package_name": "axios", "package_version": "1.7.3", "vulnerability_id": "CVE-2024-39338", "locations": [{"path": "lib/helpers/isAbsoluteURL.js", "function": "isAbsoluteURL", "lines": [14]}]},
+    {"package_name": "vite", "package_version": "8.0.4", "vulnerability_id": "CVE-2026-39365", "locations": [{"path": "dist/node/chunks/node.js", "function": "transformMiddleware", "lines": [24981, 24983]}]},
+    {"package_name": "drizzle-orm", "package_version": "0.45.1", "vulnerability_id": "CVE-2026-39356", "locations": [{"path": "mysql-core/dialect.js", "function": "escapeName", "lines": [56, 57]}, {"path": "pg-core/dialect.js", "function": "escapeName", "lines": [73, 74]}, {"path": "singlestore-core/dialect.js", "function": "escapeName", "lines": [55, 56]}, {"path": "sqlite-core/dialect.js", "function": "escapeName", "lines": [29, 30]}]},
+    {"package_name": "jsonwebtoken", "package_version": "8.5.1", "vulnerability_id": "CVE-2022-23540", "locations": [{"path": "verify.js", "function": "default", "lines": [109, 110]}]},
+    {"package_name": "form-data", "package_version": "4.0.3", "vulnerability_id": "CVE-2025-7783", "locations": [{"path": "lib/form_data.js", "function": "_generateBoundary", "lines": [348, 349, 350, 353]}]},
+    {"package_name": "next", "package_version": "15.2.2", "vulnerability_id": "CVE-2025-29927", "locations": [{"path": "dist/server/lib/router-server.js", "function": "initialize", "lines": [152, 153]}, {"path": "dist/server/lib/server-ipc/utils.js", "function": "filterInternalHeaders", "lines": [74, 75]}, {"path": "dist/server/web/sandbox/context.js", "function": "createModuleContext", "lines": [340, 341, 345]}]}
+  ]
+}

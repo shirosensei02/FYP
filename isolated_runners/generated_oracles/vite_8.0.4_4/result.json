@@ -1,0 +1,171 @@
+{
+  "package_name": "vite",
+  "package_version": "8.0.4",
+  "model_provider": "openrouter",
+  "model_name": "openai/gpt-5.3-codex",
+  "vulnerability_ids": [
+    "GHSA-4w7w-66w2-5vf9"
+  ],
+  "run_index": 4,
+  "run_cost": 0.24331124999999998,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "setup_or_benign_failure=benign_failed status=200 len=0",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "OPERATION_FAILED",
+    "operation_completed": false,
+    "exploit_succeeded": false,
+    "evidence": "setup_or_benign_failure=benign_failed status=200 len=0",
+    "exit_code": 0,
+    "failure_kind": "operation",
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "Starts a Vite middleware server rooted in a temporary project, verifies normal optimized-deps .map serving with a benign map, then requests a malicious .map whose sources path traverses outside deps to a secret file in /tmp. Vulnerable versions leak secret content in response (exploit_succeeded=true); fixed versions block/sanitize and do not leak (exploit_succeeded=false). Any setup/module/benign failure reports operation_completed=false.",
+    "requirements": [
+      "requires_writable_tmp"
+    ],
+    "timeout_seconds": 30,
+    "model_used": "openai/gpt-5.3-codex"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "This oracle uses Vite’s public createServer API in middleware mode and exercises the optimized-deps .map serving path directly through server.middlewares. It first performs a benign request for a normal .map file under node_modules/.vite/deps and requires that to succeed before setting operation_completed=true. It then requests a malicious .map containing a traversal source entry that points outside the deps directory into a /tmp secret file. If the malicious response body reflects traversal/leak indicators, exploit_succeeded=true; if the malicious request is blocked or throws after benign success, exploit_succeeded=false. Any setup/module/benign failure is reported with operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "This oracle starts a Vite middleware server rooted in a temporary project under /tmp, creates a benign optimized-deps sourcemap and verifies it is served successfully first, then creates a malicious optimized-deps sourcemap whose `sources` entry traverses outside the deps directory. It requests both `.map` files through Vite’s public middleware path. The exploit is considered successful when the malicious response reflects the traversal path (indicating vulnerable `.map` handling), and blocked when the malicious call throws or does not reflect traversal after benign success. Any setup/module/benign failure reports `operation_completed=false`.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle starts a Vite middleware-mode dev server rooted in a temporary project under /tmp, creates a benign optimized-deps source map and verifies it is served successfully first, then creates a malicious .map whose sources entry traverses outside node_modules/.vite/deps to a secret file in /tmp. It marks operation_completed=true only after the benign request succeeds. For the malicious request, it treats an exception as blocked and otherwise declares exploit success only when the response body contains the secret file contents (actual out-of-scope file read). It prints the required ORACLE_RESULT line with operation_completed, exploit_succeeded, and evidence.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "This oracle runs Vite in middleware mode against a temporary project under /tmp, verifies a benign optimized-deps .map request succeeds first, then requests a malicious .map whose sources entry path-traverses to a secret file outside the deps directory. It marks exploitation as successful only if the malicious response body leaks the secret marker content. Any setup/module/benign failure sets operation_completed=false.",
+      "requirements": [],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "Builds a temporary Vite project under /tmp, starts Vite middleware server via public createServer API, verifies benign .map handling by requiring successful response containing in-project source path, then requests a malicious .map whose sources entry traverses outside deps to a secret file in /tmp. Oracle reports exploit success only if secret content is reflected in malicious response after benign success.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "Starts a Vite middleware-mode dev server rooted in a temporary project, creates a benign .map in node_modules/.vite/deps that references an in-directory source, and verifies that requesting it returns expected content (proving normal operation). Then creates a malicious .map whose sources entry traverses outside deps to a secret file in /tmp and requests it. If response body contains the secret marker, exploit_succeeded=true (vulnerable). If the malicious request throws or does not leak the marker, exploit_succeeded=false (blocked). Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "Creates a temporary Vite project under /tmp and seeds node_modules/.vite/deps with a benign sourcemap and a malicious sourcemap whose source path traverses outside deps to a secret file. It starts Vite in middleware mode and invokes the public HTTP middleware path for both maps. The benign request only validates that normal handling returns a successful non-empty response, then sets operation_completed=true. The malicious request is considered a successful exploit only if the response body contains the secret marker from outside deps; exceptions after benign success are treated as blocked. Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "Creates an isolated Vite project under /tmp with .vite/deps sourcemap files. It first performs a benign request for an in-root .map file to confirm the public optimized-deps map serving path works; only then sets operation_completed=true. Next it requests a malicious .map whose sources entry traverses outside deps to a secret file in /tmp. The oracle marks exploit_succeeded=true only if response content indicates leaked secret data; exceptions on the malicious request are treated as blocked when setup/benign already succeeded. Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "Starts a Vite middleware server rooted in /tmp, verifies normal optimized-deps .map serving with a valid in-root source map, then requests a malicious .map whose sources entry traverses outside deps to a secret file in /tmp. It marks operation_completed only after the benign request succeeds and is parseable JSON. The exploit is considered successful only if the malicious response leaks the secret content (preferably via sourcesContent, with a body fallback). Exceptions during setup or benign phase produce operation_completed=false.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "Starts a Vite middleware server rooted in a temporary project, verifies normal optimized-deps .map serving with a benign map, then requests a malicious .map whose sources path traverses outside deps to a secret file in /tmp. Vulnerable versions leak secret content in response (exploit_succeeded=true); fixed versions block/sanitize and do not leak (exploit_succeeded=false). Any setup/module/benign failure reports operation_completed=false.",
+      "requirements": [
+        "requires_writable_tmp"
+      ],
+      "model_used": "openai/gpt-5.3-codex",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    }
+  ]
+}

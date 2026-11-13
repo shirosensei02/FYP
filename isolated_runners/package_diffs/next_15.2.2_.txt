@@ -1,0 +1,58 @@
+diff --git a/packages/next/src/server/lib/router-server.ts b/packages/next/src/server/lib/router-server.ts
+index 4566051db8ca..60cb6e99e7e0 100644
+--- a/packages/next/src/server/lib/router-server.ts
++++ b/packages/next/src/server/lib/router-server.ts
+@@ -166,10 +166,13 @@ export async function initialize(opts: {
+   renderServer.instance =
+     require('./render-server') as typeof import('./render-server')
+ 
+-  const allowedOrigins = [
+-    'localhost',
+-    ...(config.experimental.allowedDevOrigins || []),
+-  ]
++  const randomBytes = new Uint8Array(8)
++  crypto.getRandomValues(randomBytes)
++  const middlewareSubrequestId = Buffer.from(randomBytes).toString('hex')
++  ;(globalThis as any)[Symbol.for('@next/middleware-subrequest-id')] =
++    middlewareSubrequestId
++
++  const allowedOrigins = ['localhost', ...(config.allowedDevOrigins || [])]
+   if (opts.hostname) {
+     allowedOrigins.push(opts.hostname)
+   }
+diff --git a/packages/next/src/server/lib/server-ipc/utils.ts b/packages/next/src/server/lib/server-ipc/utils.ts
+index 09dee9577362..0b82fdb3f8df 100644
+--- a/packages/next/src/server/lib/server-ipc/utils.ts
++++ b/packages/next/src/server/lib/server-ipc/utils.ts
+@@ -57,5 +57,16 @@ export const filterInternalHeaders = (
+     if (INTERNAL_HEADERS.includes(header)) {
+       delete headers[header]
+     }
++
++    // If this request didn't origin from this session we filter
++    // out the "x-middleware-subrequest" header so we don't skip
++    // middleware incorrectly
++    if (
++      header === 'x-middleware-subrequest' &&
++      headers['x-middleware-subrequest-id'] !==
++        (globalThis as any)[Symbol.for('@next/middleware-subrequest-id')]
++    ) {
++      delete headers['x-middleware-subrequest']
++    }
+   }
+ }
+diff --git a/packages/next/src/server/web/sandbox/context.ts b/packages/next/src/server/web/sandbox/context.ts
+index 8f9d3722eb0e..0ee0fbc11dc8 100644
+--- a/packages/next/src/server/web/sandbox/context.ts
++++ b/packages/next/src/server/web/sandbox/context.ts
+@@ -373,6 +373,10 @@ Learn More: https://nextjs.org/docs/messages/edge-dynamic-code-evaluation`),
+             store.headers.get('x-middleware-subrequest') ?? ''
+           )
+         }
++        init.headers.set(
++          'x-middleware-subrequest-id',
++          (globalThis as any)[Symbol.for('@next/middleware-subrequest-id')]
++        )
+ 
+         const prevs =
+           init.headers.get(`x-middleware-subrequest`)?.split(':') || []

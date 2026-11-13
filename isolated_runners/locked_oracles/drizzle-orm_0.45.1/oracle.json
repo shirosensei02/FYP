@@ -1,0 +1,11 @@
+{
+  "package_name": "drizzle-orm",
+  "package_version": "0.45.1",
+  "source_run": "drizzle-orm_0.45.1_1",
+  "attempt_number": 4,
+  "timeout_seconds": 30,
+  "requirements": [],
+  "vulnerability_ids": [
+    "GHSA-gpj5-g38j-94v9"
+  ]
+}

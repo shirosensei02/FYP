@@ -1,0 +1,24 @@
+diff --git a/lodash.js b/lodash.js
+--- a/lodash.js
++++ b/lodash.js
+@@ -3637,6 +3637,9 @@
+      *  counterparts.
+      */
+     function baseMergeDeep(object, source, key, srcIndex, mergeFunc, customizer, stack) {
++      if (baseSetSafeKey(key)) {
++        return;
++      }
+       var objValue = safeGet(object, key),
+           srcValue = safeGet(source, key),
+           stacked = stack.get(srcValue);
+@@ -6618,6 +6621,10 @@
+       }
+ 
+       return object[key];
++    }
++
++    function baseSetSafeKey(key) {
++      return key == '__proto__' || key == 'constructor' || key == 'prototype';
+     }
+ 
+     /**

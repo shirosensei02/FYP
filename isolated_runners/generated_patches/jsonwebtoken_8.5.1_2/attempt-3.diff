@@ -1,0 +1,28 @@
+diff --git a/verify.js b/verify.js
+--- a/verify.js
++++ b/verify.js
+@@ -111,6 +111,9 @@
+     }
+ 
+     if (!options.algorithms) {
++      if (!secretOrPublicKey) {
++        return done(new JsonWebTokenError('secret or public key must be provided'));
++      }
+       options.algorithms = ~secretOrPublicKey.toString().indexOf('BEGIN CERTIFICATE') ||
+         ~secretOrPublicKey.toString().indexOf('BEGIN PUBLIC KEY') ? PUB_KEY_ALGS :
+         ~secretOrPublicKey.toString().indexOf('BEGIN RSA PUBLIC KEY') ? RSA_KEY_ALGS : HS_ALGS;
+@@ -119,6 +122,14 @@
+ 
+     if (!~options.algorithms.indexOf(decodedToken.header.alg)) {
+       return done(new JsonWebTokenError('invalid algorithm'));
++    }
++
++    if (decodedToken.header.alg === 'none' && !~(options.algorithms || []).indexOf('none')) {
++      return done(new JsonWebTokenError('invalid algorithm'));
++    }
++
++    if (decodedToken.header.alg !== 'none' && !secretOrPublicKey) {
++      return done(new JsonWebTokenError('secret or public key must be provided'));
+     }
+ 
+     var valid;

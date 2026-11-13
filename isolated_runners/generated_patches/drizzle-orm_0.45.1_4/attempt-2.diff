@@ -1,0 +1,13 @@
+diff --git a/pg-core/dialect.js b/pg-core/dialect.js
+--- a/pg-core/dialect.js
++++ b/pg-core/dialect.js
+@@ -71,6 +71,9 @@
+     });
+   }
+   escapeName(name) {
++    if (name.includes('"')) {
++      throw new Error(`Invalid identifier: contains double quote character: ${name}`);
++    }
+     return `"${name}"`;
+   }
+   escapeParam(num) {

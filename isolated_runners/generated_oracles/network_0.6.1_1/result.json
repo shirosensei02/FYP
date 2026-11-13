@@ -1,0 +1,87 @@
+{
+  "package_name": "network",
+  "package_version": "0.6.1",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-vvh2-82c7-ppfg"
+  ],
+  "run_index": 1,
+  "run_cost": 0.136508,
+  "oracle_attempt_count": 4,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "Marker file was created via injected shell command: /tmp/netpkg_1794221946167_nonsvj19wr9.txt",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "Malicious call blocked synchronously (validation threw): Invalid nic name given: eth0; touch /tmp/netpkg_1794221957025_n77p68abkbj.txt #",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 4,
+    "explanation": "The oracle requires the `network` package and first calls `mac_address_for('eth0', cb)` as a benign operation to prove the API works (regardless of whether the callback reports an error about a missing interface, as long as the call executes and invokes the callback, proving operation_completed). Only after this benign call's callback fires does the oracle proceed to the malicious call: it passes a nic_name string containing a shell metacharacter payload (`eth0; touch <marker-file> #`) to `mac_address_for`. In the vulnerable version (0.6.1), this string is concatenated directly into a shell command executed via `child_process.exec`, so the injected `touch` command runs and creates a uniquely-named marker file under /tmp. The oracle then checks for the existence of that marker file: if it exists, `exploit_succeeded` is set to true and the file is removed. In the patched version (>=0.7.0), `ensure_valid_nic` validates the nic name with a regex that rejects any non-word character and throws synchronously before `exec` is ever invoked, so the shell command never runs and the marker file is never created; the oracle catches this synchronous throw, treats it as the call being blocked, and reports exploit_succeeded=false while operation_completed remains true because the benign call already succeeded. The marker filename is unique per run via timestamp and randomness to avoid collisions. No child processes are spawned by the oracle itself, no sockets are opened, and only a file under /tmp is created and removed. The oracle only requires fs/path/os plus the target package, fulfilling the constraints, and includes a safety timeout in case the benign callback never fires to avoid hanging indefinitely while still correctly reporting operation_completed=false in that case.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 2 column 596 (char 597)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 596 (char 597)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 2 column 3470 (char 3471)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 3470 (char 3471)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 2 column 745 (char 746)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 745 (char 746)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle requires the `network` package and first calls `mac_address_for('eth0', cb)` as a benign operation to prove the API works (regardless of whether the callback reports an error about a missing interface, as long as the call executes and invokes the callback, proving operation_completed). Only after this benign call's callback fires does the oracle proceed to the malicious call: it passes a nic_name string containing a shell metacharacter payload (`eth0; touch <marker-file> #`) to `mac_address_for`. In the vulnerable version (0.6.1), this string is concatenated directly into a shell command executed via `child_process.exec`, so the injected `touch` command runs and creates a uniquely-named marker file under /tmp. The oracle then checks for the existence of that marker file: if it exists, `exploit_succeeded` is set to true and the file is removed. In the patched version (>=0.7.0), `ensure_valid_nic` validates the nic name with a regex that rejects any non-word character and throws synchronously before `exec` is ever invoked, so the shell command never runs and the marker file is never created; the oracle catches this synchronous throw, treats it as the call being blocked, and reports exploit_succeeded=false while operation_completed remains true because the benign call already succeeded. The marker filename is unique per run via timestamp and randomness to avoid collisions. No child processes are spawned by the oracle itself, no sockets are opened, and only a file under /tmp is created and removed. The oracle only requires fs/path/os plus the target package, fulfilling the constraints, and includes a safety timeout in case the benign callback never fires to avoid hanging indefinitely while still correctly reporting operation_completed=false in that case.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

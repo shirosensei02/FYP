@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import repo_graph
+import repo_graph
 from repo_graph import build_graph, retrieve_entity, search_entity, traverse_graph
 
 
@@ -205,6 +206,31 @@ def test_side_effect_import_links_the_file_when_no_entity_is_named(tmp_path):
     graph = build_graph(source)
     edges = {(edge["source"], edge["type"], edge["target"]) for edge in graph["edges"]}
     assert ("lib/a.js", "import", "lib/b.js") in edges
+
+
+def test_retrieve_cursor_appears_only_when_the_body_exceeds_the_prompt_page(tmp_path):
+    source = tmp_path / "pkg"
+    source.mkdir()
+    (source / "short.js").write_text("function tiny() {\n  return 1;\n}\n", encoding="utf-8")
+    filler = "x" * (repo_graph.RETRIEVE_PAGE_CHARS + 80)
+    (source / "long.js").write_text(
+        f"function huge() {{\n  return '{filler}';\n}}\n",
+        encoding="utf-8",
+    )
+    graph = build_graph(source)
+
+    short = retrieve_entity(graph, ["short.js:tiny"])
+    assert "cursor" not in short["entities"][0]
+    assert "stopped_at_line" not in short["entities"][0]
+    assert "return 1" in short["entities"][0]["code"]
+
+    first = retrieve_entity(graph, ["long.js:huge"])
+    assert first["entities"][0]["cursor"] == repo_graph.RETRIEVE_PAGE_CHARS
+    assert first["entities"][0]["stopped_at_line"] >= 1
+    assert len(first["entities"][0]["code"]) == repo_graph.RETRIEVE_PAGE_CHARS
+    second = retrieve_entity(graph, ["long.js:huge"], first["entities"][0]["cursor"])
+    assert "cursor" not in second["entities"][0]
+    assert second["entities"][0]["code"].endswith("';\n}")
 
 
 def test_regex_fallback_imports_a_class_and_records_instantiation(tmp_path, monkeypatch):

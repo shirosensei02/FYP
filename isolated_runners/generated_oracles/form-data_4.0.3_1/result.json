@@ -1,0 +1,54 @@
+{
+  "package_name": "form-data",
+  "package_version": "4.0.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-fjxv-7rqg-78g4"
+  ],
+  "run_index": 1,
+  "run_cost": 0.033428,
+  "oracle_attempt_count": 1,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "Boundary generation is fully deterministic when Math.random() is seeded/fixed (all 5 generated boundaries identical: --------------------------111111111111111111111111), confirming use of insecure Math.random() for boundary selection (CWE-338).",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "Math.random() was not invoked during boundary generation (0 calls observed); package appears to use a cryptographically secure random source (e.g., crypto.randomBytes), consistent with the patched version.",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 1,
+    "explanation": "The oracle first proves the benign public API works: it creates a FormData instance, appends a text field and a file stream, calls getBoundary() and getHeaders(), and verifies the boundary string is well-formed and embedded in the Content-Type header. Only after this benign check succeeds does it proceed to the security probe. To detect the insecure-RNG vulnerability (form-data < 4.0.4 generates multipart boundaries using Math.random(), which is not cryptographically secure and is predictable/seedable, whereas the patched version uses Node's crypto module), the oracle temporarily overrides the global Math.random with a constant-returning function and generates several FormData boundaries. If the package relies on Math.random() internally, overriding it causes every generated boundary to become identical (fully deterministic/predictable), demonstrating the vulnerability (exploit_succeeded=true). If the package uses a cryptographically secure source such as crypto.randomBytes (the fix), Math.random() is either never called or its being fixed has no effect on the boundary's unpredictability, so boundaries remain non-deterministic/varied, and exploit_succeeded=false. The original Math.random is restored immediately after the probe. No child processes, network sockets, or filesystem writes outside /tmp are used; a single temp file is created and removed within /tmp using a unique marker. Any exception during setup or the benign phase causes operation_completed=false, while an exception confined to the exploit probe is treated as blocked (exploit_succeeded=false) with operation_completed=true, per the specified semantics.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves the benign public API works: it creates a FormData instance, appends a text field and a file stream, calls getBoundary() and getHeaders(), and verifies the boundary string is well-formed and embedded in the Content-Type header. Only after this benign check succeeds does it proceed to the security probe. To detect the insecure-RNG vulnerability (form-data < 4.0.4 generates multipart boundaries using Math.random(), which is not cryptographically secure and is predictable/seedable, whereas the patched version uses Node's crypto module), the oracle temporarily overrides the global Math.random with a constant-returning function and generates several FormData boundaries. If the package relies on Math.random() internally, overriding it causes every generated boundary to become identical (fully deterministic/predictable), demonstrating the vulnerability (exploit_succeeded=true). If the package uses a cryptographically secure source such as crypto.randomBytes (the fix), Math.random() is either never called or its being fixed has no effect on the boundary's unpredictability, so boundaries remain non-deterministic/varied, and exploit_succeeded=false. The original Math.random is restored immediately after the probe. No child processes, network sockets, or filesystem writes outside /tmp are used; a single temp file is created and removed within /tmp using a unique marker. Any exception during setup or the benign phase causes operation_completed=false, while an exception confined to the exploit probe is treated as blocked (exploit_succeeded=false) with operation_completed=true, per the specified semantics.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

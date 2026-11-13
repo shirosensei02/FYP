@@ -1,0 +1,16 @@
+diff --git a/verify.js b/verify.js
+--- a/verify.js
++++ b/verify.js
+@@ -106,6 +106,12 @@
+       return done(new JsonWebTokenError('secret or public key must be provided'));
+     }
+ 
++    if (!hasSignature && !secretOrPublicKey) {
++      if (!options.algorithms || !~options.algorithms.indexOf('none')) {
++        return done(new JsonWebTokenError('secret or public key must be provided'));
++      }
++    }
++
+     if (!hasSignature && !options.algorithms) {
+       options.algorithms = ['none'];
+     }

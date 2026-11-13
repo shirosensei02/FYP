@@ -1,0 +1,52 @@
+diff --git a/pg-core/dialect.js b/pg-core/dialect.js
+--- a/pg-core/dialect.js
++++ b/pg-core/dialect.js
+@@ -71,6 +71,9 @@
+     });
+   }
+   escapeName(name) {
++    if (name.includes('"')) {
++      throw new Error(`Invalid identifier: contains double quote character: ${JSON.stringify(name)}`);
++    }
+     return `"${name}"`;
+   }
+   escapeParam(num) {
+diff --git a/sqlite-core/dialect.js b/sqlite-core/dialect.js
+--- a/sqlite-core/dialect.js
++++ b/sqlite-core/dialect.js
+@@ -27,6 +27,9 @@
+     this.casing = new CasingCache(config?.casing);
+   }
+   escapeName(name) {
++    if (name.includes('"')) {
++      throw new Error(`Invalid identifier: contains double quote character: ${JSON.stringify(name)}`);
++    }
+     return `"${name}"`;
+   }
+   escapeParam(_num) {
+diff --git a/mysql-core/dialect.js b/mysql-core/dialect.js
+--- a/mysql-core/dialect.js
++++ b/mysql-core/dialect.js
+@@ -54,6 +54,9 @@
+     });
+   }
+   escapeName(name) {
++    if (name.includes('`')) {
++      throw new Error(`Invalid identifier: contains backtick character: ${JSON.stringify(name)}`);
++    }
+     return `\`${name}\``;
+   }
+   escapeParam(_num) {
+diff --git a/singlestore-core/dialect.js b/singlestore-core/dialect.js
+--- a/singlestore-core/dialect.js
++++ b/singlestore-core/dialect.js
+@@ -53,6 +53,9 @@
+     });
+   }
+   escapeName(name) {
++    if (name.includes('`')) {
++      throw new Error(`Invalid identifier: contains backtick character: ${JSON.stringify(name)}`);
++    }
+     return `\`${name}\``;
+   }
+   escapeParam(_num) {

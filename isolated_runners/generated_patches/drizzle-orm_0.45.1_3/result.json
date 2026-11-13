@@ -1,0 +1,66 @@
+{
+  "package_name": "drizzle-orm",
+  "package_version": "0.45.1",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-gpj5-g38j-94v9"
+  ],
+  "run_index": 3,
+  "run_cost": 0.151314,
+  "patch_attempt_count": 5,
+  "success_loop": null,
+  "validation_status": "SECURITY_FAIL",
+  "validation_reason": "The accepted exploit still succeeds against the generated patch.",
+  "locked_oracle": {
+    "source_run": "drizzle-orm_0.45.1_1",
+    "attempt_number": 4
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Embedded quote in identifier was NOT escaped, breaking out of quoting; compiled SQL: SELECT \"name\" ; DROP TABLE users; --\" FROM \"users\" WHERE \"users\".\"id\" = 1"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Embedded quote in identifier was NOT escaped, breaking out of quoting; compiled SQL: SELECT \"name\" ; DROP TABLE users; --\" FROM \"users\" WHERE \"users\".\"id\" = 1"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Embedded quote in identifier was NOT escaped, breaking out of quoting; compiled SQL: SELECT \"name\" ; DROP TABLE users; --\" FROM \"users\" WHERE \"users\".\"id\" = 1"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Embedded quote in identifier was NOT escaped, breaking out of quoting; compiled SQL: SELECT \"name\" ; DROP TABLE users; --\" FROM \"users\" WHERE \"users\".\"id\" = 1"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Embedded quote in identifier was NOT escaped, breaking out of quoting; compiled SQL: SELECT \"name\" ; DROP TABLE users; --\" FROM \"users\" WHERE \"users\".\"id\" = 1"
+    }
+  ]
+}

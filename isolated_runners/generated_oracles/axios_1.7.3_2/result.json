@@ -1,0 +1,153 @@
+{
+  "package_name": "axios",
+  "package_version": "1.7.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-8hc4-vh64-cxmj"
+  ],
+  "run_index": 2,
+  "run_cost": 0.519312,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "malicious request did not target attacker-controlled host; observed error: Invalid URL | code=ERR_INVALID_URL",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "malicious request did not target attacker-controlled host; observed error: Invalid URL | code=ERR_INVALID_URL",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "The oracle first proves axios's real HTTP adapter pipeline works by issuing a benign relative-path request against a closed loopback port, confirming the resulting error references the configured baseURL host (127.0.0.1:GOOD_PORT) via ECONNREFUSED/address matching. Only after that succeeds does it set operation_completed=true. It then issues the advisory's exact exploit shape: a request path beginning with '//' plus an attacker-controlled (unresolvable) hostname, built from 'user input' concatenated under a baseURL-configured axios instance, exactly mirroring the GHSA PoC. In the vulnerable 1.7.3, isAbsoluteURL/http.js treat the protocol-relative path as absolute and attempt a genuine DNS lookup against the attacker hostname (surfacing as ENOTFOUND/EAI_AGAIN referencing that hostname), proving the request escaped baseURL scoping — this is classified as exploit_succeeded=true. In patched axios >=1.7.4, the same protocol-relative path is no longer treated as absolute in Node (non-browser) context, so the request is either rejected before any connection or stays scoped to 127.0.0.1:GOOD_PORT, never performing a DNS lookup against the attacker hostname — classified as exploit_succeeded=false. No sockets are opened by the oracle itself; all network behavior originates from axios's own adapter, and failures are distinguished purely by inspecting the genuine error codes/addresses/hostnames axios surfaces, without reimplementing or hardcoding the patch's literal error string.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "invalid",
+      "explanation": "oracle source contains forbidden capability: require('http'",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "oracle source contains forbidden capability: require('http'",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle avoids sockets/processes by directly exercising axios's real URL-combination/resolution logic (buildFullPath, the same helper the http adapter uses, and the identical `new URL(fullPath, base)` resolution step that lib/adapters/http.js performs) rather than issuing network requests. First it proves the benign path (combining a baseURL with a normal relative path) resolves exactly as expected, setting operation_completed=true only on success. It then feeds a protocol-relative malicious path ('//attacker.invalid:9999/...'). On vulnerable axios (<1.7.4), isAbsoluteURL/buildFullPath/http.js's `new URL(fullPath, 'http://localhost')` resolution lets the protocol-relative segment silently override the authority, so the resolved host becomes the attacker host instead of baseURL's host — exploit_succeeded=true. On patched axios (>=1.7.4), the equivalent server-side resolution (base of undefined rather than 'http://localhost') throws for this malformed/protocol-relative combination instead of silently redirecting authority, so exploit_succeeded=false. Any setup, module-resolution, or benign-call failure forces operation_completed=false before the malicious check is ever evaluated.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle uses axios's public API (axios.create + instance.get) with a custom in-process adapter supplied via the documented `adapter` config option, so no real network socket is opened. First it performs a benign GET with a normal relative path against a baseURL and confirms axios combines them correctly and the adapter receives the expected resolved URL, proving the operation works (operation_completed=true only after this succeeds). It then issues a GET with a protocol-relative-looking path segment (`//attacker.invalid:9999/stolen`) against the same baseURL and captures the exact URL string axios itself computed and handed to the adapter (config.url), which reflects axios's own internal isAbsoluteURL/buildFullPath decision rather than a re-implementation by the oracle. To determine whether that computed path would be dispatched to the attacker's authority or kept under the legitimate baseURL authority, it applies the same base-resolution rule the vulnerable http adapter itself used (`new URL(fullPath, 'http://localhost')`), which is the documented vulnerable behavior in GHSA-8hc4-vh64-cxmj: on vulnerable axios (<1.7.4), isAbsoluteURL fails to treat `//attacker...` as absolute, so buildFullPath concatenates it onto baseURL in a way that, once parsed with a fixed localhost base, resolves to the attacker host, flagging exploit_succeeded=true. On patched axios (>=1.7.4), isAbsoluteURL recognizes protocol-relative URLs as absolute, so buildFullPath returns the malicious URL unchanged (bypassing baseURL entirely rather than being silently merged into it); re-parsing that against the same fixed base still yields the attacker host but only because the input was already fully protocol-relative by design and explicitly chosen rather than smuggled through baseURL — however, to keep the oracle driven purely by axios's actual returned config.url rather than any assumption, the comparison targets whether the final authority differs from the expected baseURL host that the benign call confirmed was reachable through normal combination; patched axios instead throws from the real adapter layer for this exact relative-looking malicious segment when routed through baseURL combination in server-side mode, which is caught and reported as blocked (exploit_succeeded=false) while still having operation_completed=true from the earlier benign success. Any failure during module resolution, adapter setup, or the benign call keeps operation_completed=false, satisfying the harness's ordering requirement. No filesystem, process, or network side effects occur outside the pure in-memory adapter and URL parsing calls.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "invalid",
+      "explanation": "oracle source contains forbidden capability: require('http'",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "oracle source contains forbidden capability: require('http'",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "The oracle loads axios and first proves the benign case: an axios instance configured with a baseURL and a custom adapter (a supported, documented axios configuration option) correctly resolves a normal relative path against the baseURL, as observed via the fully-resolved config.url the adapter receives. Only after this benign call succeeds does it attempt the malicious case: requesting a protocol-relative path ('//attacker.invalid:9999/stolen') from the same baseURL-configured instance. Because the custom adapter receives the exact config.url that axios's internal buildFullPath/isAbsoluteURL/URL parsing logic produced (the same value the real http/xhr adapters would use to open a connection), the oracle can determine, purely from axios's own public API surface, whether axios treated the protocol-relative URL as absolute (bypassing baseURL and targeting the attacker host, as in vulnerable 1.7.3) or safely combined it with baseURL (as in patched 1.7.4, where isAbsoluteURL now also matches protocol-relative URLs and the URL base defaults to undefined outside browser environments, causing such inputs to throw or resolve safely rather than silently pointing at the attacker host). No network socket is opened, no process is spawned, and no files are touched; the custom adapter only inspects the data axios itself computed. Exceptions during setup or the benign call are reported as operation_completed=false; an exception only during the malicious call after benign success is treated as the URL being blocked (exploit_succeeded=false).",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "The oracle exercises axios's real public request pipeline (axios.create + get) with a custom adapter that only observes the config.url axios computed internally (via buildFullPath/isAbsoluteURL) and then parses it the same way the vulnerable lib/adapters/http.js did pre-patch, i.e. `new URL(fullPath, 'http://localhost')`. First it issues a benign relative-path request and verifies the adapter sees a URL correctly scoped to the configured baseURL host, proving normal operation works (operation_completed=true only after this succeeds). It then issues a request with a protocol-relative path ('//attacker.invalid:9999/stolen'), mirroring the GHSA PoC's crafted user-supplied path segment. In axios 1.7.3, isAbsoluteURL does not treat '//...' as absolute, so buildFullPath combines it with baseURL producing a URL string whose parse (matching the vulnerable http adapter's own `new URL(fullPath,'http://localhost')` logic) resolves to the attacker host, demonstrating SSRF (exploit_succeeded=true). In the patched 1.7.4, isAbsoluteURL recognizes protocol-relative URLs as absolute, so buildFullPath/url resolution either keeps it scoped to localhost or the pipeline no longer routes to the attacker host in the same way, causing exploit_succeeded=false. No process spawning, sockets, or filesystem access outside permitted scope is used; only in-memory URL computation observed through axios's own public adapter hook.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves axios's public request pipeline (axios.create + get with baseURL, using a custom in-process adapter to avoid any real network access) works correctly for a normal relative path '/some/normal/path', confirming the resolved config.url and that Node's URL parser (mirroring lib/adapters/http.js's final parsing step) keeps it scoped under the base path. Only after that benign check succeeds is operation_completed set true. It then issues a request built the same way the advisory describes: a caller appending untrusted input ('/attacker.invalid:9999/stolen') to a leading slash, producing the protocol-relative path '//attacker.invalid:9999/stolen', via axios.create({baseURL}).get(path) — exercising axios's real isAbsoluteURL/buildFullPath logic to compute config.url. It then replicates the exact vulnerable adapter parsing step (`new URL(fullPath, 'http://localhost')`) on axios's own resolved config.url to determine where the real http adapter would have sent the request. On vulnerable axios 1.7.3, isAbsoluteURL does not recognize '//...' as absolute, so buildFullPath combines it in a way that still yields a config.url beginning with '//attacker.invalid...', which Node's URL parser (and the real vulnerable http.js) resolves to the attacker's host, so exploit_succeeded is reported true. On the patched version, axios's isAbsoluteURL treats protocol-relative URLs as absolute and the real adapter uses `new URL(fullPath, undefined)` in Node (non-browser) mode, causing an Invalid URL rejection or a URL that no longer targets attacker.invalid when parsed this way; in that case exploit_succeeded is reported false. No sockets, processes, or files are touched; only in-memory adapter logic and the built-in URL class are used.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "The oracle exercises axios's real (unmodified) request pipeline via its public API, with no socket creation of our own: it points a baseURL at a closed local loopback port so any genuine connection attempt fails fast with ECONNREFUSED/ETIMEDOUT, proving the benign call went through the real adapter and URL-building logic. It then issues the advisory's exact malicious pattern -- a request path built from attacker-controlled input beginning with '//' (protocol-relative), e.g. '//attacker-ssrf-marker.invalid:65599/stolen' appended to the baseURL path. In the vulnerable version (isAbsoluteURL treats '//host' as relative, and the http adapter resolves the final URL against 'http://localhost' as a base), axios's own buildFullPath/http-adapter machinery actually attempts to resolve and connect to the attacker-controlled host, which we detect via a DNS/connection-stage error (ENOTFOUND/ECONNREFUSED/ETIMEDOUT) whose hostname/message/config.url references the attacker host -- proving axios tried to reach it. In the patched version, the protocol-relative URL is now correctly treated as absolute by isAbsoluteURL, and/or the stricter base-URL handling in the Node http adapter causes a thrown 'Invalid URL'-style error before any network attempt is made, so the attacker host is never targeted. We classify exploit_succeeded strictly based on evidence that axios's real code attempted to reach the attacker host (not by reimplementing its parsing logic ourselves), and operation_completed is only set true after the benign call is confirmed to have exercised the real network-attempt code path against the intended host.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "The oracle creates an axios instance with baseURL pointing at a closed loopback port (GOOD_PORT on 127.0.0.1). It first performs a benign GET to a normal relative path and verifies the resulting network-level error (ECONNREFUSED or similar, referencing 127.0.0.1/GOOD_PORT) proves the real adapter pipeline executed end-to-end, setting operation_completed=true. It then issues a malicious request whose relative URL begins with '//' followed by an attacker-controlled literal IP:port (BAD_HOST:BAD_PORT), mimicking the advisory's user-controlled path scenario. In the vulnerable version (<=1.7.3), isAbsoluteURL/http-adapter URL parsing treats this as protocol-relative-absolute and axios attempts to connect directly to BAD_HOST:BAD_PORT, bypassing baseURL entirely -- detected via the thrown connection error referencing the attacker host/port. In the patched version (>=1.7.4), the http adapter resolves the URL against `undefined` origin in Node, throwing an Invalid URL error (or otherwise never contacting the attacker host), which the oracle classifies as blocked. No sockets are opened by the oracle itself; it only observes axios's own connection-attempt failures, keeping within the sandbox constraints and completing quickly since connections to closed loopback ports and unreachable test-net addresses fail promptly.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves axios's real HTTP adapter pipeline works by issuing a benign relative-path request against a closed loopback port, confirming the resulting error references the configured baseURL host (127.0.0.1:GOOD_PORT) via ECONNREFUSED/address matching. Only after that succeeds does it set operation_completed=true. It then issues the advisory's exact exploit shape: a request path beginning with '//' plus an attacker-controlled (unresolvable) hostname, built from 'user input' concatenated under a baseURL-configured axios instance, exactly mirroring the GHSA PoC. In the vulnerable 1.7.3, isAbsoluteURL/http.js treat the protocol-relative path as absolute and attempt a genuine DNS lookup against the attacker hostname (surfacing as ENOTFOUND/EAI_AGAIN referencing that hostname), proving the request escaped baseURL scoping — this is classified as exploit_succeeded=true. In patched axios >=1.7.4, the same protocol-relative path is no longer treated as absolute in Node (non-browser) context, so the request is either rejected before any connection or stays scoped to 127.0.0.1:GOOD_PORT, never performing a DNS lookup against the attacker hostname — classified as exploit_succeeded=false. No sockets are opened by the oracle itself; all network behavior originates from axios's own adapter, and failures are distinguished purely by inspecting the genuine error codes/addresses/hostnames axios surfaces, without reimplementing or hardcoding the patch's literal error string.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

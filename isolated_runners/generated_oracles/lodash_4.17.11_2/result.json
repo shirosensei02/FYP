@@ -1,0 +1,54 @@
+{
+  "package_name": "lodash",
+  "package_version": "4.17.11",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-jf85-cpcp-j695"
+  ],
+  "run_index": 2,
+  "run_cost": 0.022032,
+  "oracle_attempt_count": 1,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "Object.prototype.polluted_marker_1794488918220 was set to true via defaultsDeep({constructor:{prototype:{...}}}) payload; new plain objects now inherit it",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "defaultsDeep call with malicious payload completed without throwing, and Object.prototype.polluted_marker_1794488927102 remains undefined; prototype pollution did not occur",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 1,
+    "explanation": "The oracle loads lodash from /consumer's node_modules and first performs a benign defaultsDeep merge of two plain objects to confirm the API functions correctly (setting operation_completed=true only after this succeeds). It then attempts the classic CVE-2019-10744 prototype pollution payload `{constructor:{prototype:{<marker>:true}}}` passed as a source to defaultsDeep against an empty target object. After the call, it checks whether Object.prototype now has the unique marker property (both directly and via a freshly created plain object), which indicates successful prototype pollution (exploit_succeeded=true) on vulnerable lodash 4.17.11. On the patched version (4.17.12+), defaultsDeep no longer propagates the constructor/prototype keys, so Object.prototype remains unpolluted regardless of whether the call throws or silently no-ops, yielding exploit_succeeded=false while operation_completed stays true since the benign call already succeeded. Any failure during setup, module resolution, or the benign call is reported as operation_completed=false, and the global pollution is cleaned up afterward to avoid cross-test contamination. No Git, filesystem writes, or network/process operations are used.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle loads lodash from /consumer's node_modules and first performs a benign defaultsDeep merge of two plain objects to confirm the API functions correctly (setting operation_completed=true only after this succeeds). It then attempts the classic CVE-2019-10744 prototype pollution payload `{constructor:{prototype:{<marker>:true}}}` passed as a source to defaultsDeep against an empty target object. After the call, it checks whether Object.prototype now has the unique marker property (both directly and via a freshly created plain object), which indicates successful prototype pollution (exploit_succeeded=true) on vulnerable lodash 4.17.11. On the patched version (4.17.12+), defaultsDeep no longer propagates the constructor/prototype keys, so Object.prototype remains unpolluted regardless of whether the call throws or silently no-ops, yielding exploit_succeeded=false while operation_completed stays true since the benign call already succeeded. Any failure during setup, module resolution, or the benign call is reported as operation_completed=false, and the global pollution is cleaned up afterward to avoid cross-test contamination. No Git, filesystem writes, or network/process operations are used.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

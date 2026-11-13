@@ -1,0 +1,76 @@
+{
+  "package_name": "drizzle-orm",
+  "package_version": "0.45.1",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-gpj5-g38j-94v9"
+  ],
+  "run_index": 3,
+  "run_cost": 0.283852,
+  "oracle_attempt_count": 3,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "Identifier quoting was broken: malicious table name escaped its quoted boundary producing injectable raw SQL: SELECT * FROM \"users\" WHERE 1=1; --\"",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "Identifier quotes were properly escaped/doubled; injected payload remained confined inside a single identifier token: SELECT * FROM \"users\"\" WHERE 1=1; --\"",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 3,
+    "explanation": "The oracle uses drizzle-orm's SQLite-core dialect directly (no native driver required) to render a SELECT query against a table whose name is attacker-controlled. First it builds a benign table 'users_benign' and confirms the generated SQL string contains the properly double-quoted identifier \"users_benign\", proving the dialect's identifier-rendering pipeline works (operation_completed=true only after this succeeds). It then builds a second table whose name contains an embedded double-quote followed by SQL injection payload text ('users\" WHERE 1=1; --') and renders the same SELECT through dialect.sqlToQuery. In the vulnerable 0.45.1 version, the identifier-escaping routine fails to double internal quote characters, so the malicious name's closing quote prematurely terminates the quoted identifier, and the ' WHERE 1=1; --' tail appears as raw, unquoted SQL text appended directly after the identifier — detectable via the naive (non-doubled) quoting pattern and the bare 'WHERE 1=1' regex match outside of a doubled-quote context. In the patched version, the identifier escaper doubles the embedded quote, producing a single safely-quoted token (checked via the safeForm string), so the injected text never breaks out of the identifier and exploit_succeeded is false. This directly exercises a real public API path (sqliteTable + SQLiteSyncDialect.sqlToQuery) that renders identifiers, avoids requiring a native SQLite binding, needs no filesystem/network/process access beyond a scratch tmp dir, and distinguishes a genuine SQL-identifier-escaping bug from an unrelated crash because any setup/benign failure is reported as operation_completed=false rather than as a blocked exploit.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "explanation": "The oracle loads drizzle-orm's public `sql` tagged-template export and its `sql.identifier()` helper, which is the public API surface responsible for safely quoting SQL identifiers embedded in raw SQL fragments (the surface implicated by the reported identifier-escaping SQL injection). It first proves the API works benignly by building `SELECT * FROM ${sql.identifier('users')}` and checking the rendered SQL text contains the expected `\"users\"` quoted identifier — only after this succeeds does it mark operation_completed=true. It then supplies a malicious identifier string containing an embedded double-quote followed by a SQL injection payload (`users\" WHERE 1=1; --`). In the vulnerable 0.45.1 version, the identifier-quoting code does not double internal double-quote characters, so the rendered SQL contains the raw payload breaking out of the identifier's quoted boundary (e.g. `\"users\" WHERE 1=1; --\"`), which the oracle detects by checking for the unescaped breakout pattern/naive wrap. In the patched version, internal quotes are escaped by doubling them, so the rendered SQL keeps the entire malicious string confined inside a single quoted identifier token (`\"users\"\" WHERE 1=1; --\"`), and the oracle's safe-form check matches that, yielding exploit_succeeded=false. The whole check is purely in-process string analysis of generated SQL text — no database connection, process spawn, or network/file access outside /tmp is used.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle requires the package and locates its identifier-escaping entry point. drizzle-orm's `sql` tagged template function exposes `sql.identifier` (or, in some builds, a `name`/identifier wrapper reachable via the `drizzle-orm/sql` subpath) that is used internally whenever a table or column name needs to be safely quoted into generated SQL text (e.g. during query building for pgTable/mysqlTable/sqliteTable definitions). The benign call renders `sql.identifier('users')` inside a `sql` template and confirms the library produces the expected `\"users\"` quoted identifier, proving the API is reachable and functional. Only after that success does operation_completed become true. The malicious call feeds an identifier string containing an embedded double-quote followed by SQL control syntax (`users\" WHERE 1=1; --`). In the vulnerable version (0.45.1), the quoting logic fails to double internal double-quote characters when wrapping the identifier, so the rendered SQL contains an early-closing quote immediately followed by injected raw SQL keywords — a classic identifier-based SQL injection breakout, which the oracle detects by checking for the naive unescaped wrap or a bare `\" WHERE 1=1` pattern. In the patched version, the same identifier is rendered with the internal quote doubled (`\"\"`), keeping the entire malicious string safely confined inside one identifier token, so no breakout pattern appears and exploit_succeeded is false. The check is purely in-process string analysis of generated SQL text — no database connection, process spawn, or filesystem/network dependency is required beyond a throwaway tmp directory used for marker uniqueness.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=OPERATION_FAILED and fixed=OPERATION_FAILED.",
+      "vulnerable_status": "OPERATION_FAILED",
+      "fixed_status": "OPERATION_FAILED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle uses drizzle-orm's SQLite-core dialect directly (no native driver required) to render a SELECT query against a table whose name is attacker-controlled. First it builds a benign table 'users_benign' and confirms the generated SQL string contains the properly double-quoted identifier \"users_benign\", proving the dialect's identifier-rendering pipeline works (operation_completed=true only after this succeeds). It then builds a second table whose name contains an embedded double-quote followed by SQL injection payload text ('users\" WHERE 1=1; --') and renders the same SELECT through dialect.sqlToQuery. In the vulnerable 0.45.1 version, the identifier-escaping routine fails to double internal quote characters, so the malicious name's closing quote prematurely terminates the quoted identifier, and the ' WHERE 1=1; --' tail appears as raw, unquoted SQL text appended directly after the identifier — detectable via the naive (non-doubled) quoting pattern and the bare 'WHERE 1=1' regex match outside of a doubled-quote context. In the patched version, the identifier escaper doubles the embedded quote, producing a single safely-quoted token (checked via the safeForm string), so the injected text never breaks out of the identifier and exploit_succeeded is false. This directly exercises a real public API path (sqliteTable + SQLiteSyncDialect.sqlToQuery) that renders identifiers, avoids requiring a native SQLite binding, needs no filesystem/network/process access beyond a scratch tmp dir, and distinguishes a genuine SQL-identifier-escaping bug from an unrelated crash because any setup/benign failure is reported as operation_completed=false rather than as a blocked exploit.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

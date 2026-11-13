@@ -89,6 +89,60 @@ def _step(msg: str) -> None:
     logger.info(msg)
 
 
+def _git_apply_env() -> dict[str, str]:
+    """Apply a package diff without discovering this repository.
+
+    The patched package lives under the project work tree. ``git apply`` then
+    resolves paths against the repository root, prints ``Skipped patch``, and
+    exits 0 without changing the package. Pointing ``GIT_DIR`` at the null
+    device makes Git treat the workspace as a plain directory.
+    """
+    env = os.environ.copy()
+    env["GIT_DIR"] = os.devnull
+    env.pop("GIT_WORK_TREE", None)
+    env.pop("GIT_PREFIX", None)
+    return env
+
+
+def _diff_target_paths(diff_text: str) -> list[str]:
+    paths: list[str] = []
+    for line in diff_text.splitlines():
+        if not line.startswith("+++ "):
+            continue
+        path = line[4:].strip().split("\t", 1)[0]
+        if path.startswith("b/"):
+            path = path[2:]
+        if path and path != "/dev/null":
+            paths.append(path.replace("\\", "/"))
+    return paths
+
+
+def _path_snapshot(work_dir: Path, paths: list[str]) -> dict[str, bytes | None]:
+    snapshot: dict[str, bytes | None] = {}
+    for relative in paths:
+        target = work_dir.joinpath(*relative.split("/"))
+        snapshot[relative] = target.read_bytes() if target.is_file() else None
+    return snapshot
+
+
+def _git_apply(diff_file: Path, work_dir: Path) -> tuple[int, str, str]:
+    """Return a non-zero code when Git does not change the named package files."""
+    diff_text = diff_file.read_text(encoding="utf-8")
+    targets = _diff_target_paths(diff_text)
+    before = _path_snapshot(work_dir, targets)
+    rc, out, err = _run(
+        ["git", "apply", "--ignore-whitespace", "--unsafe-paths", "--recount", str(diff_file)],
+        cwd=work_dir,
+        timeout=30,
+        env=_git_apply_env(),
+    )
+    after = _path_snapshot(work_dir, targets)
+    unchanged = bool(targets) and before == after
+    if rc == 0 and (unchanged or "Skipped patch" in f"{out}\n{err}"):
+        return 1, out, f"{err}\ngit apply did not modify the package.".strip()
+    return rc, out, err
+
+
 def _run(
     cmd: list[str],
     *,
@@ -96,6 +150,7 @@ def _run(
     timeout: int = 60,
     capture: bool = True,
     stream: bool = False,
+    env: dict[str, str] | None = None,
 ) -> tuple[int, str, str]:
     """
     Run *cmd* as a subprocess.
@@ -121,6 +176,7 @@ def _run(
         proc = subprocess.Popen(
             cmd,
             cwd=str(cwd) if cwd else None,
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -306,11 +362,7 @@ def _write_patched_package(
         # model can get the content exactly right but miscount by one, which
         # `patch` rejects outright. `git apply --recount` recomputes those
         # counts from the actual +/-/context lines instead of trusting them.
-        git_rc, git_out, git_err = _run(
-             ["git", "apply", "--ignore-whitespace", "--unsafe-paths", "--recount", str(diff_file)],
-            cwd=work_dir,
-            timeout=30,
-        )
+        git_rc, git_out, git_err = _git_apply(diff_file, work_dir)
         if git_rc != 0:
             logger.warning("git apply --recount returned %d; trying hunk-by-hunk.\n%s", git_rc, git_err)
             print(f"    WARNING  git apply --recount exited {git_rc}: {git_err.strip()}", flush=True)
@@ -327,11 +379,7 @@ def _write_patched_package(
             for idx, hunk_diff in enumerate(hunks, start=1):
                 hunk_file = work_dir / f"_hunk_{idx}.diff"
                 hunk_file.write_text(hunk_diff, encoding="utf-8")
-                h_rc, h_out, h_err = _run(
-                    ["git", "apply", "--ignore-whitespace", "--unsafe-paths", "--recount", str(hunk_file)],
-                    cwd=work_dir,
-                    timeout=30,
-                )
+                h_rc, h_out, h_err = _git_apply(hunk_file, work_dir)
                 hunk_file.unlink(missing_ok=True)
                 if h_rc != 0:
                     logger.warning(

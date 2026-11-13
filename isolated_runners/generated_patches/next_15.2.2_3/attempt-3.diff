@@ -1,0 +1,14 @@
+diff --git a/dist/server/lib/server-ipc/utils.js b/dist/server/lib/server-ipc/utils.js
+--- a/dist/server/lib/server-ipc/utils.js
++++ b/dist/server/lib/server-ipc/utils.js
+@@ -75,6 +75,10 @@
+             delete headers[header];
+         }
+     }
++    // CVE-2025-29927: never allow a client-supplied x-middleware-subrequest
++    // header through, as it is used internally to bypass middleware
++    // (and therefore any authorization performed in middleware).
++    delete headers['x-middleware-subrequest'];
+ };
+ 
+ //# sourceMappingURL=utils.js.map

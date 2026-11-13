@@ -1,0 +1,153 @@
+{
+  "package_name": "vite",
+  "package_version": "8.0.4",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-4w7w-66w2-5vf9"
+  ],
+  "run_index": 1,
+  "run_cost": 0.451452,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "Malicious .map traversal request was blocked/rejected: Failed to load url /node_modules/.vite/deps/../../secret_outside/secret.txt.map (resolved id: /node_modules/.vite/deps/../../secret_outside/secret.txt.map). Does the file exist?",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "Malicious .map traversal request was blocked/rejected: Failed to load url /node_modules/.vite/deps/../../secret_outside/secret.txt.map (resolved id: /node_modules/.vite/deps/../../secret_outside/secret.txt.map). Does the file exist?",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "The oracle creates an isolated temp project with a node_modules/.vite/deps directory (the optimized-deps cache location) plus a legitimate dep file and its .map sourcemap, and a secret file placed outside the deps directory to represent data that must remain unreachable. It starts a real Vite dev server in middleware mode against this fixture root and first performs a benign transformRequest against the legitimate optimized-dep map URL to prove normal operation succeeds (operation_completed only becomes true after this). It then issues a second transformRequest using a URL-encoded path-traversal sequence embedded in the requested `.map` filename, mirroring the CVE's `.map` handling flaw in the optimizer, and inspects whether the returned transform result contains the secret marker content from the out-of-bounds file. If the secret content is present in the response, exploit_succeeded=true (vulnerable); if the request is rejected/throws or simply does not return the secret content, exploit_succeeded=false (patched). Any setup, module-resolution, or benign-call failure forces operation_completed=false per the stated contract, and the dev server is always closed. No child processes, network sockets, or files outside /tmp are touched.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 2 column 2586 (char 2587)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 2 column 2586 (char 2587)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Unterminated string starting at: line 2 column 13 (char 14)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Unterminated string starting at: line 2 column 13 (char 14)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle starts a Vite dev server in middleware mode rooted at a temporary directory, with a simulated optimized-deps cache directory (node_modules/.vite/deps) containing a benign chunk and its .map file. It first dispatches a benign HTTP-like request for the legitimate map file through server.middlewares to confirm the normal optimized-deps map-serving feature works (setting operation_completed=true only after this succeeds). It then creates a secret file outside the deps cache directory (in a sibling 'secret_outside' folder) and crafts a malicious request URL using '..' traversal segments appended with '.map' to target the vulnerable deps map-file resolution logic. If the response body contains the secret content, exploit_succeeded is set true, demonstrating the path traversal vulnerability (CVE affecting Vite's optimized deps .map handling in versions up to 8.0.4). If the malicious request throws, returns an error status, or does not leak the secret (as expected once patched), exploit_succeeded is false. All file operations are confined to a uniquely-named temp directory, and the server is always closed and the temp directory removed in a finally block. No child processes or sockets are used; the dev server's middleware stack is invoked directly in-process via the public createServer API and simulated request/response objects.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle creates a Vite dev server in middleware mode rooted at a temp directory and writes a benign optimized-deps chunk plus its `.map` sourcemap file directly into node_modules/.vite/deps. It first dispatches a benign request for that legitimate `.map` file through server.middlewares.handle to prove the optimized-deps map-serving feature works (sets operation_completed=true only after this succeeds). It then dispatches a crafted request whose `.map` filename contains an encoded relative-path traversal sequence pointing to a secret file located in a sibling temp directory outside the project root and deps cache dir. If the response body contains the secret content, the vulnerable path-traversal bug allowed reading an arbitrary file outside the deps cache (exploit_succeeded=true); if the request is rejected/404s or throws after the benign op succeeded, it is treated as blocked (exploit_succeeded=false). Any failure during setup or the benign request itself forces operation_completed=false, and the exercised API (vite.createServer + its middleware stack) is pure in-process Node code with no child processes, sockets, or Git interaction, and all file writes stay under os.tmpdir().",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "The oracle starts a real Vite dev server in middleware mode against a temporary project root containing a populated node_modules/.vite/deps optimized-deps cache directory, and a sibling secret directory placed outside the project/cache tree. First it issues a benign request for a legitimately-placed `chunk-BENIGN.js.map` file inside the deps cache directory and verifies the server returns its JSON sourcemap content (proving the optimized-deps `.map` serving path functions normally) before marking operation_completed=true. It then issues a crafted request whose `.map` URL segment contains URL-encoded `..` traversal sequences, attempting to make the deps `.map` static-file handler resolve and return a secret file located entirely outside the deps/cache directory tree. If the response body contains the unique secret marker content, the path traversal succeeded (exploit_succeeded=true); if the request throws (blocked) or returns a response that does not contain the secret, it is treated as blocked (exploit_succeeded=false). Any failure prior to the benign operation succeeding (module load, server creation, or the benign `.map` fetch) is reported as operation_completed=false so it cannot be mistaken for a blocked exploit. No external network sockets or child processes are used; the dev server's middleware stack is invoked directly through a fake IncomingMessage/ServerResponse pair, and all files are created/cleaned up under os.tmpdir().",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "The oracle starts a Vite dev server in middleware mode rooted at a throwaway tmp directory and pre-populates its optimized-deps cache (`node_modules/.vite/deps`) with a benign `.js`/`.js.map` pair. It first sends a legitimate request for that benign `.map` file through `server.middlewares.handle` to prove the deps `.map` serving path works normally (this must succeed before `operation_completed` is set true). It then sends a crafted request whose URL under `/node_modules/.vite/deps/` encodes a `../../` traversal sequence pointing at a secret file created outside the project root/deps directory, with a `.map` suffix matching the vulnerable handler's matcher. On vulnerable 8.0.4, the handler resolves this path without confining it to the deps directory and streams back the secret file's contents, which the oracle detects by checking whether the known secret marker string appears in the response body (exploit_succeeded=true). On a patched version, the traversal is rejected (404/403) or an exception is thrown after the benign call succeeded, which is treated as blocked (exploit_succeeded=false) while operation_completed remains true. Any failure before the benign request succeeds (module resolution, server startup, or the benign fixture call) reports operation_completed=false, satisfying the strict ordering requirement. All filesystem activity is confined to uniquely-named directories under os.tmpdir(), cleaned up in a finally block, and no process spawning, network sockets, or Git usage occur.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle starts a real Vite dev server (middleware mode) rooted at a temp directory, creating a node_modules/.vite/deps cache folder as Vite itself would. It first performs a benign request for a legitimately-placed deps .map file to prove the optimized-deps map-serving code path works normally (operation_completed only becomes true after this succeeds). It then attempts a path-traversal request against the same deps .map handler, targeting a secret file placed outside the deps/project root, trying both a plain relative-path form and a percent-encoded '%2f' form of the traversal segments (since encoding handling differs across Vite versions). If the secret content appears in the response body, exploit_succeeded is true, reproducing CVE-style arbitrary file read via the deps `.map` handler. On the patched version the request is expected to be rejected/sandboxed (404 or blocked) so the secret is never leaked, yielding exploit_succeeded=false while operation_completed remains true from the earlier benign check. Any setup, module-resolution, or benign-request failure forces operation_completed=false per the spec.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "The oracle creates a minimal Vite project in /tmp, writes a secret file outside the optimized-deps cache directory, and starts a Vite dev server in middleware mode. It first issues a benign request for a legitimately-placed `.map` file inside `node_modules/.vite/deps` to prove the optimized-deps map-serving path works normally (operation_completed can only become true after this succeeds). It then issues several encodings of a path-traversal request (raw `../` segments, single percent-encoded segments, and double percent-encoded segments) targeting the `.map` URL handler for optimized deps, attempting to read the secret file located outside the deps directory. On the vulnerable 0.8.0.4-era code, the handler resolves the traversal and returns the secret file's contents, setting exploit_succeeded=true. On a patched version, the server either rejects the request (403/404/error) or throws, which is treated as blocked (exploit_succeeded=false) since it occurs strictly after the benign operation succeeded. Any failure during setup, module resolution, or the benign request itself forces operation_completed=false, satisfying the required invariants.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Unterminated string starting at: line 2 column 13 (char 14)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Unterminated string starting at: line 2 column 13 (char 14)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "The oracle creates an isolated temp project with a node_modules/.vite/deps directory (the optimized-deps cache location) plus a legitimate dep file and its .map sourcemap, and a secret file placed outside the deps directory to represent data that must remain unreachable. It starts a real Vite dev server in middleware mode against this fixture root and first performs a benign transformRequest against the legitimate optimized-dep map URL to prove normal operation succeeds (operation_completed only becomes true after this). It then issues a second transformRequest using a URL-encoded path-traversal sequence embedded in the requested `.map` filename, mirroring the CVE's `.map` handling flaw in the optimizer, and inspects whether the returned transform result contains the secret marker content from the out-of-bounds file. If the secret content is present in the response, exploit_succeeded=true (vulnerable); if the request is rejected/throws or simply does not return the secret content, exploit_succeeded=false (patched). Any setup, module-resolution, or benign-call failure forces operation_completed=false per the stated contract, and the dev server is always closed. No child processes, network sockets, or files outside /tmp are touched.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

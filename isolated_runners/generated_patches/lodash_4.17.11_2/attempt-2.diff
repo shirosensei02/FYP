@@ -1,0 +1,23 @@
+diff --git a/lodash.js b/lodash.js
+--- a/lodash.js
++++ b/lodash.js
+@@ -3983,6 +3983,10 @@
+         var key = toKey(path[index]),
+             newValue = value;
+ 
++        if (key == '__proto__' || key == 'constructor' || key == 'prototype') {
++          return object;
++        }
++
+         if (index != lastIndex) {
+           var objValue = nested[key];
+           newValue = customizer ? customizer(objValue, key, nested) : undefined;
+@@ -6613,7 +6617,7 @@
+      * @returns {*} Returns the property value.
+      */
+     function safeGet(object, key) {
+-      if (key == '__proto__') {
++      if (key == '__proto__' || key == 'constructor' || key == 'prototype') {
+         return;
+       }
+ 

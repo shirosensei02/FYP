@@ -1,0 +1,34 @@
+diff --git a/verify.js b/verify.js
+--- a/verify.js
++++ b/verify.js
+@@ -98,16 +98,12 @@
+ 
+     var hasSignature = parts[2].trim() !== '';
+ 
+-    if (!hasSignature && secretOrPublicKey){
++    if (!secretOrPublicKey) {
++      return done(new JsonWebTokenError('secret or public key must be provided'));
++    }
++
++    if (!hasSignature) {
+       return done(new JsonWebTokenError('jwt signature is required'));
+-    }
+-
+-    if (hasSignature && !secretOrPublicKey) {
+-      return done(new JsonWebTokenError('secret or public key must be provided'));
+-    }
+-
+-    if (!hasSignature && !options.algorithms) {
+-      options.algorithms = ['none'];
+     }
+ 
+     if (!options.algorithms) {
+@@ -117,7 +113,7 @@
+ 
+     }
+ 
+-    if (!~options.algorithms.indexOf(decodedToken.header.alg)) {
++    if (decodedToken.header.alg === 'none' || !~options.algorithms.indexOf(decodedToken.header.alg)) {
+       return done(new JsonWebTokenError('invalid algorithm'));
+     }
+ 

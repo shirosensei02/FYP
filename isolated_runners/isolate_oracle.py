@@ -36,12 +36,33 @@ from og_patch_resolution import og_patch_resolution
 from oracle_generation import oracle_generation
 from oracle_validation import oracle_validation
 from package_input import package_input
+from prompt_variant import apply_run_config
 from vulnerability_detection import vulnerability_detection
+
+
+class _Stop(Exception):
+    def __init__(self, message: str, state: dict | None = None):
+        self.message = message
+        self.state = state or {}
+
+
+def run(config: dict) -> dict:
+    """Run one oracle package. A failed package returns instead of exiting."""
+    try:
+        return _run(config)
+    except _Stop as exc:
+        print(exc.message, flush=True)
+        return {"ok": False, "error": exc.message, "state": exc.state, "success_loop": None, "saved": None}
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    config = _load_config()
+    result = run(_load_config())
+    if not result["ok"]:
+        sys.exit(1)
+
+
+def _run(config: dict) -> dict:
     state: dict = {
         "package_name": config["package_name"],
         "package_version": config["package_version"],
@@ -55,20 +76,19 @@ def main() -> None:
     }
     if config.get("model_name"):
         state["model_name"] = config["model_name"]
-    if config.get("max_oracle_attempts") is not None:
-        state["max_oracle_attempts"] = int(config["max_oracle_attempts"])
+    apply_run_config(state, config)
 
     source_dir = str(config.get("source_dir") or "").strip()
     if source_dir:
         source = Path(source_dir).resolve()
         if not source.is_dir():
-            sys.exit(f"ERROR: source_dir does not exist: {source}")
+            raise _Stop(f"ERROR: source_dir does not exist: {source}", state)
         state["source_dir"] = str(source)
         state["package_manifest_path"] = str(source / "package.json")
     else:
         state.update(package_input(state))
         if state.get("errors"):
-            sys.exit("ERROR: package input failed:\n" + "\n".join(state["errors"]))
+            raise _Stop("ERROR: package input failed:\n" + "\n".join(state["errors"]), state)
     print(f"source_dir: {state.get('source_dir')}", flush=True)
 
     state.update(vulnerability_detection(state))
@@ -80,11 +100,11 @@ def main() -> None:
     if vulnerability_id:
         selected = _find_vulnerability(findings, vulnerability_id)
         if selected is None:
-            sys.exit(f"ERROR: vulnerability not detected: {vulnerability_id}")
+            raise _Stop(f"ERROR: vulnerability not detected: {vulnerability_id}", state)
         findings = [selected]
         state["current_vulnerabilities"] = findings
     if not findings:
-        sys.exit("ERROR: no target vulnerability detected")
+        raise _Stop("ERROR: no target vulnerability detected", state)
     for finding in findings:
         print(f"  - {finding.get('id')} ({finding.get('severity')})", flush=True)
 
@@ -118,8 +138,22 @@ def main() -> None:
     validation = state.get("oracle_validation") or {}
     print(f"saved: {destination}", flush=True)
     print(f"cost: {state.get('run_cost')}", flush=True)
-    if validation.get("status") != "VALID":
-        sys.exit(1)
+    accepted = state.get("accepted_oracle") or {}
+    success_loop = None
+    if validation.get("status") == "VALID":
+        try:
+            success_loop = int(accepted.get("attempt_number") or 0)
+        except (TypeError, ValueError):
+            success_loop = 0
+        if success_loop < 1:
+            success_loop = None
+    return {
+        "ok": validation.get("status") == "VALID",
+        "error": None if validation.get("status") == "VALID" else validation.get("reason"),
+        "state": state,
+        "success_loop": success_loop,
+        "saved": str(destination),
+    }
 
 
 def _oracle_route(state: dict) -> str:

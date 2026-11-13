@@ -1,0 +1,153 @@
+{
+  "package_name": "axios",
+  "package_version": "1.7.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-8hc4-vh64-cxmj"
+  ],
+  "run_index": 1,
+  "run_cost": 0.449508,
+  "oracle_attempt_count": 10,
+  "validation_status": "INVALID",
+  "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "buildFullPath returned a protocol-relative attacker URL that resolves to attacker-controlled host \"attacker.test\" instead of being confined to the trusted baseURL host, escaping confinement (SSRF). fullPath=//attacker.test/evil",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "buildFullPath returned a protocol-relative attacker URL that resolves to attacker-controlled host \"attacker.test\" instead of being confined to the trusted baseURL host, escaping confinement (SSRF). fullPath=//attacker.test/evil",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "generated",
+    "attempt_number": 10,
+    "explanation": "The oracle requires axios's internal buildFullPath helper (exposed via the 'axios/unsafe/core/buildFullPath.js' subpath export) and first proves the benign/documented behavior: combining a trusted baseURL with a normal relative path yields a URL rooted at the trusted host, and passing a fully-qualified absolute URL (with scheme) is honored verbatim. Only after those benign checks pass does it set operation_completed=true and proceed to the security-relevant check (CVE-2024-39338): passing a protocol-relative path like '//attacker.test/evil' together with a trusted baseURL. Rather than relying on exact string content of buildFullPath's return value (which differs subtly between the vulnerable and patched releases, as seen in the previous failed attempt where both versions returned the bare attacker string), the oracle resolves the returned fullPath against the baseURL using the WHATWG URL parser -- the same resolution semantics ultimately applied by the underlying HTTP transport -- and inspects which host would actually be targeted. In the vulnerable version, isAbsoluteURL fails to recognize protocol-relative URLs as absolute, so the attacker string is returned in a form that resolves to the attacker's host, escaping the intended baseURL confinement (SSRF). In the patched version, the protocol-relative input is correctly classified as absolute/handled such that resolution stays confined to the trusted baseURL's host. Any setup failure, module-resolution failure, or benign-call exception reports operation_completed=false, and a thrown exception during the malicious call (after successful benign operation) is treated as blocked (exploit_succeeded=false). The exercised API is buildFullPath, a pure synchronous URL-combination function with no filesystem, network, or git access needed.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Expecting ',' delimiter: line 2 column 2320 (char 2321)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Expecting ',' delimiter: line 2 column 2320 (char 2321)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle requires axios and its internal unsafe helper modules `buildFullPath` and `isAbsoluteURL` (exposed via the package's documented `./unsafe/*` export map). It first performs a benign call combining a normal baseURL (`http://example.com/api/`) with a normal relative path (`/users/list`), confirming the resulting full path correctly contains both the base host and the relative path; only after this succeeds does it set operation_completed=true. It then exercises the SSRF-relevant malicious input: a protocol-relative URL (`//attacker.test/evil`) combined with the same baseURL. In the vulnerable axios 1.7.3, the absolute-URL detection fails to treat protocol-relative URLs as absolute (or buildFullPath otherwise resolves them to the attacker host), so the computed full path points to `attacker.test` instead of staying scoped under `example.com`, demonstrating the SSRF bypass (exploit_succeeded=true). In the patched version, the protocol-relative URL is correctly flagged as absolute and/or the baseURL restriction is enforced, so the result no longer escapes to the attacker host (exploit_succeeded=false). No network calls, process spawning, or filesystem writes are performed; the test is purely a function-level invocation of axios's own URL-combination logic.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "This oracle targets the axios SSRF/baseURL-bypass vulnerability (GHSA for absolute-URL handling, fixed via the allowAbsoluteUrls parameter added to buildFullPath). It first proves the public buildFullPath helper (exported via axios's documented `axios/unsafe/core/buildFullPath.js` subpath export) works correctly on a benign relative URL combined with a trusted baseURL, confirming operation_completed. It then calls buildFullPath with an attacker-controlled absolute URL (http://attacker.test/evil) while explicitly passing allowAbsoluteUrls=false, meaning the caller intends to force every request to stay scoped under the baseURL host. In vulnerable axios 1.7.3, the allowAbsoluteUrls parameter is not honored (or doesn't exist in that code path's effective behavior), so the function still returns the attacker's absolute URL verbatim, demonstrating the SSRF bypass (exploit_succeeded=true). In the patched version, passing allowAbsoluteUrls=false causes buildFullPath to combine the URLs so the result remains scoped to the trusted base host, blocking the bypass (exploit_succeeded=false). No network, filesystem, or git operations occur; only pure computational helper functions are exercised, avoiding reliance on outbound network side effects while still exercising the real vulnerable code path.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "explanation": "The oracle exercises axios's fully public API surface: axios.create({ baseURL, allowAbsoluteUrls: false }) followed by instance.getUri(config), which internally resolves the request URL via buildFullPath using the instance's configured allowAbsoluteUrls option. First it proves the instance works correctly with a benign relative path, confirming the result is scoped under the trusted baseURL host (sets operation_completed=true only after this succeeds). It then supplies an attacker-controlled absolute URL ('http://attacker.test/evil') as the request url, while allowAbsoluteUrls remains false, mirroring the SSRF scenario (CVE-2025-27152) where applications disable absolute URLs to keep requests confined to a trusted host. In the vulnerable version (axios 1.7.3), allowAbsoluteUrls is not honored by this resolution path, so the absolute attacker URL is used verbatim, escaping the baseURL confinement entirely (exploit_succeeded=true). In the patched version, the absolute URL is rejected or forced to stay scoped to the baseURL host (exploit_succeeded=false). Any setup, module-resolution, or benign-operation failure short-circuits with operation_completed=false before any exploit verdict is produced, and only a genuine exception from the malicious call (after benign success) is treated as a block.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "explanation": "The oracle requires axios's internal (but publicly exported via the 'axios/unsafe/core/buildFullPath.js' subpath export) buildFullPath(baseURL, requestedURL, allowAbsoluteUrls) function directly, bypassing any higher-level wrapper (like Axios.prototype.getUri) that may apply its own additional confinement logic independent of the vulnerable function. First it proves the benign path works: combining a relative path with a baseURL while passing allowAbsoluteUrls=false yields a URL correctly scoped to the trusted base host. Only after that success does it mark operation_completed=true. It then calls the same function with an absolute attacker-controlled URL and allowAbsoluteUrls=false — the exact scenario the allowAbsoluteUrls option is documented to prevent (SSRF via absolute URL override of baseURL). In vulnerable axios 1.7.3, buildFullPath does not honor allowAbsoluteUrls=false for absolute URLs, so it returns the attacker URL verbatim (exploit_succeeded=true). In the patched version, passing an absolute URL with allowAbsoluteUrls=false causes buildFullPath to throw (or otherwise fail to resolve to the attacker host), which is treated as blocked (exploit_succeeded=false). Any setup, resolution, or benign-call exception results in operation_completed=false. No filesystem, network, or process operations are performed beyond requiring the package.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "explanation": "The oracle requires axios's internal unsafe helper modules isAbsoluteURL.js, combineURLs.js, and buildFullPath.js. It first proves the benign, intended behavior: a relative path like '/users/list' is correctly classified as not absolute by isAbsoluteURL, and buildFullPath correctly combines it with a trusted baseURL, keeping the resulting URL scoped under the trusted host. Only after this benign check succeeds does operation_completed become eligible to be true. It then exercises a crafted backslash-based URL ('/\\\\/attacker.test/evil') that mimics a protocol-relative/absolute URL using backslash separators. In the vulnerable version's regex-based isAbsoluteURL check, such inputs are not correctly classified as absolute, so buildFullPath (even with allowAbsoluteUrls=false) combines it with the baseURL in a way that still yields a full path resolving toward the attacker-controlled host 'attacker.test' rather than remaining confined to 'trusted-internal.example.com', demonstrating the SSRF-enabling confinement bypass. In the patched version, the classification/handling is corrected so the result either throws, is correctly recognized as absolute (and rejected), or remains safely scoped under the trusted baseURL host, so exploit_succeeded is false. Any setup, module-resolution, or benign-call failure causes operation_completed to be reported as false, and any unexpected exception during the malicious call that occurs after successful setup is treated as a block (exploit_succeeded=false) rather than a crash, since it is caught and classified explicitly. No process spawning, networking, or filesystem writes outside the module require calls are performed.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "explanation": "The oracle requires axios's internal buildFullPath helper (exposed via the package's unsafe/ export subpath) and first proves it works correctly on a benign relative URL combined with a trusted baseURL, confirming both strings appear in the composed result. It then calls buildFullPath with the same trusted baseURL but a malicious absolute URL pointing at an attacker-controlled host, explicitly passing allowAbsoluteUrls=false to request confinement. In the vulnerable 1.7.3 release, buildFullPath ignores the allowAbsoluteUrls=false flag for this case and returns the attacker's absolute URL unchanged, letting any caller relying on baseURL confinement be redirected to an arbitrary host (SSRF). In the patched version, the absolute URL is correctly combined under the trusted baseURL instead of being returned verbatim, so the attacker host does not appear while the trusted host remains absent from exploit evidence only when blocked. Any setup or benign-call failure sets operation_completed=false before the malicious call can run, and exceptions during the malicious call are treated as a block rather than a crash, per the grading rules.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "explanation": "The oracle exercises axios's internal (but publicly exported via the './unsafe/*' subpath exports) isAbsoluteURL and buildFullPath helpers, which together implement the URL-resolution logic used by every axios request to decide whether a supplied `url` should be combined with a trusted `baseURL` or treated as an already-absolute destination. It first proves the benign, documented behavior works: a normal relative path is correctly classified as not absolute and gets combined with the trusted baseURL, while a normal fully-qualified absolute URL is correctly classified as absolute. Only after that benign check succeeds does it set operation_completed=true. It then supplies a protocol-relative URL ('//attacker.test/evil') as the malicious input. This reproduces CVE-2024-39338: in axios 1.7.3, buildFullPath's logic (`isAbsoluteURL(requestedURL) ? requestedURL : combineURLs(baseURL, requestedURL)`) returns the attacker-supplied protocol-relative URL verbatim instead of confining it under the trusted baseURL, letting the resulting request target an attacker-controlled host ('attacker.test') rather than the intended trusted host -- a classic SSRF baseURL-escape. The oracle checks whether the final computed URL still points to the trusted host (patched/safe) or has escaped to the attacker host (vulnerable). Any setup, module-resolution, or benign-operation exception is reported as operation_completed=false so it is never mistaken for a successful exploit determination. No file, process, network, or git access is used; the script only requires axios's helper submodules.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "explanation": "The oracle requires axios's internal `buildFullPath` helper (exported via the package's `./unsafe/core/buildFullPath.js` subpath export) and first exercises benign, well-documented behavior: combining a trusted baseURL with a relative path (expected to stay rooted at the trusted host), and combining a baseURL with a normal absolute URL containing an explicit scheme (expected to pass through verbatim, per documented design). Only after these benign calls succeed is operation_completed set true. The malicious case then calls buildFullPath with the same trusted baseURL and a protocol-relative URL (`//attacker.test/evil`), which is the CVE-2024-39338 SSRF trigger: in the vulnerable 1.7.3 release, `isAbsoluteURL` (used internally) misclassifies the protocol-relative URL, causing buildFullPath to return the attacker-controlled URL unchanged -- escaping baseURL confinement to an unrelated host (`attacker.test`) instead of staying rooted at `trusted-internal.example.com`. In the patched version, protocol-relative URLs are correctly combined with/confined to the trusted baseURL authority, so the result does not leak to `attacker.test`. This differs from the prior invalid attempt by using buildFullPath's documented 'absolute URL passthrough' behavior for the benign check (explicit scheme), which remains true in both vulnerable and fixed versions, while isolating the protocol-relative edge case purely to the malicious check -- ensuring the fixed version's confinement behavior now differs from the vulnerable one for exploit evaluation.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "explanation": "The oracle requires axios's internal buildFullPath helper (exposed via the 'axios/unsafe/core/buildFullPath.js' subpath export) and first proves the benign/documented behavior: combining a trusted baseURL with a normal relative path yields a URL rooted at the trusted host, and passing a fully-qualified absolute URL (with scheme) is honored verbatim. Only after those benign checks pass does it set operation_completed=true and proceed to the security-relevant check (CVE-2024-39338): passing a protocol-relative path like '//attacker.test/evil' together with a trusted baseURL. Rather than relying on exact string content of buildFullPath's return value (which differs subtly between the vulnerable and patched releases, as seen in the previous failed attempt where both versions returned the bare attacker string), the oracle resolves the returned fullPath against the baseURL using the WHATWG URL parser -- the same resolution semantics ultimately applied by the underlying HTTP transport -- and inspects which host would actually be targeted. In the vulnerable version, isAbsoluteURL fails to recognize protocol-relative URLs as absolute, so the attacker string is returned in a form that resolves to the attacker's host, escaping the intended baseURL confinement (SSRF). In the patched version, the protocol-relative input is correctly classified as absolute/handled such that resolution stays confined to the trusted baseURL's host. Any setup failure, module-resolution failure, or benign-call exception reports operation_completed=false, and a thrown exception during the malicious call (after successful benign operation) is treated as blocked (exploit_succeeded=false). The exercised API is buildFullPath, a pure synchronous URL-combination function with no filesystem, network, or git access needed.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_SUCCEEDED.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_SUCCEEDED"
+    }
+  ]
+}

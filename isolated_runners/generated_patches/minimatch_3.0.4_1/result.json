@@ -1,0 +1,111 @@
+{
+  "package_name": "minimatch",
+  "package_version": "3.0.4",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-f8q6-p94x-37v3"
+  ],
+  "run_index": 1,
+  "run_cost": 0.05580799999999999,
+  "patch_attempt_count": 10,
+  "success_loop": null,
+  "validation_status": "SECURITY_FAIL",
+  "validation_reason": "The accepted exploit still succeeds against the generated patch.",
+  "locked_oracle": {
+    "source_run": "minimatch_3.0.4_2",
+    "attempt_number": 2
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Malicious braceExpand pattern (n=50000) took 1994ms (>= 1500ms threshold), indicating ReDoS/catastrophic backtracking. maliciousThrew=false"
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Malicious braceExpand pattern (n=50000) took 1890ms (>= 1500ms threshold), indicating ReDoS/catastrophic backtracking. maliciousThrew=false"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Malicious braceExpand pattern (n=50000) took 1933ms (>= 1500ms threshold), indicating ReDoS/catastrophic backtracking. maliciousThrew=false"
+    },
+    {
+      "attempt_number": 4,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Malicious braceExpand pattern (n=50000) took 1961ms (>= 1500ms threshold), indicating ReDoS/catastrophic backtracking. maliciousThrew=false"
+    },
+    {
+      "attempt_number": 5,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Malicious braceExpand pattern (n=50000) took 1985ms (>= 1500ms threshold), indicating ReDoS/catastrophic backtracking. maliciousThrew=false"
+    },
+    {
+      "attempt_number": 6,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Malicious braceExpand pattern (n=50000) took 1934ms (>= 1500ms threshold), indicating ReDoS/catastrophic backtracking. maliciousThrew=false"
+    },
+    {
+      "attempt_number": 7,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Malicious braceExpand pattern (n=50000) took 1975ms (>= 1500ms threshold), indicating ReDoS/catastrophic backtracking. maliciousThrew=false"
+    },
+    {
+      "attempt_number": 8,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Malicious braceExpand pattern (n=50000) took 1850ms (>= 1500ms threshold), indicating ReDoS/catastrophic backtracking. maliciousThrew=false"
+    },
+    {
+      "attempt_number": 9,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Malicious braceExpand pattern (n=50000) took 1946ms (>= 1500ms threshold), indicating ReDoS/catastrophic backtracking. maliciousThrew=false"
+    },
+    {
+      "attempt_number": 10,
+      "generation_status": "generated",
+      "patch_applied": true,
+      "oracle_status": "SECURITY_FAIL",
+      "reason": "The accepted exploit still succeeds against the generated patch.",
+      "execution_status": "EXPLOIT_SUCCEEDED",
+      "evidence": "Malicious braceExpand pattern (n=50000) took 2022ms (>= 1500ms threshold), indicating ReDoS/catastrophic backtracking. maliciousThrew=false"
+    }
+  ]
+}

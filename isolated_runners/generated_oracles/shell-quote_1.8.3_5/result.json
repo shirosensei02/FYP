@@ -1,0 +1,76 @@
+{
+  "package_name": "shell-quote",
+  "package_version": "1.8.3",
+  "model_provider": "openrouter",
+  "model_name": "anthropic/claude-sonnet-5",
+  "vulnerability_ids": [
+    "GHSA-w7jw-789q-3m8p"
+  ],
+  "run_index": 5,
+  "run_cost": 0.08267000000000001,
+  "oracle_attempt_count": 3,
+  "validation_status": "VALID",
+  "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+  "guidance": [],
+  "vulnerable": {
+    "status": "EXPLOIT_SUCCEEDED",
+    "operation_completed": true,
+    "exploit_succeeded": true,
+    "evidence": "quote() output contains a raw, unescaped newline character injected via a crafted object .op value: \"echo \\\\M\\\\Y\\\\_\\\\O\\\\P\\\\_\\\\o\\\\r\\\\a\\\\c\\\\l\\\\e\\\\_\\\\m\\\\a\\\\r\\\\k\\\\e\\\\r\\\\_\\\\1\\\\_\\\\1\\\\7\\\\9\\\\4\\\\4\\\\9\\\\3\\\\4\\\\6\\\\6\\\\6\\\\0\\\\4\\n\\\\i\\\\n\\\\j\\\\e\\\\c\\\\t\\\\e\\\\d\\\\-\\\\l\\\\i\\\\n\\\\e\\\\-\\\\o\\\\r\\\\a\\\\c\\\\l\\\\e\\\\_\\\\m\\\\a\\\\r\\\\k\\\\e\\\\r\\\\_\\\\1\\\\_\\\\1\\\\7\\\\9\\\\4\\\\4\\\\9\\\\3\\\\4\\\\6\\\\6\\\\6\\\\0\\\\4\"",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "fixed": {
+    "status": "EXPLOIT_BLOCKED",
+    "operation_completed": true,
+    "exploit_succeeded": false,
+    "evidence": "malicious quote() call threw (treated as blocked since benign op already succeeded): invalid `op` value: \"MY_OP_oracle_marker_1_1794493469815\\ninjected-line-oracle_marker_1_1794493469815\"",
+    "exit_code": 0,
+    "failure_kind": null,
+    "timed_out": false
+  },
+  "oracle": {
+    "status": "accepted",
+    "attempt_number": 3,
+    "explanation": "The oracle first proves shell-quote's quote() works normally by quoting a simple array with a marker string, requiring the marker to appear unmangled in the output before any vulnerability claim can be made. It then calls quote() with an array element that is an object literal carrying an attacker-controlled `.op` property containing an embedded raw newline character, using a custom op name (not the literal string 'glob') so it is not caught by op-name-specific validation that some patches add only for the 'glob' keyword, but rather exercises the general unescaped-concatenation flaw in how `.op` values are embedded into the output string. In vulnerable 1.8.3, the `.op` value is concatenated into the resulting command string without checking for or escaping line terminators, so the returned string contains a literal newline character, which is detected and reported as exploit_succeeded=true. In the patched version, `.op` (or pattern/other fields) are validated/escaped so that line terminators cannot appear raw in the output; this either throws (treated as blocked since the benign operation already succeeded) or returns a string without raw newlines, yielding exploit_succeeded=false. No filesystem, process, or network operations are used; the module is required directly and only node's built-in modules are referenced (unused here) to satisfy the sandboxing constraints.",
+    "requirements": [],
+    "timeout_seconds": 30,
+    "model_used": "anthropic/claude-sonnet-5"
+  },
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "generation_status": "invalid",
+      "explanation": "model response was not JSON: Invalid control character at: line 9 column 3290 (char 4372)",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "model response was not JSON: Invalid control character at: line 9 column 3290 (char 4372)",
+      "vulnerable_status": null,
+      "fixed_status": null
+    },
+    {
+      "attempt_number": 2,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves shell-quote's public quote() API works normally on a benign array of plain strings, embedding a unique /tmp-independent marker to confirm correct behavior without any filesystem interaction (quote() is a pure string-processing function so no fixture files or git repo are needed). It then calls quote() with an array containing a plain string plus an object element whose `op`/`pattern` property embeds a literal newline character, mirroring the documented CVE where shell-quote's quote() fails to escape newlines found in object .op values. The vulnerable 1.8.3 version passes such object-derived tokens through largely unescaped, so the returned string contains a literal '\\n' byte that would let an attacker split a single intended shell argument into two lines/commands if the output were ever fed to a shell (classic newline/command injection via quoting bypass). The patched version escapes or strips control characters including newlines when converting such op/pattern values to string output, so the raw '\\n' byte will not appear in the returned string, flipping exploit_succeeded to false while operation_completed remains true because the benign call already succeeded independently.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "INVALID",
+      "validation_reason": "Expected vulnerable=EXPLOIT_SUCCEEDED and fixed=EXPLOIT_BLOCKED; got vulnerable=EXPLOIT_BLOCKED and fixed=EXPLOIT_BLOCKED.",
+      "vulnerable_status": "EXPLOIT_BLOCKED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    },
+    {
+      "attempt_number": 3,
+      "generation_status": "generated",
+      "explanation": "The oracle first proves shell-quote's quote() works normally by quoting a simple array with a marker string, requiring the marker to appear unmangled in the output before any vulnerability claim can be made. It then calls quote() with an array element that is an object literal carrying an attacker-controlled `.op` property containing an embedded raw newline character, using a custom op name (not the literal string 'glob') so it is not caught by op-name-specific validation that some patches add only for the 'glob' keyword, but rather exercises the general unescaped-concatenation flaw in how `.op` values are embedded into the output string. In vulnerable 1.8.3, the `.op` value is concatenated into the resulting command string without checking for or escaping line terminators, so the returned string contains a literal newline character, which is detected and reported as exploit_succeeded=true. In the patched version, `.op` (or pattern/other fields) are validated/escaped so that line terminators cannot appear raw in the output; this either throws (treated as blocked since the benign operation already succeeded) or returns a string without raw newlines, yielding exploit_succeeded=false. No filesystem, process, or network operations are used; the module is required directly and only node's built-in modules are referenced (unused here) to satisfy the sandboxing constraints.",
+      "requirements": [],
+      "model_used": "anthropic/claude-sonnet-5",
+      "validation_status": "VALID",
+      "validation_reason": "Oracle reproduced the vulnerability and detected the maintainer fix.",
+      "vulnerable_status": "EXPLOIT_SUCCEEDED",
+      "fixed_status": "EXPLOIT_BLOCKED"
+    }
+  ]
+}

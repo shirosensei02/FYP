@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from cost_log import record_request
+from prompt_variant import prompt_path
 from repo_graph import ensure_repo_graph, retrieve_entity
 from run_cost import response_cost
 
@@ -31,6 +32,7 @@ LOCATOR_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "locator.txt
 LOCATOR_SAMPLES = 2
 MAX_LOCATOR_ROUNDS = 8
 MAX_PROMPT_CHARS = 48_000
+PROMPT_RESULT_CHARS = 4_000
 LOCATOR_COST_CAP = 2.0
 TOP_LOCATIONS = 10
 _TERMINAL = {"ranked", "cannot_locate", "capped"}
@@ -48,8 +50,10 @@ SearchEntity finds entities by keyword. detail is fold, preview, or full.
 {"action":"tool","tool":"SearchEntity","arguments":{"keywords":["query"],"detail":"preview"}}
 TraverseGraph walks contain, import, invoke, or inherit edges. direction is out, in, or both.
 {"action":"tool","tool":"TraverseGraph","arguments":{"start_ids":["lib/client.js:Client.query"],"direction":"out","hops":1,"entity_types":["function"],"relation_types":["invoke"]}}
-RetrieveEntity returns the full body of an entity. Locate only after a retrieved body shows the vulnerable behavior. A matching name is not enough.
+RetrieveEntity returns the body of an entity. Locate only after a retrieved body shows the vulnerable behavior. A matching name is not enough.
+A body that fits in the prompt is returned whole. A longer body includes cursor and stopped_at_line; pass that cursor to read the next part.
 {"action":"tool","tool":"RetrieveEntity","arguments":{"entity_ids":["lib/client.js:Client.query"]}}
+{"action":"tool","tool":"RetrieveEntity","arguments":{"entity_ids":["lib/client.js:Client.query"],"cursor":3000}}
 
 ## Final locations
 When the steps are done, reply with one JSON object and nothing else. Do not use a Markdown fence.
@@ -89,7 +93,9 @@ def locator_node(state: dict) -> dict:
     if result and trace and trace[-1].get("kind") == "tool_call" and "result" not in trace[-1]:
         trace[-1]["result"] = result
 
-    if rounds >= MAX_LOCATOR_ROUNDS or float(state.get("run_cost") or 0) > LOCATOR_COST_CAP:
+    maximum, use_cost_cap = _round_limit(state)
+    over_cost = use_cost_cap and float(state.get("run_cost") or 0) > LOCATOR_COST_CAP
+    if rounds >= maximum or over_cost:
         return _advance_sample(state, samples, sample, [], capped=True)
 
     provider = state.get("model_provider", "mock")
@@ -141,7 +147,7 @@ def _advance_sample(state: dict, samples: list, sample: int, locations: list, ca
     }
     if spent is not None:
         base["run_cost"] = spent
-    if sample + 1 < LOCATOR_SAMPLES and not capped:
+    if sample + 1 < _sample_limit(state) and not capped:
         return {
             **base,
             "locate_status": "running",
@@ -245,21 +251,33 @@ def _locations_with_bodies(state: dict, ranked: list[dict]) -> list[dict]:
         state.get("package_name") or "package",
         state.get("package_version") or "unknown",
     )
+    ranked = [_resolve_anonymous(graph, item) for item in ranked]
     bodies = {
         item.get("id"): item
-        for item in retrieve_entity(graph, [item["id"] for item in ranked]).get("entities") or []
+        for item in retrieve_entity(
+            graph, [item["id"] for item in ranked], page=False,
+        ).get("entities") or []
+    }
+    files_with_code = {
+        node.get("path")
+        for node in graph["nodes"]
+        if node.get("type") in {"function", "class"} and node.get("path")
     }
     resolved = []
     for item in ranked:
         entity = bodies.get(item["id"])
-        if not entity or not entity.get("code") or entity.get("type") not in {"function", "class"}:
+        if not entity or not entity.get("code"):
+            continue
+        kind = entity.get("type")
+        file_only = kind == "file" and entity.get("path") not in files_with_code
+        if kind not in {"function", "class"} and not file_only:
             continue
         resolved.append({
             "id": item["id"],
             "path": entity.get("path") or item.get("path") or "",
             "line": item.get("line"),
             "class": item.get("class") or "",
-            "function": entity.get("name") or item.get("function") or "",
+            "function": "" if file_only else (entity.get("name") or item.get("function") or ""),
             "body": entity.get("code") or "",
             "reason": item.get("reason") or "",
             "score": item.get("score"),
@@ -267,14 +285,93 @@ def _locations_with_bodies(state: dict, ranked: list[dict]) -> list[dict]:
     return resolved
 
 
+def _resolve_anonymous(graph: dict, item: dict) -> dict:
+    """``module.exports = function`` is that file's exported function.
+
+    A named expression such as ``function quote`` keeps the name ``quote``.
+    An unnamed expression is ``default``. Either way, a locate that says
+    ``module.exports`` resolves to the exported function.
+    """
+    path = str(item.get("path") or "")
+    function = str(item.get("function") or "").strip()
+    if not path:
+        return item
+    nodes = graph.get("nodes") or []
+    if any(node.get("id") == item.get("id") for node in nodes):
+        return item
+    children = [
+        node for node in nodes
+        if node.get("path") == path and node.get("type") in {"function", "class"}
+    ]
+    target = _export_target(children, function)
+    if target is None:
+        return item
+    resolved = dict(item)
+    resolved["id"] = target["id"]
+    resolved["function"] = target.get("name") or target.get("qualified") or function
+    return resolved
+
+
+def _export_target(children: list[dict], function: str) -> dict | None:
+    aliases = {"", "default", "module.exports", "exports"}
+    if function not in aliases:
+        matches = [
+            node for node in children
+            if function in {str(node.get("name") or ""), str(node.get("qualified") or "")}
+            or str(node.get("qualified") or "").endswith("." + function)
+        ]
+        return matches[0] if len(matches) == 1 else None
+    exported = [
+        node for node in children
+        if {"default", "module.exports"} & {str(name) for name in (node.get("exports") or [])}
+        or node.get("name") == "default"
+        or node.get("qualified") == "default"
+    ]
+    if len(exported) == 1:
+        return exported[0]
+    if len(children) == 1:
+        return children[0]
+    return None
+
+
+def _round_limit(state: dict) -> tuple[int, bool]:
+    """Return the round cap and whether the production cost cap still applies."""
+    raw = state.get("max_locator_rounds")
+    try:
+        maximum = int(raw)
+    except (TypeError, ValueError):
+        maximum = 0
+    if maximum > 0:
+        return maximum, False
+    return MAX_LOCATOR_ROUNDS, True
+
+
+def _sample_limit(state: dict) -> int:
+    raw = state.get("locator_samples")
+    try:
+        limit = int(raw)
+    except (TypeError, ValueError):
+        limit = 0
+    if limit > 0:
+        return limit
+    return LOCATOR_SAMPLES
+
+
 def _system_prompt(state: dict) -> str:
-    """Chain-of-thought steps from locator.txt, plus the tool and final-location contract."""
-    package = state.get("package_name") or "package"
-    if LOCATOR_PROMPT_PATH.is_file():
-        steps = LOCATOR_PROMPT_PATH.read_text(encoding="utf-8")
+    """Locator instructions, plus the tool and final-location contract."""
+    path = prompt_path("locator", state.get("prompt_suffix"))
+    if path.is_file():
+        steps = path.read_text(encoding="utf-8")
     else:
         steps = "Localize the files, classes, functions, and lines that need to change."
-    steps = steps.replace("{{package_name}}", str(package))
+    for token, value in {
+        "{{package_name}}": state.get("package_name") or "package",
+        "{{cwe_id}}": state.get("cwe_id") or "",
+        "{{cwe_name}}": state.get("cwe_name") or "",
+        "{{cwe_description}}": state.get("cwe_description") or "",
+        "{{typical_sinks}}": state.get("typical_sinks") or "",
+    }.items():
+        steps = steps.replace(token, str(value))
     return f"{steps.rstrip()}\n{_TOOL_CONTRACT}"
 
 
@@ -307,13 +404,40 @@ def _summary(state: dict) -> str:
     return summary.strip()[:500]
 
 
+def _fit_prompt_result(result: dict) -> str:
+    """Keep a retrieve cursor visible when a tool result is shortened for the prompt."""
+    try:
+        payload = json.loads(json.dumps(result, ensure_ascii=False))
+    except (TypeError, ValueError):
+        return json.dumps(result, ensure_ascii=False)[:PROMPT_RESULT_CHARS]
+    text = json.dumps(payload, ensure_ascii=False)
+    if len(text) <= PROMPT_RESULT_CHARS:
+        return text
+    entities = payload.get("entities") if isinstance(payload, dict) else None
+    if not isinstance(entities, list):
+        return text[:PROMPT_RESULT_CHARS]
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        code = entity.get("code")
+        if not isinstance(code, str):
+            continue
+        while code and len(json.dumps(payload, ensure_ascii=False)) > PROMPT_RESULT_CHARS:
+            code = code[: max(len(code) - 400, 0)]
+            entity["code"] = code
+    fitted = json.dumps(payload, ensure_ascii=False)
+    if len(fitted) <= PROMPT_RESULT_CHARS:
+        return fitted
+    return fitted[:PROMPT_RESULT_CHARS]
+
+
 def _render_trace(trace: list[dict]) -> str:
     if not trace:
         return "none"
     lines = []
     for item in trace:
         result = item.get("result")
-        rendered = json.dumps(result, ensure_ascii=False)[:4000] if result else "pending"
+        rendered = _fit_prompt_result(result) if result else "pending"
         lines.append(
             f"{item.get('tool')} {json.dumps(item.get('arguments') or {}, ensure_ascii=False)}\n{rendered}"
         )
