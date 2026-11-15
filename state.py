@@ -246,6 +246,7 @@ class GraphState(TypedDict, total=False):
     sandbox_id: str | None
     sandbox_apply_success: bool | None
     patched_source_dir: str | None
+    static_analysis: dict[str, Any] | None
 
     # 5) post-patch vulnerability re-scan
     remaining_vulnerabilities: list[Vulnerability]

@@ -231,6 +231,7 @@ def _build_doc(state: dict, passed: bool) -> dict:
         "context_file_paths": state.get("context_file_paths") or [],
         "raw_output":      patch.get("raw_output"),
         "diff":            patch.get("diff"),
+        "static_analysis": state.get("static_analysis"),
         "validation":      state.get("validation") or {},
         "baseline_validation": state.get("baseline_validation") or {},
         "patched_validation": state.get("patched_validation") or {},

@@ -206,15 +206,6 @@ def run_pipeline(args: argparse.Namespace) -> None:
     located = state.get("debug_locations") or []
     print(f"  locate status   : {state.get('locate_status')}")
     print(f"  located         : {[item.get('function') for item in located]}")
-    # Localize first so both the oracle writer and patch writer receive the
-    # same vulnerability-focused source context.
-    _sep("NODE 2c - VULNERABILITY LOCALIZATION")
-    result = vulnerability_localization(state)
-    state.update(result)
-    print(f"  status          : {state.get('localization_status')}")
-    print(f"  localized files : {state.get('localized_files') or []}")
-    print(f"  context_files   : {len(state.get('localized_context_files') or [])}")
-    print(f"  reasoning       : {state.get('localized_reasoning') or 'none'}")
 
     # Generate an external exploit oracle, then accept it only if it
     # distinguishes the vulnerable package from the maintainer-fixed package.
@@ -272,6 +263,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
             _sep("NODE 4 - PATCH APPLY")
             state.update(apply_patch(state))
             print(f"  patch_applied : {state.get('patch_applied')}")
+            sa = state.get("static_analysis") or {}
+            if sa:
+                print(f"  static_analysis: {sa.get('status')} ({sa.get('new_finding_count', 0)} new findings)")
             if state.get("errors"):
                 print(f"  [errors during application] {state['errors']}")
 

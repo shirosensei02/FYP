@@ -35,6 +35,7 @@ GraphState keys produced
 - ``patched_validation``   : ValidationResult - generated patch result
 - ``validation``           : ValidationResult - alias for patched_validation
 - ``regression_status``    : str - baseline-versus-patched classification
+- ``static_analysis``      : dict | None  - differential static security analysis findings
 - ``errors``               : list[str]    - appended with any runtime errors
 """
 
@@ -716,6 +717,7 @@ def apply_patch(state: GraphState) -> dict:
             "regression_status": "INCONCLUSIVE",
             "package_tests_skipped": False,
             "errors": errors,
+            "static_analysis": None,
         }
 
     safe_name = re.sub(r"[^a-z0-9]+", "-", package_name.lower()).strip("-") or "pkg"
@@ -748,7 +750,22 @@ def apply_patch(state: GraphState) -> dict:
             "regression_status": "INCONCLUSIVE",
             "package_tests_skipped": False,
             "errors": errors,
+            "static_analysis": None,
         }
+
+    # Run differential static security analysis on the newly patched package files
+    static_analysis_result = None
+    try:
+        from static_analysis import static_analysis
+        sa_output = static_analysis({
+            **state,
+            "patch_applied": True,
+            "patched_source_dir": str(patched_dir),
+        })
+        static_analysis_result = sa_output.get("static_analysis")
+    except Exception as exc:
+        logger.warning("static_analysis failed during patch application: %s", exc)
+        static_analysis_result = {"status": "error", "error": str(exc)}
 
     return {
         "patch_applied": True,
@@ -761,6 +778,7 @@ def apply_patch(state: GraphState) -> dict:
         "regression_status": None,
         "package_tests_skipped": False,
         "errors": errors,
+        "static_analysis": static_analysis_result,
     }
 
 
@@ -846,5 +864,5 @@ def patch_application(state: GraphState) -> dict:
     applied = apply_patch(state)
     if not applied.get("patch_applied"):
         return applied
-    tested = package_validation({**state, **applied})
+    tested = package_validation(state)
     return {**applied, **tested}
