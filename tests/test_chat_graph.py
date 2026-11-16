@@ -1,7 +1,6 @@
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Command
 
 import chat_graph
 from chat_graph import _parse_request, _parse_targets, _select_vulnerability, chat_input
@@ -63,7 +62,10 @@ def test_chat_input_explains_usage_when_message_has_no_package():
     result = chat_input({"messages": [HumanMessage(content="patch something")]})
 
     assert result["input_error"]
+    assert "package name" in result["messages"][0].content
+    assert "package version" in result["messages"][0].content
     assert "jszip@3.7.1" in result["messages"][0].content
+    assert result["phase"] == "collecting"
     assert chat_graph.route_after_input(result) == "end"
 
 
@@ -89,7 +91,7 @@ def test_chat_graph_has_exactly_the_pipeline_steps_plus_chat_steps():
 
     main_nodes = set(main_graph.graph.get_graph().nodes) - {"__start__", "__end__"}
     chat_nodes = set(chat_graph.graph.get_graph().nodes) - {"__start__", "__end__"}
-    assert chat_nodes == main_nodes | {"chat_input", "confirm_target", "start_target", "finish_target", "batch_summary"}
+    assert chat_nodes == main_nodes | {"chat_input", "start_target", "finish_target", "batch_summary"}
 
 
 def test_sandbox_summary_reports_stage_statuses_and_regression():
@@ -149,15 +151,17 @@ def test_chat_confirm_posts_the_draft_and_starts_after_one_confirm(monkeypatch):
         "https://github.com/ljharb/shell-quote/commit/abc1234"
     ))]}, config)
 
-    assert paused["__interrupt__"]
-    draft = paused["__interrupt__"][0].value
+    assert not paused.get("__interrupt__")
+    assert paused["phase"] == "awaiting_confirm"
+    draft = paused["messages"][-1].content
     assert "shell-quote@1.8.3" in draft
     assert 'suspected issue: "command injection in quote"' in draft
     assert "maintainer patch: https://github.com/ljharb/shell-quote/commit/abc1234" in draft
     assert seen == []
 
-    final = chat.invoke(Command(resume="confirm"), config)
+    final = chat.invoke({"messages": [HumanMessage(content="confirm")]}, config)
     assert not final.get("__interrupt__")
+    assert final["phase"] == "done"
     assert seen[0]["package_name"] == "shell-quote"
     assert seen[0]["suspected_issue"] == "command injection in quote"
     assert seen[0]["maintainer_commit_url"].endswith("/commit/abc1234")
@@ -171,8 +175,7 @@ def test_several_targets_run_one_after_another_with_fresh_state(monkeypatch):
     config = {"configurable": {"thread_id": "batch"}}
 
     chat.invoke({"messages": [HumanMessage(content="jszip@3.7.1 GHSA-bbbb-bbbb-bbbb codex, tar-fs@3.0.8 GHSA-zzzz-zzzz-zzzz sonnet")]}, config)
-    chat.invoke(Command(resume="confirm"), config)
-    final = chat.invoke(Command(resume="confirm"), config)
+    final = chat.invoke({"messages": [HumanMessage(content="confirm")]}, config)
 
     assert [s["package_name"] for s in seen] == ["jszip", "tar-fs"]
     assert "source_dir" not in seen[1] and "classification" not in seen[1]  # nothing leaked from jszip
@@ -182,6 +185,51 @@ def test_several_targets_run_one_after_another_with_fresh_state(monkeypatch):
     texts = [m.content for m in final["messages"] if m.type == "ai"]
     assert any(t.startswith("**[1/2 jszip]**") for t in texts)
     assert "📊 **Summary**" in texts[-1] and "| tar-fs@3.0.8 |" in texts[-1]
+
+
+def test_an_advisory_follow_up_keeps_a_ready_batch(monkeypatch):
+    monkeypatch.setenv("MODEL_NAME", "openai/gpt-5.3-codex")
+    result = chat_input({
+        "messages": [HumanMessage(content="GHSA-36fh-84j7-cv5h")],
+        "phase": "awaiting_confirm",
+        "targets": [
+            {"package_name": "jszip", "package_version": "3.7.1", "model_name": "openai/gpt-5.3-codex"},
+            {"package_name": "tar-fs", "package_version": "3.0.8", "model_name": "anthropic/claude-sonnet-5"},
+        ],
+    })
+
+    assert [t["package_name"] for t in result["targets"]] == ["jszip", "tar-fs"]
+    assert result["phase"] == "awaiting_confirm"
+
+
+def test_follow_up_fills_a_missing_version_before_confirm(monkeypatch):
+    monkeypatch.setenv("MODEL_NAME", "openai/gpt-5.3-codex")
+    seen = []
+    chat = chat_graph.build_chat_graph(_fake_pipeline(seen), checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "partial"}}
+
+    asked = chat.invoke({"messages": [HumanMessage(content="shell-quote command injection in quote()")]}, config)
+
+    assert not asked.get("__interrupt__")
+    assert asked["phase"] == "collecting"
+    reply = asked["messages"][-1].content
+    assert "shell-quote: package version" in reply
+    assert 'suspected issue: "command injection in quote()"' in reply
+    assert seen == []
+
+    ready = chat.invoke({"messages": [HumanMessage(content="1.8.3")]}, config)
+
+    assert ready["phase"] == "awaiting_confirm"
+    posted = ready["messages"][-1].content
+    assert "shell-quote@1.8.3" in posted
+    assert 'suspected issue: "command injection in quote()"' in posted
+    assert seen == []
+
+    chat.invoke({"messages": [HumanMessage(content="confirm")]}, config)
+    assert seen[0]["package_name"] == "shell-quote"
+    assert seen[0]["package_version"] == "1.8.3"
+    assert seen[0]["suspected_issue"] == "command injection in quote()"
+    assert seen[0]["model_name"] == "openai/gpt-5.3-codex"
 
 
 def test_every_pipeline_step_has_a_named_summary():

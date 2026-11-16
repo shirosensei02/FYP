@@ -7,8 +7,10 @@ The pipeline itself is not redefined here: every node, edge and routing rule is
 copied from the compiled graph in graph.py when this module loads, so the chat
 always runs the current pipeline. On top of it the chat layer adds:
 
-* reading one or more targets from a chat message, e.g.
-  ``jszip@3.7.1 GHSA-36fh-84j7-cv5h codex, tar-fs@3.0.8 GHSA-8cj5-5rvv-wf4v sonnet``;
+* reading package, version, advisory, and model from the chat, including across
+  several messages when the first one is incomplete;
+* starting the run only after a later message confirms the parsed fields
+  (a normal chat turn, with no interrupt);
 * running the targets one after another, each in a fresh pipeline state
   (built like batch_runner.py builds one), so nothing leaks between runs;
 * pinning the requested advisory, like ``test_local_pipeline.py --vulnerability-id``;
@@ -31,7 +33,7 @@ from langgraph.graph.message import add_messages
 
 from batch_runner import _fresh_state
 from graph import graph as pipeline_graph
-from intake import apply_resume, format_draft, parse_prompt
+from intake import ADVISORY_PATTERN, parse_prompt
 
 
 MODEL_ALIASES = {
@@ -48,9 +50,15 @@ USAGE = (
     "`jszip@3.7.1 GHSA-36fh-84j7-cv5h codex path traversal when loading a zip "
     "https://github.com/Stuk/jszip/commit/abcdef1`\n\n"
     "`jszip@3.7.1 GHSA-36fh-84j7-cv5h codex, tar-fs@3.0.8 GHSA-8cj5-5rvv-wf4v sonnet`\n\n"
+    "A package name alone is enough to start: the reply names whatever is still missing "
+    "(package name, package version, and model when `.env` has no `MODEL_NAME`). "
+    "The advisory and the issue description are optional. "
     "Models: `codex`, `sonnet`, or any OpenRouter model ID such as `anthropic/claude-sonnet-5`. "
-    "The run starts after you reply confirm to the parsed draft."
+    "When the fields are filled in, reply `confirm` to start."
 )
+_FIELD_LABELS = {"version", "package", "advisory", "model"}
+_PACKAGE_TOKEN = re.compile(r"^@?[A-Za-z0-9][\w.-]*(?:/[\w.-]+)?$")
+_VERSION_TOKEN = re.compile(r"^\d+\.\d[\w.+-]*$")
 
 
 class ChatState(TypedDict, total=False):
@@ -60,6 +68,7 @@ class ChatState(TypedDict, total=False):
     run: dict[str, Any]  # pipeline state of the current target (GraphState keys)
     results: list[dict[str, Any]]
     input_error: str | None
+    phase: str  # collecting | awaiting_confirm | running | done
 
 
 # ---------------------------------------------------------------------------
@@ -112,69 +121,298 @@ def _parse_targets(text: str) -> list[dict[str, Any]]:
     return targets
 
 
-def chat_input(state: ChatState) -> dict:
-    """Read the newest chat message; every message starts a new batch."""
-    human = [m for m in state.get("messages") or [] if getattr(m, "type", None) == "human"]
-    targets = _parse_targets(_message_text(human[-1])) if human else []
-    if not targets:
-        error = "I couldn't find a `package@version` in that message."
-        return {"input_error": error, "targets": [], "messages": [AIMessage(content=f"{error}\n\n{USAGE}")]}
+def _is_confirm(text: str) -> bool:
+    return text.strip().lower().strip(".!") in {"confirm", "yes"}
 
+
+def _is_model_token(token: str) -> bool:
+    lowered = token.lower().strip(",.")
+    if lowered in MODEL_ALIASES:
+        return True
+    return "/" in lowered and not lowered.startswith(("http://", "https://", "@"))
+
+
+def _stored_model(token: str) -> str:
+    cleaned = token.strip(".,;")
+    return MODEL_ALIASES.get(cleaned.lower(), cleaned)
+
+
+def _bare_package_name(text: str) -> str:
+    """A package named without `@version`: a scoped or hyphenated token, or the only word left."""
+    draft = parse_prompt(text)
+    raw = text.replace(draft["maintainer_commit_url"], " ") if draft["maintainer_commit_url"] else text
+    candidates = []
+    leftovers = []
+    for token in (part.strip(",.;") for part in raw.split()):
+        if not token or token.lower() in _FIELD_LABELS:
+            continue
+        if _VERSION_TOKEN.fullmatch(token) or ADVISORY_PATTERN.fullmatch(token) or _is_model_token(token):
+            continue
+        if token.startswith(("http://", "https://")):
+            continue
+        if _PACKAGE_TOKEN.fullmatch(token) and ("-" in token or "/" in token or token.startswith("@")):
+            candidates.append(token)
+        else:
+            leftovers.append(token)
+    if candidates:
+        return candidates[0]
+    plain = [token for token in leftovers if _PACKAGE_TOKEN.fullmatch(token)]
+    if len(plain) == 1 and len(leftovers) == 1:
+        return plain[0]
+    return ""
+
+
+def _bare_version(text: str) -> str:
+    match = re.search(r"(?<!@)(?<![\w.])(\d+\.\d[\w.+-]*)", text)
+    return match.group(1) if match else ""
+
+
+def _remainder_issue(text: str, found: dict[str, Any]) -> str:
+    """Words left after the fields this message already contributed."""
+    structured = any(found.get(key) for key in (
+        "package_name", "package_version", "vulnerability_id", "model_name", "maintainer_commit_url",
+    ))
+    if not structured:
+        return text.strip()
+    url = str(found.get("maintainer_commit_url") or "")
+    raw = text.replace(url, " ") if url else text
+    words = []
+    for token in raw.split():
+        cleaned = token.strip(",.;")
+        if not cleaned:
+            continue
+        if cleaned == found.get("package_name") or cleaned.lower() in _FIELD_LABELS:
+            continue
+        if _VERSION_TOKEN.fullmatch(cleaned) or ADVISORY_PATTERN.fullmatch(cleaned) or _is_model_token(cleaned):
+            continue
+        if cleaned.startswith(("http://", "https://")):
+            continue
+        words.append(cleaned)
+    if words and all(word.lower() in _FIELD_LABELS for word in words):
+        return ""
+    return " ".join(words).strip()
+
+
+def _extract_fields(text: str) -> dict[str, Any]:
+    """Fields actually present in one message. Empty fields are omitted so a later merge can keep them."""
+    raw = str(text or "").strip()
+    if not raw or _is_confirm(raw):
+        return {}
+    draft = parse_prompt(raw)
+    found: dict[str, Any] = {}
+    packaged = bool(draft["package_name"] and draft["package_version"])
+    if packaged:
+        found["package_name"] = draft["package_name"]
+        found["package_version"] = draft["package_version"]
+    else:
+        name = _bare_package_name(raw)
+        if name:
+            found["package_name"] = name
+        version = _bare_version(raw)
+        if version:
+            found["package_version"] = version
+    if draft["vulnerability_id"]:
+        found["vulnerability_id"] = draft["vulnerability_id"]
+    if draft["maintainer_commit_url"]:
+        found["maintainer_commit_url"] = draft["maintainer_commit_url"]
+    if draft["model_name"]:
+        found["model_name"] = _stored_model(draft["model_name"])
+    issue = draft["suspected_issue"] if packaged else _remainder_issue(raw, found)
+    if issue:
+        found["suspected_issue"] = issue
+    if not found:
+        return {}
+    found["user_prompt"] = raw
+    return found
+
+
+def _merge_target(base: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in new.items():
+        if value:
+            merged[key] = value
+    prompts = []
+    for prompt in (base.get("user_prompt"), new.get("user_prompt")):
+        if prompt and prompt not in prompts:
+            prompts.append(prompt)
+    if prompts:
+        merged["user_prompt"] = "\n".join(prompts)
+    return merged
+
+
+def _targets_from_message(text: str) -> list[dict[str, Any]]:
+    """Targets named in this message. A segment with no package is folded into the previous one."""
+    segments = [segment.strip() for segment in re.split(r"[,;\n]+", text) if segment.strip()]
+    targets: list[dict[str, Any]] = []
+    for segment in segments:
+        fields = _extract_fields(segment)
+        if fields.get("package_name") or fields.get("package_version"):
+            targets.append(fields)
+            continue
+        extra = fields.get("vulnerability_id") or fields.get("model_name") or fields.get("maintainer_commit_url")
+        if targets and (extra or fields.get("suspected_issue")):
+            targets[-1] = _merge_target(targets[-1], fields)
+        elif not targets and len(segments) == 1 and extra:
+            targets.append(fields)
+    return targets
+
+
+def _combine(saved: list[dict[str, Any]], text: str) -> list[dict[str, Any]]:
+    """Merge a follow-up into one saved draft. A different package, or several packages, replaces it."""
+    if _is_confirm(text):
+        return saved
+    found = _targets_from_message(text)
+    if not found:
+        if len(saved) == 1 and text:
+            issue = _remainder_issue(text, {})
+            if issue:
+                updated = dict(saved[0])
+                updated["suspected_issue"] = issue
+                updated["user_prompt"] = text
+                return [updated]
+        return saved
+    if len(found) > 1 or not saved:
+        return found
+    new = found[0]
+    if len(saved) != 1:
+        # A version or advisory alone cannot be attached to one target in a batch.
+        return found if new.get("package_name") else saved
+    if new.get("package_name") and saved[0].get("package_name") and new["package_name"] != saved[0]["package_name"]:
+        return found
+    return [_merge_target(saved[0], new)]
+
+
+def _fill_models(targets: list[dict[str, Any]]) -> None:
+    named = [target["model_name"] for target in targets if target.get("model_name")]
+    fallback = named[0] if named else os.getenv("MODEL_NAME") or ""
+    previous = ""
+    for target in targets:
+        previous = target.get("model_name") or previous
+        if not target.get("model_name"):
+            target["model_name"] = previous or fallback
+
+
+def _missing(target: dict[str, Any]) -> list[str]:
+    missing = []
+    if not str(target.get("package_name") or "").strip():
+        missing.append("package name")
+    if not str(target.get("package_version") or "").strip():
+        missing.append("package version")
+    if not str(target.get("model_name") or "").strip():
+        missing.append("model")
+    return missing
+
+
+def _gap_lines(targets: list[dict[str, Any]]) -> list[str]:
+    if not targets:
+        return ["package name", "package version"]
+    lines = []
+    for target in targets:
+        missing = _missing(target)
+        if not missing:
+            continue
+        name = str(target.get("package_name") or "").strip()
+        lines.append(f"{name}: {', '.join(missing)}" if name else ", ".join(missing))
+    return lines
+
+
+def _so_far(targets: list[dict[str, Any]]) -> str:
+    rows = []
+    for target in targets:
+        bits = []
+        if target.get("package_name"):
+            bits.append(f"package: {target['package_name']}")
+        if target.get("package_version"):
+            bits.append(f"version: {target['package_version']}")
+        if target.get("vulnerability_id"):
+            bits.append(f"advisory: {target['vulnerability_id']}")
+        if target.get("model_name"):
+            bits.append(f"model: `{target['model_name']}`")
+        if target.get("suspected_issue"):
+            bits.append(f'suspected issue: "{target["suspected_issue"]}"')
+        if target.get("maintainer_commit_url"):
+            bits.append(f"maintainer patch: {target['maintainer_commit_url']}")
+        if bits:
+            rows.append("- " + "; ".join(bits))
+    return "So far:\n" + "\n".join(rows) if rows else ""
+
+
+def _missing_text(targets: list[dict[str, Any]], gaps: list[str], note: str) -> str:
+    listed = "\n".join(f"- {gap}" for gap in gaps)
+    so_far = _so_far(targets)
+    extra = f"\n\n{so_far}" if so_far else ""
+    usage = f"\n\n{USAGE}" if not targets else ""
+    return f"Still need:\n{listed}{extra}{usage}{note}"
+
+
+def _ready_text(targets: list[dict[str, Any]], note: str) -> str:
+    blocks = []
+    for index, target in enumerate(targets, start=1):
+        prefix = f"{index}. " if len(targets) > 1 else ""
+        issue = str(target.get("suspected_issue") or "").strip()
+        commit = str(target.get("maintainer_commit_url") or "").strip()
+        advisory = target.get("vulnerability_id") or "first detected advisory"
+        blocks.append("\n".join([
+            f"{prefix}**{target['package_name']}@{target['package_version']}**",
+            f"advisory: {advisory}",
+            f"model: `{target['model_name']}`",
+            f'suspected issue: "{issue}"' if issue else "suspected issue: (none)",
+            f"maintainer patch: {commit}" if commit else "maintainer patch: (none)",
+        ]))
+    heading = "1 package is ready." if len(targets) == 1 else f"{len(targets)} packages are ready."
+    return f"{heading} Reply `confirm` to start, or send a correction.\n\n" + "\n\n".join(blocks) + note
+
+
+def _starting_text(targets: list[dict[str, Any]]) -> str:
+    names = ", ".join(f"**{t['package_name']}@{t['package_version']}**" for t in targets)
+    if len(targets) == 1:
+        return f"▶️ Starting {names}."
+    return f"▶️ Starting {len(targets)} packages, one after another: {names}."
+
+
+def chat_input(state: ChatState) -> dict:
+    """Parse the newest message onto the saved draft, or start the run on confirm.
+
+    The graph ends after asking for missing fields and after posting a complete draft.
+    The next user message is a new turn, so nothing here calls interrupt.
+    """
+    human = [m for m in state.get("messages") or [] if getattr(m, "type", None) == "human"]
+    text = _message_text(human[-1]).strip() if human else ""
+    phase = state.get("phase")
+    saved = [dict(item) for item in state.get("targets") or []] if phase in {"collecting", "awaiting_confirm"} else []
+
+    if phase == "awaiting_confirm" and _is_confirm(text) and saved and not any(_missing(target) for target in saved):
+        return {
+            "phase": "running",
+            "input_error": None,
+            "messages": [AIMessage(content=_starting_text(saved))],
+        }
+
+    targets = _combine(saved, text)
+    _fill_models(targets)
     note = ""
     if len(targets) > MAX_TARGETS:
         note = f"\n\nOnly the first {MAX_TARGETS} targets will run."
         targets = targets[:MAX_TARGETS]
-    plan = "\n".join(
-        f"{index}. **{t['package_name']}@{t['package_version']}**, "
-        f"{t.get('vulnerability_id') or 'first detected advisory'}, `{t['model_name']}`"
-        for index, t in enumerate(targets, start=1)
-    )
-    heading = "Patching 1 package:" if len(targets) == 1 else f"Patching {len(targets)} packages, one after another:"
+    gaps = _gap_lines(targets)
+    base = {"targets": targets, "target_index": 0, "results": [], "run": {}}
+    if gaps:
+        return {
+            **base,
+            "phase": "collecting",
+            "input_error": "; ".join(gaps),
+            "messages": [AIMessage(content=_missing_text(targets, gaps, note))],
+        }
     return {
-        "targets": targets,
-        "target_index": 0,
-        "results": [],
-        "run": {},
+        **base,
+        "phase": "awaiting_confirm",
         "input_error": None,
-        "messages": [AIMessage(content=f"▶️ {heading}\n\n{plan}{note}")],
+        "messages": [AIMessage(content=_ready_text(targets, note))],
     }
 
 
 def route_after_input(state: ChatState) -> str:
-    return "end" if state.get("input_error") else "confirm"
-
-
-def confirm_target(state: ChatState) -> dict:
-    """Post the parsed draft and wait. A correction is parsed and shown again."""
-    from langgraph.types import interrupt
-
-    targets = [dict(item) for item in state.get("targets") or []]
-    index = state.get("target_index") or 0
-    draft = parse_prompt(str(targets[index].get("user_prompt") or ""))
-    draft["package_name"] = targets[index].get("package_name") or draft["package_name"]
-    draft["package_version"] = targets[index].get("package_version") or draft["package_version"]
-    if targets[index].get("suspected_issue"):
-        draft["suspected_issue"] = targets[index]["suspected_issue"]
-    if targets[index].get("maintainer_commit_url"):
-        draft["maintainer_commit_url"] = targets[index]["maintainer_commit_url"]
-    messages = []
-    while True:
-        text = format_draft(draft)
-        messages.append(AIMessage(content=f"{_label(state)}{text}"))
-        outcome = apply_resume(draft, interrupt(text))
-        draft = outcome["draft"]
-        if not outcome["confirmed"]:
-            continue
-        targets[index]["package_name"] = draft["package_name"]
-        targets[index]["package_version"] = draft["package_version"]
-        targets[index]["suspected_issue"] = draft.get("suspected_issue") or ""
-        targets[index]["maintainer_commit_url"] = draft.get("maintainer_commit_url") or ""
-        if draft.get("vulnerability_id"):
-            targets[index]["vulnerability_id"] = draft["vulnerability_id"]
-        if draft.get("model_name"):
-            model = str(draft["model_name"]).lower()
-            targets[index]["model_name"] = MODEL_ALIASES.get(model, draft["model_name"])
-        return {"targets": targets, "messages": messages}
+    return "start" if state.get("phase") == "running" else "end"
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +511,7 @@ def route_after_target(state: ChatState) -> str:
 def batch_summary(state: ChatState) -> dict:
     results = state.get("results") or []
     if len(results) < 2:
-        return {}
+        return {"phase": "done"}
     rows = "\n".join(
         f"| {r['package']} | {r['advisory']} | `{r['model']}` | {r['classification']} | "
         f"{r['category'] or '–'} | {r['oracle'] or '–'} | {r['maintainer'] or '–'} | ${r['cost']:.2f} |"
@@ -284,7 +522,10 @@ def batch_summary(state: ChatState) -> dict:
         "|---|---|---|---|---|---|---|---|\n" + rows
     )
     total = sum(r["cost"] for r in results)
-    return {"messages": [AIMessage(content=f"📊 **Summary** (total ${total:.2f})\n\n{table}")]}
+    return {
+        "phase": "done",
+        "messages": [AIMessage(content=f"📊 **Summary** (total ${total:.2f})\n\n{table}")],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -462,7 +703,6 @@ def build_chat_graph(pipeline: Any = pipeline_graph, checkpointer: Any = None):
     source = pipeline.builder
     builder = StateGraph(ChatState)
     builder.add_node("chat_input", chat_input)
-    builder.add_node("confirm_target", confirm_target)
     builder.add_node("start_target", start_target)
     builder.add_node("finish_target", finish_target)
     builder.add_node("batch_summary", batch_summary)
@@ -470,8 +710,7 @@ def build_chat_graph(pipeline: Any = pipeline_graph, checkpointer: Any = None):
         builder.add_node(name, _pipeline_step(name, _callable(spec.runnable)))
 
     builder.add_edge(START, "chat_input")
-    builder.add_conditional_edges("chat_input", route_after_input, {"confirm": "confirm_target", "end": END})
-    builder.add_edge("confirm_target", "start_target")
+    builder.add_conditional_edges("chat_input", route_after_input, {"start": "start_target", "end": END})
     for start, end in source.edges:
         if start == START:
             builder.add_edge("start_target", end)
@@ -484,7 +723,7 @@ def build_chat_graph(pipeline: Any = pipeline_graph, checkpointer: Any = None):
         for branch in branches.values():
             ends = {key: ("finish_target" if target == END else target) for key, target in (branch.ends or {}).items()}
             builder.add_conditional_edges(start, _route_on_run(_callable(branch.path)), ends or None)
-    builder.add_conditional_edges("finish_target", route_after_target, {"next": "confirm_target", "done": "batch_summary"})
+    builder.add_conditional_edges("finish_target", route_after_target, {"next": "start_target", "done": "batch_summary"})
     builder.add_edge("batch_summary", END)
     return builder.compile(checkpointer=checkpointer)
 

@@ -1,0 +1,487 @@
+diff --git a/src/cli.ts b/src/cli.ts
+index f1d7fc3c..80152ab1 100644
+--- a/src/cli.ts
++++ b/src/cli.ts
+@@ -2,11 +2,17 @@
+ 
+ import { main } from "./index.js";
+ import { handleUncaughtException, handleUnhandledRejection } from "./error-handler.js";
++import {
++  initializeDiagnosticSanitizer,
++  sanitizeErrorForTransport,
++} from "./diagnostic-sanitizer.js";
++import { writeDiagnostic } from "./diagnostic-output.js";
+ 
++initializeDiagnosticSanitizer();
+ process.on('uncaughtException', handleUncaughtException);
+ process.on('unhandledRejection', handleUnhandledRejection);
+ 
+ main().catch((error) => {
+-  console.error("Failed to start server:", error);
++  writeDiagnostic("error", "Failed to start server:", sanitizeErrorForTransport(error));
+   process.exit(1);
+ });
+diff --git a/src/error-handler.ts b/src/error-handler.ts
+index dd01c3be..894f8da8 100644
+--- a/src/error-handler.ts
++++ b/src/error-handler.ts
+@@ -4,6 +4,8 @@
+  */
+ 
+ import { parseSearxngUrls, validateSearxngInstanceUrl } from "./searxng-instances.js";
++import { sanitizeErrorForTransport } from "./diagnostic-sanitizer.js";
++import { writeDiagnostic } from "./diagnostic-output.js";
+ 
+ export interface ErrorContext {
+   url?: string;
+@@ -163,12 +165,13 @@ export function createUnexpectedError(error: any, context: ErrorContext): MCPSea
+  * imported to test these in place.
+  */
+ export function handleUncaughtException(error: unknown): void {
+-  console.error('Uncaught Exception:', error);
++  writeDiagnostic('error', 'Uncaught Exception:', sanitizeErrorForTransport(error));
+   process.exit(1);
+ }
+ 
+ export function handleUnhandledRejection(reason: unknown, promise: Promise<unknown>): void {
+-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
++  void promise;
++  writeDiagnostic('error', 'Unhandled Rejection:', sanitizeErrorForTransport(reason));
+   process.exit(1);
+ }
+ 
+@@ -179,8 +182,8 @@ export function validateEnvironment(): string | null {
+   if (searxngUrls.length === 0) {
+     issues.push("SEARXNG_URL not set");
+   } else {
+-    for (const searxngUrl of searxngUrls) {
+-      const validationError = validateSearxngInstanceUrl(searxngUrl);
++    for (const [index, searxngUrl] of searxngUrls.entries()) {
++      const validationError = validateSearxngInstanceUrl(searxngUrl, index + 1);
+       if (validationError) {
+         issues.push(validationError);
+       }
+diff --git a/src/http-security.ts b/src/http-security.ts
+index 89a22c95..252b0ac8 100644
+--- a/src/http-security.ts
++++ b/src/http-security.ts
+@@ -1,3 +1,5 @@
++import { createHash, timingSafeEqual } from "node:crypto";
++
+ export interface HttpSecurityConfig {
+   harden: boolean;
+   requireAuth: boolean;
+@@ -91,7 +93,13 @@ export function isRequestAuthorized(headerValue: string | undefined, config: Htt
+     return true;
+   }
+ 
+-  return headerValue === `Bearer ${config.authToken}` || headerValue === config.authToken;
++  if (typeof headerValue !== "string" || !config.authToken) {
++    return false;
++  }
++
++  const providedDigest = createHash("sha256").update(headerValue).digest();
++  const expectedDigest = createHash("sha256").update(`Bearer ${config.authToken}`).digest();
++  return timingSafeEqual(providedDigest, expectedDigest);
+ }
+ 
+ export function isOriginAllowed(origin: string | undefined, config: HttpSecurityConfig): boolean {
+diff --git a/src/http-server.ts b/src/http-server.ts
+index 9214852f..5c583303 100644
+--- a/src/http-server.ts
++++ b/src/http-server.ts
+@@ -7,6 +7,12 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
+ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+ import { logMessage } from "./logging.js";
+ import { packageVersion } from "./version.js";
++import {
++  sanitizeDiagnosticText,
++  sanitizeDiagnosticValue,
++  sanitizeErrorForTransport,
++} from "./diagnostic-sanitizer.js";
++import { writeDiagnostic } from "./diagnostic-output.js";
+ import {
+   getHttpSecurityConfig,
+   isOriginAllowed,
+@@ -19,6 +25,18 @@ interface Session {
+   mcpServer: McpServer;
+ }
+ 
++function warnDiagnostic(message: string, data?: unknown): void {
++  if (data === undefined) {
++    writeDiagnostic("warn", sanitizeDiagnosticText(message));
++    return;
++  }
++  writeDiagnostic(
++    "warn",
++    sanitizeDiagnosticText(message),
++    sanitizeDiagnosticValue(data),
++  );
++}
++
+ /**
+  * Resolves the bind host from the MCP_HTTP_HOST environment variable.
+  * Falls back to "127.0.0.1" (localhost only) when the variable is absent or whitespace-only.
+@@ -46,7 +64,7 @@ export function parseRateLimitEnv(name: string, fallback: number): number {
+   }
+   const parsed = parseInt(raw, 10);
+   if (Number.isNaN(parsed) || parsed <= 0) {
+-    console.warn(
++    warnDiagnostic(
+       `⚠️  Ignoring invalid ${name}="${raw}". Expected a positive integer. Using default ${fallback}.`,
+     );
+     return fallback;
+@@ -128,13 +146,68 @@ export async function createHttpServer(
+     });
+   }
+ 
++  function rejectInvalidPost(
++    req: express.Request,
++    res: express.Response,
++    sessionId: string | undefined,
++  ) {
++    warnDiagnostic(`⚠️  POST request rejected - invalid request:`, {
++      clientIP: req.ip || req.socket.remoteAddress,
++      sessionId: sessionId || 'undefined',
++      hasInitializeRequest: isInitializeRequest(req.body),
++      userAgent: req.headers['user-agent'],
++      contentType: req.headers['content-type'],
++      accept: req.headers['accept']
++    });
++    const hasSessionId = Boolean(sessionId);
++    res.status(hasSessionId ? 404 : 400).json({
++      jsonrpc: '2.0',
++      error: {
++        code: hasSessionId ? -32001 : -32000,
++        message: hasSessionId ? 'Session not found' : 'Bad Request: No valid session ID provided',
++      },
++      id: null,
++    });
++  }
++
++  async function handleTransportRequest(
++    transport: StreamableHTTPServerTransport,
++    req: express.Request,
++    res: express.Response,
++  ) {
++    try {
++      await transport.handleRequest(req, res, req.body);
++    } catch (error) {
++      if (error instanceof Error && error.message.includes('accept')) {
++        warnDiagnostic(`⚠️  Connection rejected due to missing headers:`, {
++          clientIP: req.ip || req.socket.remoteAddress,
++          userAgent: req.headers['user-agent'],
++          contentType: req.headers['content-type'],
++          accept: req.headers['accept'],
++          error: error.message
++        });
++      }
++      throw sanitizeErrorForTransport(error);
++    }
++  }
++
+   const { initLimiter, sessionLimiter, healthLimiter } = makeRateLimiters();
+ 
+   // Map to store sessions by session ID
+   const sessions = new Map<string, Session>();
+ 
++  const postRateLimiter: express.RequestHandler = (req, res, next) => {
++    const sessionId = req.headers['mcp-session-id'];
++    // Node comma-joins duplicate custom headers. Only one exact live session ID
++    // selects the generous bucket; every other value stays initialization-limited.
++    const selectedLimiter = typeof sessionId === 'string' && sessions.has(sessionId)
++      ? sessionLimiter
++      : initLimiter;
++    selectedLimiter(req, res, next);
++  };
++
+   // Handle POST requests for client-to-server communication
+-  app.post('/mcp', initLimiter, sessionLimiter, async (req, res) => {
++  app.post('/mcp', postRateLimiter, async (req, res) => {
+     if (!isRequestAuthorized(req.headers.authorization as string | undefined, security)) {
+       rejectUnauthorized(res);
+       return;
+@@ -175,43 +248,11 @@ export async function createHttpServer(
+       // Connect this session's McpServer to its transport
+       await mcpServer.connect(transport);
+     } else {
+-      // Invalid request
+-      console.warn(`⚠️  POST request rejected - invalid request:`, {
+-        clientIP: req.ip || req.socket.remoteAddress,
+-        sessionId: sessionId || 'undefined',
+-        hasInitializeRequest: isInitializeRequest(req.body),
+-        userAgent: req.headers['user-agent'],
+-        contentType: req.headers['content-type'],
+-        accept: req.headers['accept']
+-      });
+-      const sessionNotFound = Boolean(sessionId);
+-      res.status(sessionNotFound ? 404 : 400).json({
+-        jsonrpc: '2.0',
+-        error: {
+-          code: sessionNotFound ? -32001 : -32000,
+-          message: sessionNotFound ? 'Session not found' : 'Bad Request: No valid session ID provided',
+-        },
+-        id: null,
+-      });
++      rejectInvalidPost(req, res, sessionId);
+       return;
+     }
+ 
+-    // Handle the request
+-    try {
+-      await transport.handleRequest(req, res, req.body);
+-    } catch (error) {
+-      // Log header-related rejections for debugging
+-      if (error instanceof Error && error.message.includes('accept')) {
+-        console.warn(`⚠️  Connection rejected due to missing headers:`, {
+-          clientIP: req.ip || req.socket.remoteAddress,
+-          userAgent: req.headers['user-agent'],
+-          contentType: req.headers['content-type'],
+-          accept: req.headers['accept'],
+-          error: error.message
+-        });
+-      }
+-      throw error;
+-    }
++    await handleTransportRequest(transport, req, res);
+   });
+ 
+   // Handle GET requests for server-to-client notifications via SSE
+@@ -223,7 +264,7 @@ export async function createHttpServer(
+ 
+     const sessionId = req.headers['mcp-session-id'] as string | undefined;
+     if (!sessionId || !sessions.has(sessionId)) {
+-      console.warn(`⚠️  GET request rejected - missing or invalid session ID:`, {
++      warnDiagnostic(`⚠️  GET request rejected - missing or invalid session ID:`, {
+         clientIP: req.ip || req.socket.remoteAddress,
+         sessionId: sessionId || 'undefined',
+         userAgent: req.headers['user-agent']
+@@ -236,12 +277,12 @@ export async function createHttpServer(
+     try {
+       await session.transport.handleRequest(req, res);
+     } catch (error) {
+-      console.warn(`⚠️  GET request failed:`, {
++      warnDiagnostic(`⚠️  GET request failed:`, {
+         clientIP: req.ip || req.socket.remoteAddress,
+         sessionId,
+         error: error instanceof Error ? error.message : String(error)
+       });
+-      throw error;
++      throw sanitizeErrorForTransport(error);
+     }
+   });
+ 
+@@ -254,7 +295,7 @@ export async function createHttpServer(
+ 
+     const sessionId = req.headers['mcp-session-id'] as string | undefined;
+     if (!sessionId || !sessions.has(sessionId)) {
+-      console.warn(`⚠️  DELETE request rejected - missing or invalid session ID:`, {
++      warnDiagnostic(`⚠️  DELETE request rejected - missing or invalid session ID:`, {
+         clientIP: req.ip || req.socket.remoteAddress,
+         sessionId: sessionId || 'undefined',
+         userAgent: req.headers['user-agent']
+@@ -267,12 +308,12 @@ export async function createHttpServer(
+     try {
+       await session.transport.handleRequest(req, res);
+     } catch (error) {
+-      console.warn(`⚠️  DELETE request failed:`, {
++      warnDiagnostic(`⚠️  DELETE request failed:`, {
+         clientIP: req.ip || req.socket.remoteAddress,
+         sessionId,
+         error: error instanceof Error ? error.message : String(error)
+       });
+-      throw error;
++      throw sanitizeErrorForTransport(error);
+     } finally {
+       sessions.delete(sessionId);
+     }
+@@ -288,5 +329,30 @@ export async function createHttpServer(
+     });
+   });
+ 
++  // Express catches rejected async route handlers here. Keep this after every
++  // route so session creation/connect failures cannot fall through to
++  // Express's development error page, which includes the raw stack.
++  app.use((
++    error: unknown,
++    _req: express.Request,
++    res: express.Response,
++    next: express.NextFunction,
++  ) => {
++    const safeError = sanitizeErrorForTransport(error);
++    warnDiagnostic("HTTP request failed:", safeError);
++    if (res.headersSent) {
++      next(safeError);
++      return;
++    }
++    res.status(500).json({
++      jsonrpc: "2.0",
++      error: {
++        code: -32603,
++        message: "Internal server error",
++      },
++      id: null,
++    });
++  });
++
+   return app;
+ }
+diff --git a/src/index.ts b/src/index.ts
+index 507be590..9be3b776 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -30,7 +30,15 @@ import { fetchInstanceInfo } from "./instance-info.js";
+ import { fetchAndConvertToMarkdown } from "./url-reader.js";
+ import { createConfigResource, createHelpResource } from "./resources.js";
+ import { createHttpServer, resolveBindHost } from "./http-server.js";
+-import { getSearxngInstances } from "./searxng-instances.js";
++import {
++  getSearxngInstances,
++  redactSearxngInstanceUrl,
++} from "./searxng-instances.js";
++import {
++  initializeDiagnosticSanitizer,
++  sanitizeErrorForTransport,
++} from "./diagnostic-sanitizer.js";
++import { writeDiagnostic } from "./diagnostic-output.js";
+ 
+ import { packageVersion } from "./version.js";
+ 
+@@ -252,12 +260,13 @@ export function createMcpServer(): McpServer {
+         throw new Error(`Unknown tool: ${name}`);
+       }
+     } catch (error) {
+-      logMessage(mcpServer, "error", `Tool execution error: ${error instanceof Error ? error.message : String(error)}`, { 
++      const safeError = sanitizeErrorForTransport(error);
++      logMessage(mcpServer, "error", `Tool execution error: ${safeError.message}`, {
+         tool: name, 
+         args: args,
+-        error: error instanceof Error ? error.stack : String(error)
++        error: safeError.stack,
+       });
+-      throw error;
++      throw safeError;
+     }
+   });
+ 
+@@ -326,7 +335,7 @@ export function createMcpServer(): McpServer {
+         };
+ 
+       default:
+-        throw new Error(`Unknown resource: ${uri}`);
++        throw sanitizeErrorForTransport(new Error(`Unknown resource: ${uri}`));
+     }
+   });
+ 
+@@ -335,31 +344,32 @@ export function createMcpServer(): McpServer {
+ 
+ // Main function
+ export async function main() {
++  initializeDiagnosticSanitizer();
+   // Check for HTTP transport mode
+   const httpPort = process.env.MCP_HTTP_PORT;
+   if (httpPort) {
+     const port = parseInt(httpPort, 10);
+     if (isNaN(port) || port < 1 || port > 65535) {
+-      console.error(`Invalid HTTP port: ${httpPort}. Must be between 1-65535.`);
++      writeDiagnostic("error", `Invalid HTTP port: ${httpPort}. Must be between 1-65535.`);
+       process.exit(1);
+     }
+ 
+     const host = resolveBindHost(process.env.MCP_HTTP_HOST);
+-    console.log(`Starting HTTP transport on ${host}:${port}`);
++    writeDiagnostic("log", `Starting HTTP transport on ${host}:${port}`);
+     const app = await createHttpServer(createMcpServer, port);
+     
+     const httpServer = app.listen(port, host, () => {
+-      console.log(`HTTP server listening on ${host}:${port}`);
++      writeDiagnostic("log", `HTTP server listening on ${host}:${port}`);
+       // Health/MCP URLs shown as localhost for developer convenience
+-      console.log(`Health check: http://localhost:${port}/health`);
+-      console.log(`MCP endpoint: http://localhost:${port}/mcp`);
++      writeDiagnostic("log", `Health check: http://localhost:${port}/health`);
++      writeDiagnostic("log", `MCP endpoint: http://localhost:${port}/mcp`);
+     });
+ 
+     // Handle graceful shutdown
+     const shutdown = (signal: string) => {
+-      console.log(`Received ${signal}. Shutting down HTTP server...`);
++      writeDiagnostic("log", `Received ${signal}. Shutting down HTTP server...`);
+       httpServer.close(() => {
+-        console.log("HTTP server closed");
++        writeDiagnostic("log", "HTTP server closed");
+         process.exit(0);
+       });
+     };
+@@ -372,14 +382,17 @@ export async function main() {
+ 
+     // Show helpful message when running in terminal
+     if (process.stdin.isTTY) {
+-      console.error(`🔍 MCP SearXNG Server v${packageVersion} - Ready`);
++      writeDiagnostic("error", `🔍 MCP SearXNG Server v${packageVersion} - Ready`);
+       const searxngInstances = getSearxngInstances();
+       if (searxngInstances.length > 0) {
+-        console.error(`🌐 SearXNG URLs: ${searxngInstances.join("; ")}`);
++        writeDiagnostic(
++          "error",
++          `🌐 SearXNG URLs: ${searxngInstances.map(redactSearxngInstanceUrl).join("; ")}`,
++        );
+       } else {
+-        console.error("⚠️  SEARXNG_URL not set — configure it before using search tools");
++        writeDiagnostic("error", "⚠️  SEARXNG_URL not set — configure it before using search tools");
+       }
+-      console.error("📡 Waiting for MCP client connection via STDIO...\n");
++      writeDiagnostic("error", "📡 Waiting for MCP client connection via STDIO...\n");
+     }
+     
+     const transport = new StdioServerTransport();
+@@ -390,6 +403,14 @@ export async function main() {
+     logMessage(mcpServer, "info", `Log level: ${getCurrentLogLevel()}`);
+     logMessage(mcpServer, "info", `Environment: ${process.env.NODE_ENV || 'development'}`);
+     const searxngInstances = getSearxngInstances();
+-    logMessage(mcpServer, "info", `SearXNG URLs: ${searxngInstances.length > 0 ? searxngInstances.join("; ") : 'not configured'}`);
++    logMessage(
++      mcpServer,
++      "info",
++      `SearXNG URLs: ${
++        searxngInstances.length > 0
++          ? searxngInstances.map(redactSearxngInstanceUrl).join("; ")
++          : "not configured"
++      }`,
++    );
+   }
+ }
+diff --git a/src/searxng-instances.ts b/src/searxng-instances.ts
+index a1c42971..e8c8e081 100644
+--- a/src/searxng-instances.ts
++++ b/src/searxng-instances.ts
+@@ -41,14 +41,18 @@ export function getPrimarySearxngInstance(): string | undefined {
+   return getSearxngInstances()[0];
+ }
+ 
+-export function validateSearxngInstanceUrl(value: string): string | null {
++export function validateSearxngInstanceUrl(
++  value: string,
++  entryIndex?: number,
++): string | null {
++  const entry = entryIndex === undefined ? "" : ` entry ${entryIndex}`;
+   try {
+     const url = new URL(value);
+     if (!["http:", "https:"].includes(url.protocol)) {
+-      return `SEARXNG_URL invalid protocol for "${value}": ${url.protocol}`;
++      return `SEARXNG_URL${entry} uses unsupported protocol ${url.protocol} for ${url.hostname}`;
+     }
+   } catch {
+-    return `SEARXNG_URL invalid format: ${value}`;
++    return `SEARXNG_URL${entry} has invalid format`;
+   }
+ 
+   return null;
+@@ -65,7 +69,7 @@ export function redactSearxngInstanceUrl(raw: string): string {
+     url.password = "";
+     return url.toString();
+   } catch {
+-    return raw.replace(/^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/]*@/, "$1");
++    return "[invalid SearXNG URL]";
+   }
+ }

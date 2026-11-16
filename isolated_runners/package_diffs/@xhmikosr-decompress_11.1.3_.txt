@@ -1,0 +1,234 @@
+diff --git a/index.js b/index.js
+index 8af5d12..88a6ad0 100644
+--- a/index.js
++++ b/index.js
+@@ -1,4 +1,9 @@
+ import {Buffer} from 'node:buffer';
++import {constants as fsConstants} from 'node:fs';
++// realpath follows symlinks, so a target that escapes via a symlink is caught
++import {
++	lstat, open as openFile, realpath, unlink,
++} from 'node:fs/promises';
+ import path from 'node:path';
+ import process from 'node:process';
+ import {promisify} from 'node:util';
+@@ -12,13 +17,12 @@ import stripDirs from 'strip-dirs';
+ const link = promisify(fs.link);
+ const mkdir = promisify(fs.mkdir);
+ const readFile = promisify(fs.readFile);
+-const readlink = promisify(fs.readlink);
+-const realpath = promisify(fs.realpath);
+ const symlink = promisify(fs.symlink);
+ const utimes = promisify(fs.utimes);
+-const writeFile = promisify(fs.writeFile);
+ 
+ const IS_WINDOWS = process.platform === 'win32';
++// Names Windows treats as device files, with or without an extension (`NUL.txt` is still `NUL`)
++const WINDOWS_RESERVED_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+ 
+ const runPlugins = async (input, options) => {
+ 	if (options.plugins.length === 0) {
+@@ -36,6 +40,38 @@ const isInsideOutput = (target, root) => {
+ 	return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+ };
+ 
++const isUnsafeWindowsSegment = segment => {
++	// `.`/`..`/empty segments are handled by the traversal checks, not here
++	if (segment === '' || segment === '.' || segment === '..') {
++		return false;
++	}
++
++	// `:` opens an NTFS alternate data stream; the rest are invalid Windows filename chars
++	if (/[<>:"|?*]/.test(segment) || [...segment].some(character => character.codePointAt(0) < 0x20)) {
++		return true;
++	}
++
++	return WINDOWS_RESERVED_NAME.test(segment);
++};
++
++export const assertSafeEntryPath = (entryPath, isWindows = IS_WINDOWS) => {
++	// fs rejects NUL too, but not before mkdir has created parent directories
++	if (entryPath.includes('\0')) {
++		throw new Error(`Refusing to extract a path containing a NUL byte: ${entryPath}`);
++	}
++
++	// Alternate data streams, reserved device names and forbidden characters are
++	// all legal on POSIX, so reject them on Windows only
++	if (!isWindows) {
++		return;
++	}
++
++	const unsafe = entryPath.split(/[/\\]/).find(segment => isUnsafeWindowsSegment(segment));
++	if (unsafe !== undefined) {
++		throw new Error(`Refusing to extract a path that is unsafe on Windows: ${entryPath}`);
++	}
++};
++
+ const safeMakeDir = async (dir, realOutputPath) => {
+ 	let realParentPath;
+ 
+@@ -77,24 +113,52 @@ const ensureLinkTargetInsideOutput = async (linkname, linkBase, realOutputPath)
+ 	return target;
+ };
+ 
+-const preventWritingThroughSymlink = async (destination, realOutputPath) => {
+-	let symlinkPointsTo = null;
++const assertNotSymlink = async target => {
++	// link() would clone the symlink inode, relocating its relative target outside
++	const stats = await lstat(target).catch(() => null);
+ 
+-	try {
+-		symlinkPointsTo = await readlink(destination);
+-	} catch {
+-		// Either no file exists, or it's not a symlink. In either case, this is
+-		// not an escape we need to worry about in this phase.
++	if (stats && stats.isSymbolicLink()) {
++		throw new Error(`Refusing to hardlink to a symlink: ${target}`);
+ 	}
++};
++
++// realpath the longest existing prefix (follows sibling symlinks), then append the missing tail
++const resolveMaybeMissing = async target => {
++	let existing = target;
++	const tail = [];
+ 
+-	if (symlinkPointsTo) {
+-		throw new Error('Refusing to write into a symlink');
++	for (;;) {
++		try {
++			// eslint-disable-next-line no-await-in-loop
++			return path.join(await realpath(existing), ...tail.toReversed());
++		} catch {
++			const parent = path.dirname(existing);
++			if (parent === existing) {
++				return target;
++			}
++
++			tail.push(path.basename(existing));
++			existing = parent;
++		}
+ 	}
++};
++
++// A self-referential linkname resolves inside lexically but escapes via the kernel
++const assertSymlinkResolvesInside = async (dest, linkname, realOutputPath) => {
++	// Keep the raw linkname so its symlink components aren't collapsed
++	const rawTarget = path.isAbsolute(linkname) ? linkname : path.dirname(dest) + path.sep + linkname;
++	const resolved = await resolveMaybeMissing(rawTarget);
+ 
+-	// No symlink exists at `destination`, so we can continue
+-	return realOutputPath;
++	if (!isInsideOutput(resolved, realOutputPath)) {
++		await unlink(dest).catch(() => null);
++		throw new Error(`Refusing to keep a symlink that escapes the output directory: ${dest}`);
++	}
+ };
+ 
++// Files, then symlinks, then hardlinks: a hardlink may target a symlink
++const isSymlink = entry => entry.type === 'symlink' && !IS_WINDOWS;
++const isHardlink = entry => entry.type === 'link' || (entry.type === 'symlink' && IS_WINDOWS);
++
+ const extractFile = async (input, output, options) => {
+ 	let entries = await runPlugins(input, options);
+ 
+@@ -121,6 +185,17 @@ const extractFile = async (input, output, options) => {
+ 		return entries;
+ 	}
+ 
++	// Two entries at one path let a symlink and a write race the same destination
++	const seenPaths = new Set();
++	for (const entry of entries) {
++		const key = IS_WINDOWS ? entry.path.toLowerCase() : entry.path;
++		if (seenPaths.has(key)) {
++			throw new Error(`Refusing to extract an archive with a duplicate entry path: ${entry.path}`);
++		}
++
++		seenPaths.add(key);
++	}
++
+ 	await mkdir(output, {recursive: true});
+ 	const realOutputPath = await realpath(output);
+ 
+@@ -128,6 +203,8 @@ const extractFile = async (input, output, options) => {
+ 	const now = new Date();
+ 
+ 	const extractEntry = async entry => {
++		assertSafeEntryPath(entry.path);
++
+ 		const dest = path.join(output, entry.path);
+ 
+ 		if (entry.type === 'directory') {
+@@ -147,32 +224,42 @@ const extractFile = async (input, output, options) => {
+ 		if (entry.type === 'link') {
+ 			// Hardlink target is relative to the extraction root
+ 			const target = await ensureLinkTargetInsideOutput(entry.linkname, realOutputPath, realOutputPath);
++			await assertNotSymlink(target);
+ 			await link(target, dest);
+ 		} else if (entry.type === 'symlink' && IS_WINDOWS) {
+-			// No symlinks on Windows; emulate with a hardlink relative to the link's dir
+-			const target = await ensureLinkTargetInsideOutput(entry.linkname, path.dirname(dest), realOutputPath);
++			// No symlinks on Windows; emulate with a hardlink relative to the link's real dir
++			const target = await ensureLinkTargetInsideOutput(entry.linkname, realDestinationDir, realOutputPath);
++			await assertNotSymlink(target);
+ 			await link(target, dest);
+ 		} else if (entry.type === 'symlink') {
+-			// Target is relative to the link's own dir
+-			await ensureLinkTargetInsideOutput(entry.linkname, path.dirname(dest), realOutputPath);
++			// Lexical fast-reject; assertSymlinkResolvesInside is the real guard
++			await ensureLinkTargetInsideOutput(entry.linkname, realDestinationDir, realOutputPath);
+ 			await symlink(entry.linkname, dest);
+ 		} else {
+-			// Guard the write itself, not just `file`, so flavors like contiguous-file can't bypass it
+-			await preventWritingThroughSymlink(dest, realOutputPath);
+ 			// Never honor setuid/setgid/sticky bits from an archive
+ 			const mode = (entry.mode & 0o777) & ~umask; // eslint-disable-line no-bitwise
+-			await writeFile(dest, entry.data, {mode});
+-			await utimes(dest, now, entry.mtime);
++			// O_NOFOLLOW so a symlink planted at dest can't redirect the write
++			const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | (fsConstants.O_NOFOLLOW || 0); // eslint-disable-line no-bitwise
++			const handle = await openFile(dest, flags, mode).catch(error => {
++				if (error.code === 'ELOOP') {
++					throw new Error('Refusing to write into a symlink');
++				}
++
++				throw error;
++			});
++			try {
++				await handle.writeFile(entry.data);
++				await handle.utimes(now, entry.mtime);
++			} finally {
++				await handle.close();
++			}
+ 		}
+ 	};
+ 
+-	// Hardlinks need their target written first, so extract everything else before linking
+-	const isHardlink = entry => entry.type === 'link' || (entry.type === 'symlink' && IS_WINDOWS);
+-
+ 	const results = Array.from({length: entries.length});
+-	const settle = async i => {
++	const settle = async (i, task) => {
+ 		try {
+-			await extractEntry(entries[i]);
++			await task(entries[i]);
+ 			results[i] = {status: 'fulfilled'};
+ 		} catch (error) {
+ 			results[i] = {status: 'rejected', reason: error};
+@@ -180,8 +267,15 @@ const extractFile = async (input, output, options) => {
+ 	};
+ 
+ 	const order = [...entries.keys()];
+-	await Promise.all(order.filter(i => !isHardlink(entries[i])).map(i => settle(i)));
+-	await Promise.all(order.filter(i => isHardlink(entries[i])).map(i => settle(i)));
++	const symlinkOrder = order.filter(i => isSymlink(entries[i]));
++	await Promise.all(order.filter(i => !isSymlink(entries[i]) && !isHardlink(entries[i])).map(i => settle(i, extractEntry)));
++	await Promise.all(symlinkOrder.map(i => settle(i, extractEntry)));
++	await Promise.all(order.filter(i => isHardlink(entries[i])).map(i => settle(i, extractEntry)));
++
++	// Now every symlink exists, resolve chains for real
++	await Promise.all(symlinkOrder
++		.filter(i => results[i].status === 'fulfilled')
++		.map(i => settle(i, entry => assertSymlinkResolvesInside(path.join(output, entry.path), entry.linkname, realOutputPath))));
+ 
+ 	// Report the first failure in entry order, not whichever rejected first
+ 	const failure = results.find(result => result.status === 'rejected');
