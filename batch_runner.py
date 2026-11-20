@@ -16,6 +16,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from model_catalog import patch_evaluator_models
+from prompt_variant import SUFFIXES
 
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -24,6 +25,8 @@ DEFAULT_CONFIG = Path(__file__).resolve().parent / "config" / "batch.json"
 Package = tuple[str, str]
 _PROVIDERS = ("mock", "openai", "anthropic", "gemini", "openrouter")
 _PATCH_SCOPES = ("single", "all")
+# Optional per-entry prompt context (the enriched prompts read these from state).
+_EXTRA_FIELDS = ("cwe_id", "cwe_name", "cwe_description", "typical_sinks", "typical_control")
 
 
 def parse_package(spec: str) -> Package:
@@ -123,8 +126,10 @@ def _fresh_state(
     model_name: str,
     max_retries: int,
     patch_scope: str,
+    prompt_suffix: str = "",
+    extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    state: dict[str, Any] = {
         "package_name": package_name,
         "package_version": package_version,
         "model_provider": model_provider,
@@ -135,6 +140,10 @@ def _fresh_state(
         "errors": [],
         "run_cost": 0.0,
     }
+    if prompt_suffix:
+        state["prompt_suffix"] = prompt_suffix
+    state.update({k: v for k, v in (extra or {}).items() if k in _EXTRA_FIELDS})
+    return state
 
 
 def _require_int(value: Any, label: str) -> int:
@@ -200,12 +209,17 @@ def load_batch_config(path: str | Path) -> dict[str, Any]:
             raise ValueError(f"{spec} model must be a model id")
         if model_provider == "openrouter" and model not in allowed_models:
             raise ValueError(f"{spec} model must be one of: {', '.join(allowed_models)}")
+        prompt_suffix = str(entry.get("prompt_suffix") or "").strip()
+        if prompt_suffix and prompt_suffix not in SUFFIXES:
+            raise ValueError(f"{spec} prompt_suffix must be one of: {', '.join(SUFFIXES)}")
         jobs.append(
             {
                 "package_name": package_name,
                 "package_version": package_version,
                 "num_runs": num_runs,
                 "model": model,
+                "prompt_suffix": prompt_suffix,
+                "extra": {k: entry[k] for k in _EXTRA_FIELDS if entry.get(k)},
             }
         )
 
@@ -226,8 +240,14 @@ def run_batch(
     max_retries: int = 1,
     patch_scope: str = "single",
     invoke: Callable[[dict], dict] | None = None,
+    results_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Invoke the patch graph once per sample, stopping at the cost cap."""
+    """Invoke the patch graph once per sample, stopping at the cost cap.
+
+    When ``results_path`` is set, each finished run is appended to it as one
+    JSON line, and runs already recorded there (same package, version, model,
+    prompt suffix and run index) are skipped, so an interrupted batch resumes.
+    """
     if not jobs:
         raise ValueError("at least one package is required")
     if cost_cap < 0:
@@ -239,7 +259,10 @@ def run_batch(
         invoke = graph.invoke
 
     schedule = [
-        (job["package_name"], job["package_version"], run_index, job["model"])
+        (
+            job["package_name"], job["package_version"], run_index, job["model"],
+            job.get("prompt_suffix") or "", job.get("extra") or {},
+        )
         for job in jobs
         for run_index in range(int(job["num_runs"]))
     ]
@@ -247,13 +270,29 @@ def run_batch(
     spent = 0.0
     stopped_reason = None
 
-    for package_name, package_version, run_index, model_name in schedule:
+    def _key(item: Mapping[str, Any]) -> tuple:
+        return (
+            item.get("package_name"), item.get("package_version"), item.get("run_index"),
+            item.get("model_name"), item.get("prompt_suffix") or "",
+        )
+
+    done: set[tuple] = set()
+    if results_path and Path(results_path).is_file():
+        for line in Path(results_path).read_text(encoding="utf-8").splitlines():
+            try:
+                done.add(_key(json.loads(line)))
+            except json.JSONDecodeError:
+                continue
+
+    for package_name, package_version, run_index, model_name, prompt_suffix, extra in schedule:
+        if (package_name, package_version, run_index, model_name, prompt_suffix) in done:
+            continue
         if not should_start_run(spent, len(completed), cost_cap):
             stopped_reason = "cost_cap"
             break
         print(
             f"starting {package_name}@{package_version} "
-            f"run={run_index} model={model_name}",
+            f"run={run_index} model={model_name} prompt={prompt_suffix or 'default'}",
             flush=True,
         )
         state = _fresh_state(
@@ -263,6 +302,8 @@ def run_batch(
             model_name=model_name,
             max_retries=max_retries,
             patch_scope=patch_scope,
+            prompt_suffix=prompt_suffix,
+            extra=extra,
         )
         try:
             final = invoke(state) or {}
@@ -273,12 +314,21 @@ def run_batch(
         cost = float(final.get("run_cost") or 0)
         spent += cost
         oracle_failures = oracle_failure_summaries(final)
-        completed.append(
-            {
+        evaluation = final.get("final_evaluation")
+        record = {
                 "package_name": package_name,
                 "package_version": package_version,
                 "model_name": model_name,
+                "prompt_suffix": prompt_suffix,
+                "cwe_id": extra.get("cwe_id"),
+                "genuine_fix": (final.get("adversarial_evaluation") or {}).get("genuine_fix"),
+                "adversarial_status": (final.get("adversarial_evaluation") or {}).get("status"),
+                "evaluator_model": (final.get("adversarial_evaluation") or {}).get("evaluator_model"),
+                "oracle_status": (final.get("generated_patch_oracle_validation") or {}).get("status"),
                 "run_index": run_index,
+                "final_category": (
+                    evaluation.get("category") if isinstance(evaluation, Mapping) else None
+                ) or "inconclusive",
                 "classification": final.get("classification"),
                 "classification_reason": final.get("classification_reason"),
                 "oracle_failures": oracle_failures,
@@ -286,8 +336,11 @@ def run_batch(
                 "run_cost": cost,
                 "spent": spent,
                 "error": error,
-            }
-        )
+        }
+        completed.append(record)
+        if results_path:
+            with Path(results_path).open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, default=str) + "\n")
         print(
             f"finished {package_name}@{package_version} "
             f"run={run_index} classification={final.get('classification')} "
@@ -312,6 +365,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_CONFIG,
         help="Path to the batch JSON config (default: config/batch.json)",
     )
+    parser.add_argument(
+        "--results",
+        default=None,
+        help="JSONL file that records each finished run and lets a rerun resume",
+    )
     return parser.parse_args(argv)
 
 
@@ -328,6 +386,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         model_provider=config["model_provider"],
         max_retries=config["max_retries"],
         patch_scope=config["patch_scope"],
+        results_path=args.results,
     )
     for run in summary["runs"]:
         print(

@@ -1,0 +1,44 @@
+{
+  "cost_cap": 15.0,
+  "max_retries": 1,
+  "model_provider": "openrouter",
+  "patch_scope": "single",
+  "packages": [
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    }
+  ]
+}

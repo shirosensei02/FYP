@@ -1,0 +1,118 @@
+{
+  "cost_cap": 10.0,
+  "max_retries": 1,
+  "model_provider": "openrouter",
+  "patch_scope": "single",
+  "packages": [
+    {
+      "package": "drizzle-orm@0.45.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-89",
+      "cwe_name": "SQL Injection",
+      "cwe_description": "Untrusted input is concatenated into a SQL statement.",
+      "typical_sinks": "SQL string construction",
+      "typical_control": "bind query parameters instead of concatenating them"
+    },
+    {
+      "package": "drizzle-orm@0.45.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-89",
+      "cwe_name": "SQL Injection",
+      "cwe_description": "Untrusted input is concatenated into a SQL statement.",
+      "typical_sinks": "SQL string construction",
+      "typical_control": "bind query parameters instead of concatenating them"
+    },
+    {
+      "package": "next@15.2.2",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-863",
+      "cwe_name": "Incorrect Authorization",
+      "cwe_description": "The product does not correctly authorize an actor for a resource or action.",
+      "typical_sinks": "request authorization check",
+      "typical_control": "enforce the authorization decision before serving the route"
+    },
+    {
+      "package": "next@15.2.2",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-863",
+      "cwe_name": "Incorrect Authorization",
+      "cwe_description": "The product does not correctly authorize an actor for a resource or action.",
+      "typical_sinks": "request authorization check",
+      "typical_control": "enforce the authorization decision before serving the route"
+    },
+    {
+      "package": "vite@8.0.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-22",
+      "cwe_name": "Path Traversal",
+      "cwe_description": "A path built from untrusted input can escape the intended directory.",
+      "typical_sinks": "filesystem path join",
+      "typical_control": "reject parent-directory segments in user paths"
+    },
+    {
+      "package": "vite@8.0.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-22",
+      "cwe_name": "Path Traversal",
+      "cwe_description": "A path built from untrusted input can escape the intended directory.",
+      "typical_sinks": "filesystem path join",
+      "typical_control": "reject parent-directory segments in user paths"
+    },
+    {
+      "package": "dompurify@3.2.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-79",
+      "cwe_name": "Cross-site Scripting",
+      "cwe_description": "Untrusted input is placed into a web page and interpreted as HTML or script.",
+      "typical_sinks": "HTML serialization",
+      "typical_control": "sanitize markup before it is treated as HTML"
+    },
+    {
+      "package": "json5@2.2.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-1321",
+      "cwe_name": "Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution')",
+      "cwe_description": "The product receives input from an upstream component that specifies attributes to be initialized or updated in an object, but it does not properly control modifications of attributes of the object prototype.",
+      "typical_sinks": "object property assignment from parsed keys such as __proto__ or constructor",
+      "typical_control": "ignore or reject __proto__, constructor and prototype keys when assigning properties"
+    },
+    {
+      "package": "jszip@3.7.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-22",
+      "cwe_name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
+      "cwe_description": "The product uses external input to construct a pathname that should be within a restricted directory, but it does not properly neutralize sequences such as '..' that can resolve to a location outside of that directory.",
+      "typical_sinks": "file path construction from archive entry names",
+      "typical_control": "normalize the path and reject entries that resolve outside the target directory"
+    },
+    {
+      "package": "jszip@3.7.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-22",
+      "cwe_name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
+      "cwe_description": "The product uses external input to construct a pathname that should be within a restricted directory, but it does not properly neutralize sequences such as '..' that can resolve to a location outside of that directory.",
+      "typical_sinks": "file path construction from archive entry names",
+      "typical_control": "normalize the path and reject entries that resolve outside the target directory"
+    }
+  ]
+}

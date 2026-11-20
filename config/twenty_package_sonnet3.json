@@ -1,0 +1,41 @@
+{
+  "cost_cap": 5.0,
+  "max_retries": 1,
+  "model_provider": "openrouter",
+  "patch_scope": "single",
+  "packages": [
+    {
+      "package": "vite@8.0.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-22",
+      "cwe_name": "Path Traversal",
+      "cwe_description": "A path built from untrusted input can escape the intended directory.",
+      "typical_sinks": "filesystem path join",
+      "typical_control": "reject parent-directory segments in user paths"
+    },
+    {
+      "package": "dompurify@3.2.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-79",
+      "cwe_name": "Cross-site Scripting",
+      "cwe_description": "Untrusted input is placed into a web page and interpreted as HTML or script.",
+      "typical_sinks": "HTML serialization",
+      "typical_control": "sanitize markup before it is treated as HTML"
+    },
+    {
+      "package": "jszip@3.7.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched",
+      "cwe_id": "CWE-22",
+      "cwe_name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
+      "cwe_description": "The product uses external input to construct a pathname that should be within a restricted directory, but it does not properly neutralize sequences such as '..' that can resolve to a location outside of that directory.",
+      "typical_sinks": "file path construction from archive entry names",
+      "typical_control": "normalize the path and reject entries that resolve outside the target directory"
+    }
+  ]
+}

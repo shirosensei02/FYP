@@ -1,0 +1,728 @@
+{
+  "cost_cap": 60.0,
+  "max_retries": 1,
+  "model_provider": "openrouter",
+  "patch_scope": "single",
+  "packages": [
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "minimatch@3.0.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "minimatch@3.0.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "lodash@4.17.11",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "lodash@4.17.11",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "drizzle-orm@0.45.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "drizzle-orm@0.45.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "jsonwebtoken@8.5.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "jsonwebtoken@8.5.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "form-data@4.0.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "form-data@4.0.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "next@15.2.2",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "next@15.2.2",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "vite@8.0.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "vite@8.0.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "axios@1.7.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "axios@1.7.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "dompurify@3.2.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "dompurify@3.2.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "json5@2.2.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "json5@2.2.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "pidusage@1.1.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "pidusage@1.1.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "network@0.6.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "network@0.6.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "jszip@3.7.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "jszip@3.7.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "zip-local@0.3.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "zip-local@0.3.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "express-jwt@5.3.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "express-jwt@5.3.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "web3-utils@4.2.0",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "web3-utils@4.2.0",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "fs-git@1.0.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "fs-git@1.0.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "koa@2.15.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "koa@2.15.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "parse-server@8.6.74",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "parse-server@8.6.74",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_generic"
+    },
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "minimatch@3.0.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "minimatch@3.0.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "lodash@4.17.11",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "lodash@4.17.11",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "drizzle-orm@0.45.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "drizzle-orm@0.45.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "jsonwebtoken@8.5.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "jsonwebtoken@8.5.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "form-data@4.0.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "form-data@4.0.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "next@15.2.2",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "next@15.2.2",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "vite@8.0.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "vite@8.0.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "axios@1.7.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "axios@1.7.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "dompurify@3.2.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "dompurify@3.2.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "json5@2.2.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "json5@2.2.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "pidusage@1.1.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "pidusage@1.1.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "network@0.6.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "network@0.6.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "jszip@3.7.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "jszip@3.7.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "zip-local@0.3.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "zip-local@0.3.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "express-jwt@5.3.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "express-jwt@5.3.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "web3-utils@4.2.0",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "web3-utils@4.2.0",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "fs-git@1.0.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "fs-git@1.0.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "koa@2.15.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "koa@2.15.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "parse-server@8.6.74",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "parse-server@8.6.74",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_enriched"
+    },
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "shell-quote@1.8.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "minimatch@3.0.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "minimatch@3.0.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "lodash@4.17.11",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "lodash@4.17.11",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "drizzle-orm@0.45.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "drizzle-orm@0.45.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "jsonwebtoken@8.5.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "jsonwebtoken@8.5.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "form-data@4.0.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "form-data@4.0.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "next@15.2.2",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "next@15.2.2",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "vite@8.0.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "vite@8.0.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "axios@1.7.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "axios@1.7.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "dompurify@3.2.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "dompurify@3.2.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "json5@2.2.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "json5@2.2.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "pidusage@1.1.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "pidusage@1.1.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "network@0.6.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "network@0.6.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "jszip@3.7.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "jszip@3.7.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "zip-local@0.3.4",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "zip-local@0.3.4",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "express-jwt@5.3.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "express-jwt@5.3.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "web3-utils@4.2.0",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "web3-utils@4.2.0",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "fs-git@1.0.1",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "fs-git@1.0.1",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "koa@2.15.3",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "koa@2.15.3",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "parse-server@8.6.74",
+      "num_runs": 1,
+      "model": "openai/gpt-5.3-codex",
+      "prompt_suffix": "_CoT"
+    },
+    {
+      "package": "parse-server@8.6.74",
+      "num_runs": 1,
+      "model": "anthropic/claude-sonnet-5",
+      "prompt_suffix": "_CoT"
+    }
+  ]
+}
